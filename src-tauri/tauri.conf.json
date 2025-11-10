@@ -21,6 +21,11 @@
       "csp": null
     }
   },
+  "plugins": {
+    "http": {
+      "scope": ["http://127.0.0.1:5000/**"]
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",
