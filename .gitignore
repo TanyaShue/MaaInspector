@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python runtime and temporary files
+src-tauri/python-runtime/
+get-pip.py

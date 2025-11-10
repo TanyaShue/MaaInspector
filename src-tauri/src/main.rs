@@ -1,22 +1,53 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::process::Command;
-use tauri::async_runtime;
+use std::process::{Command, Child};
+use std::sync::Mutex;
+use tauri::{Manager, WindowEvent}; // Removed Window
+use std::os::windows::process::CommandExt;
+
+// 使用Tauri的State管理功能来保存子进程的句柄
+struct AppState(Mutex<Option<Child>>);
 
 fn main() {
     tauri::Builder::default()
-        .setup(|_app| {
-            // 在后台启动Python Flask服务器
-            // 我们假设 'python' 在系统的PATH中
-            // '..\\backend\\app.py' 是相对于 'src-tauri' 目录的路径
-            async_runtime::spawn(async {
-                Command::new("python")
-                    .args(["..\\backend\\app.py"])
-                    .spawn()
-                    .expect("Failed to spawn backend server");
-            });
+        // 将我们的AppState注入到Tauri应用中
+        .manage(AppState(Mutex::new(None)))
+        .setup(|app| {
+            let app_handle = app.app_handle();
+            let state = app.state::<AppState>();
+
+            let resource_dir = app_handle.path()
+                .resource_dir()
+                .expect("failed to resolve resource directory");
+
+            let python_exe = resource_dir.join("python-runtime\\python.exe");
+            let script = resource_dir.join("python-runtime\\app.py");
+
+            #[cfg(not(debug_assertions))]
+            let mut command = Command::new(python_exe);
+            #[cfg(not(debug_assertions))]
+            command.arg(script).creation_flags(0x08000000);
+
+            #[cfg(debug_assertions)]
+            let mut command = Command::new(python_exe);
+            #[cfg(debug_assertions)]
+            command.arg(script);
+
+            let child = command.spawn().expect("Failed to spawn backend");
+
+            *state.0.lock().unwrap() = Some(child);
+            
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // 监听窗口销毁事件
+            if let WindowEvent::Destroyed = event {
+                // 从State中获取子进程句柄并终止它
+                if let Some(mut child) = window.state::<AppState>().0.lock().unwrap().take() {
+                    child.kill().expect("Failed to kill backend process");
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![])
         .run(tauri::generate_context!())
