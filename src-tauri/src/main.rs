@@ -3,15 +3,13 @@
 
 use std::process::{Command, Child};
 use std::sync::Mutex;
-use tauri::{Manager, WindowEvent}; // Removed Window
-use std::os::windows::process::CommandExt;
+use tauri::{Manager, WindowEvent};
 
 // 使用Tauri的State管理功能来保存子进程的句柄
 struct AppState(Mutex<Option<Child>>);
 
 fn main() {
     tauri::Builder::default()
-        // 将我们的AppState注入到Tauri应用中
         .manage(AppState(Mutex::new(None)))
         .setup(|app| {
             let app_handle = app.app_handle();

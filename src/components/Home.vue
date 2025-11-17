@@ -1,64 +1,120 @@
-<script setup lang="ts">
-import { ref } from 'vue';
+<script setup>
+import { ref, watch } from 'vue'
+import { VueFlow, useVueFlow } from '@vue-flow/core'
+import { Background } from '@vue-flow/background'
+import { Controls } from '@vue-flow/controls'
+import { MiniMap } from '@vue-flow/minimap'
+import { initialNodes, initialEdges } from './flow-example/initial-elements'
+import ProcessNode from './flow-example/ProcessNode.vue'
+import AnimationEdge from './flow-example/AnimationEdge.vue'
+import { useLayout } from './flow-example/useLayout'
+import { useRunProcess } from './flow-example/useRunProcess'
+import ContextMenu from './flow-example/ContextMenu.vue'
 
-const backendMessage = ref('');
-const isLoading = ref(false);
-const error = ref('');
+const { onPaneContextMenu, onNodeContextMenu, addNodes, removeNodes, screenToFlowCoordinate, getNodes, getEdges } = useVueFlow()
 
-async function fetchMessage() {
-  isLoading.value = true;
-  error.value = '';
-  backendMessage.value = '';
-  try {
-    const response = await fetch('http://127.0.0.1:5000/api/message');
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const data = await response.json();
-    backendMessage.value = data.message;
-  } catch (e: any) {
-    error.value = `无法连接到后端服务: ${e.message}. 请确保Python后端正在运行.`;
-  } finally {
-    isLoading.value = false;
+const nodes = ref(initialNodes)
+const edges = ref(initialEdges)
+
+const { layout, graph } = useLayout()
+const { run, stop, reset, isRunning } = useRunProcess({ graph })
+
+const cancelOnError = ref(true)
+
+function updateLayout() {
+  nodes.value = layout(nodes.value, edges.value, 'LR')
+}
+
+watch(
+  () => [getNodes.value, getEdges.value],
+  () => {
+    updateLayout()
+  },
+  { deep: true },
+)
+
+const menuShow = ref(false)
+const menuTop = ref(0)
+const menuLeft = ref(0)
+let menuNode = null
+
+function showMenu(event, node) {
+  event.preventDefault()
+  menuShow.value = true
+  menuTop.value = event.clientY
+  menuLeft.value = event.clientX
+  menuNode = node
+}
+
+onPaneContextMenu((event) => {
+  showMenu(event)
+})
+
+onNodeContextMenu(({ event, node }) => {
+  showMenu(event, node)
+})
+
+function addNode() {
+  const position = screenToFlowCoordinate({
+    x: menuLeft.value,
+    y: menuTop.value,
+  })
+
+  const newNode = {
+    id: `random_node-${Math.random()}`,
+    type: 'process',
+    position,
+    data: { status: null, title: '新节点', properties: { prop1: 'value1', prop2: 'value2' } },
   }
+
+  addNodes([newNode])
+  menuShow.value = false
+}
+
+function deleteNode() {
+  if (menuNode) {
+    removeNodes([menuNode.id])
+  }
+  menuShow.value = false
 }
 </script>
 
 <template>
-  <div class="tab-content">
-    <h1>欢迎来到您的应用</h1>
-    <p>这是一个与Python后端交互的前端界面.</p>
-    
-    <el-button @click="fetchMessage" :loading="isLoading" type="primary">
-      从后端获取问候
-    </el-button>
+  <VueFlow v-model:nodes="nodes" v-model:edges="edges" class="layout-flow" fit-view-on-init>
+    <template #node-process="props">
+      <ProcessNode :data="props.data" />
+    </template>
+    <template #edge-animation="props">
+      <AnimationEdge :id="props.id" :source="props.source" :target="props.target" />
+    </template>
 
-    <div class="message-box" v-if="backendMessage || error">
-      <p v-if="backendMessage" class="success-message">
-        <strong>成功:</strong> {{ backendMessage }}
-      </p>
-      <p v-if="error" class="error-message">
-        <strong>错误:</strong> {{ error }}
-      </p>
+    <Background pattern-color="#aaa" gap="8" />
+
+    <MiniMap />
+
+    <Controls />
+
+    <div class="process-panel">
+      <button v-if="!isRunning" title="Run" @click="run(nodes)">▶️</button>
+      <button v-else class="stop-btn" title="Stop" @click="stop">
+        <div class="spinner" />
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+          <path fill="currentColor" d="M18 18H6V6h12v12zm-2-2V8H8v8h8z" />
+        </svg>
+      </button>
+      <button title="Reset" @click="reset(nodes)">🔄</button>
+      <div class="checkbox-panel">
+        <label for="cancel-on-error">Cancel on error</label>
+        <input id="cancel-on-error" v-model="cancelOnError" type="checkbox" />
+      </div>
     </div>
-  </div>
+    <ContextMenu
+      :show="menuShow"
+      :top="menuTop"
+      :left="menuLeft"
+      @add="addNode"
+      @delete="deleteNode"
+      @update:show="val => menuShow = val"
+    />
+  </VueFlow>
 </template>
-
-<style scoped>
-.tab-content {
-  padding: 20px;
-  min-height: 75vh;
-}
-.message-box {
-  margin-top: 20px;
-  padding: 15px;
-  border-radius: 4px;
-  background-color: #f0f2f5;
-}
-.success-message {
-  color: #67c23a;
-}
-.error-message {
-  color: #f56c6c;
-}
-</style>
