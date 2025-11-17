@@ -1,89 +1,100 @@
 <script setup>
 import { Handle, Position } from '@vue-flow/core'
+import { computed } from 'vue'
 
-defineProps({
+const props = defineProps({
   data: {
     type: Object,
     required: true,
   },
 })
+
+const statusClass = computed(() => (props.data.status ? `status-${props.data.status}` : ''))
+const hasProperties = computed(() => Object.keys(props.data.properties || {}).length > 0)
 </script>
 
 <template>
-  <div class="process-node">
-    <div class="node-header">
-      <div class="node-icon"></div>
-      <div class="node-title">{{ data.title || 'Process Node' }}</div>
-    </div>
-    <div class="node-body">
-      <div v-if="!data.properties || Object.keys(data.properties).length === 0" class="no-properties">
-        无属性
-      </div>
+  <div :class="statusClass" class="process-node">
+    <div class="title">{{ data.title || 'Process Node' }}</div>
+    <div v-if="hasProperties" class="properties">
       <div v-for="(value, key) in data.properties" :key="key" class="property">
-        <span class="property-key">{{ key }}:</span>
-        <span class="property-value">{{ value }}</span>
+        <span class="key">{{ key }}:</span>
+        <span class="value">{{ value }}</span>
       </div>
     </div>
-    <Handle type="target" :position="Position.Left" />
-    <Handle type="source" :position="Position.Right" />
+    <div v-else class="no-properties">No properties</div>
+    <Handle type="target" :position="Position.Top" />
+    <Handle type="source" :position="Position.Bottom" />
   </div>
 </template>
 
-<style>
+<style scoped>
 .process-node {
-  background: #fff;
-  border: 1px solid #ddd;
+  background-color: #4a5568;
   border-radius: 8px;
-  width: 200px;
-  font-family: 'JetBrains Mono', monospace;
-  color: #2c3e50;
-  text-transform: none;
+  color: white;
+  padding: 10px 20px;
+  min-width: 150px;
+  border: 2px solid #2d3748;
+  text-align: left;
+}
+.title {
+  font-weight: bold;
+  font-size: 14px;
+  text-align: center;
+  margin-bottom: 10px;
+}
+.properties {
   font-size: 12px;
 }
-
-.node-header {
-  display: flex;
-  align-items: center;
-  padding: 10px;
-  background-color: #f0f0f0;
-  border-top-left-radius: 8px;
-  border-top-right-radius: 8px;
-  border-bottom: 1px solid #ddd;
-}
-
-.node-icon {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background-color: #2563eb;
-  margin-right: 10px;
-}
-
-.node-title {
-  font-weight: bold;
-}
-
-.node-body {
-  padding: 10px;
-}
-
 .no-properties {
-  color: #999;
+  font-size: 12px;
+  color: #a0aec0;
   text-align: center;
 }
-
 .property {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 5px;
 }
-
-.property-key {
+.key {
   font-weight: bold;
   margin-right: 5px;
 }
+/* Status Styles */
+.status-running {
+  border-color: #2563eb;
+  box-shadow: 0 0 10px #2563eb;
+}
+.status-finished {
+  border-color: #22c55e;
+}
+.status-error {
+  border-color: #ef4444;
+  animation: shake 0.5s;
+}
+.status-skipped,
+.status-cancelled {
+  border-color: #a0aec0;
+  opacity: 0.7;
+}
 
-.property-value {
-  text-align: right;
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  10%,
+  30%,
+  50%,
+  70%,
+  90% {
+    transform: translateX(-5px);
+  }
+  20%,
+  40%,
+  60%,
+  80% {
+    transform: translateX(5px);
+  }
 }
 </style>

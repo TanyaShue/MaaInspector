@@ -5,7 +5,7 @@ defineProps({
   left: Number,
 })
 
-const emit = defineEmits(['add', 'delete', 'update:show'])
+const emit = defineEmits(['add-node', 'delete-node'])
 </script>
 
 <template>
@@ -13,9 +13,10 @@ const emit = defineEmits(['add', 'delete', 'update:show'])
     v-if="show"
     class="context-menu"
     :style="{ top: `${top}px`, left: `${left}px` }"
-    @mouseleave="$emit('update:show', false)"
+    @click.stop
+    @contextmenu.prevent
   >
-    <div class="item" @click="emit('add')">添加节点</div>
-    <div class="item" @click="emit('delete')">删除节点</div>
+    <div class="item" @click="emit('add-node')">Add Node</div>
+    <div class="item" @click="emit('delete-node')">Delete Node</div>
   </div>
 </template>

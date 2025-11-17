@@ -9,6 +9,8 @@ body,
 #app {
   margin: 0;
   height: 100%;
+  width: 100%;
+  overflow: hidden; /* Prevents scrollbars */
 }
 
 #app {
@@ -20,7 +22,13 @@ body,
   color: #2c3e50;
 }
 
+/* --- FIX FOR MINIMAP POSITION --- */
 .vue-flow__minimap {
+  position: absolute;
+  bottom: 15px;
+  right: 15px;
+  top: auto;
+  left: auto;
   transform: scale(75%);
   transform-origin: bottom right;
 }
@@ -31,18 +39,26 @@ body,
   width: 100%;
 }
 
-.process-panel,
+/* --- FIX FOR PANEL POSITION --- */
+.process-panel {
+  position: absolute;
+  bottom: 15px;
+  left: 15px;
+  z-index: 10; /* Ensures it's on top of the graph */
+
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background-color: #2d3748;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+  align-items: flex-start;
+}
+
 .layout-panel {
   display: flex;
   gap: 10px;
-}
-
-.process-panel {
-  background-color: #2d3748;
-  padding: 10px;
-  border-radius: 8px;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
-  display: flex;
   flex-direction: column;
 }
 
@@ -52,33 +68,43 @@ body,
   background-color: #4a5568;
   border-radius: 8px;
   color: white;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
-}
-
-.process-panel button {
-  font-size: 16px;
-  width: 40px;
-  height: 40px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: background-color 0.2s;
+  padding: 10px;
+}
+
+.process-panel .icon-button {
+  width: 40px;
+  height: 40px;
+}
+
+.layout-panel button {
+  width: 100%;
+  font-size: 12px;
+  text-transform: uppercase;
+  height: 40px;
 }
 
 .checkbox-panel {
   display: flex;
   align-items: center;
   gap: 10px;
+  background: #4a5568;
+  padding: 8px 12px;
+  border-radius: 8px;
 }
 
-.process-panel button:hover,
-.layout-panel button:hover {
+.process-panel button:hover {
   background-color: #2563eb;
-  transition: background-color 0.2s;
 }
 
 .process-panel label {
   color: white;
   font-size: 12px;
+  white-space: nowrap; /* Prevents text wrap */
 }
 
 .stop-btn svg {
@@ -97,18 +123,14 @@ body,
   border: 3px solid #f3f3f3;
   border-top: 3px solid #2563eb;
   border-radius: 50%;
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   animation: spin 1s linear infinite;
 }
 
 @keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .context-menu {
