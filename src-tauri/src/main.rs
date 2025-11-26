@@ -1,10 +1,11 @@
-// Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::process::{Command, Child};
 use std::sync::Mutex;
 use tauri::{Manager, WindowEvent};
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 // 使用Tauri的State管理功能来保存子进程的句柄
 struct AppState(Mutex<Option<Child>>);
 
