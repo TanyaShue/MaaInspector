@@ -138,7 +138,12 @@ const menuItems = computed(() => {
           <!-- 子菜单 -->
           <div
             v-if="item.submenu && showSubmenu === item.key"
-            class="absolute left-full top-0 ml-1 w-48 bg-white rounded-lg shadow-xl border border-slate-100 overflow-hidden animate-in slide-in-from-left-2 duration-150"
+            class="
+              absolute left-full top-0 ml-1 w-48
+              bg-white rounded-lg shadow-xl border border-slate-100
+              animate-in slide-in-from-left-2 duration-150
+              before:content-[''] before:absolute before:top-0 before:-left-2 before:h-full before:w-4
+            "
           >
             <ul class="py-1">
               <li
