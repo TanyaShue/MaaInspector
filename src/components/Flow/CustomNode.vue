@@ -47,7 +47,22 @@ const statusConfig = computed(() => {
     default: return null
   }
 })
-
+// --- 新增：头部背景样式根据状态变化 ---
+const headerStyle = computed(() => {
+  const s = props.data.status
+  switch (s) {
+    // 运行中: 浅蓝色背景 + 蓝色边框
+    case 'running': return 'bg-blue-100 border-blue-200'
+    // 成功: 浅绿色背景 + 绿色边框
+    case 'success': return 'bg-green-100 border-green-200'
+    // 错误: 浅红色背景 + 红色边框
+    case 'error':   return 'bg-red-100 border-red-200'
+    // 忽略: 浅灰色背景 + 深灰边框
+    case 'ignored': return 'bg-slate-100 border-slate-200'
+    // 默认/闲置: 原有的浅灰透明背景
+    default:        return 'bg-slate-50/50 border-slate-100'
+  }
+})
 // --- 容器样式 ---
 const containerClass = computed(() => [
   'w-[280px] bg-white rounded-xl shadow-lg border-2 transition-all duration-200 overflow-visible group relative',
@@ -111,7 +126,17 @@ const recognitionTable = computed(() => {
 
     <!-- ================= 弹窗 1: 节点详细信息 (JSON) ================= -->
     <transition enter-active-class="transition ease-out duration-200" enter-from-class="opacity-0 translate-x-[-10px]" enter-to-class="opacity-100 translate-x-0" leave-active-class="transition ease-in duration-150" leave-from-class="opacity-100 translate-x-0" leave-to-class="opacity-0 translate-x-[-10px]">
-      <div v-if="showDetails" class="absolute left-[105%] top-0 w-96 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 nodrag cursor-default flex flex-col overflow-hidden" style="min-height: 400px;" @dblclick.stop>
+      <!--
+        修改点：
+        添加 @wheel.stop 以阻止滚轮事件冒泡到画布
+      -->
+      <div
+        v-if="showDetails"
+        class="absolute left-[105%] top-0 w-96 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 nodrag cursor-default flex flex-col overflow-hidden"
+        style="min-height: 400px;"
+        @dblclick.stop
+        @wheel.stop
+      >
         <div class="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100">
           <div class="flex items-center gap-2">
             <component :is="config.icon" :class="['w-5 h-5', config.text]" />
@@ -141,7 +166,17 @@ const recognitionTable = computed(() => {
 
     <!-- ================= 弹窗 2: 识别详情 (Table) ================= -->
     <transition enter-active-class="transition ease-out duration-200" enter-from-class="opacity-0 translate-y-2" enter-to-class="opacity-100 translate-y-0" leave-active-class="transition ease-in duration-150" leave-from-class="opacity-100 translate-y-0" leave-to-class="opacity-0 translate-y-2">
-      <div v-if="showStatusDetails" class="absolute left-[105%] top-12 w-80 bg-white rounded-xl shadow-2xl border border-slate-200 z-[60] nodrag cursor-default flex flex-col overflow-hidden" style="min-height: 300px;" @click.stop>
+      <!--
+        修改点：
+        添加 @wheel.stop 以阻止滚轮事件冒泡到画布
+      -->
+      <div
+        v-if="showStatusDetails"
+        class="absolute left-[105%] top-12 w-80 bg-white rounded-xl shadow-2xl border border-slate-200 z-[60] nodrag cursor-default flex flex-col overflow-hidden"
+        style="min-height: 300px;"
+        @click.stop
+        @wheel.stop
+      >
         <div class="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100">
           <div class="flex items-center gap-2"><Table2 class="w-5 h-5 text-slate-600" /><span class="font-bold text-slate-700">识别详情</span></div>
           <button class="p-1 hover:bg-slate-200 rounded text-slate-400 hover:text-slate-600 transition-colors" @click.stop="showStatusDetails = false"><X :size="18" /></button>
@@ -171,7 +206,10 @@ const recognitionTable = computed(() => {
     <Handle id="in" type="target" :position="Position.Top" class="!w-16 !h-3 !rounded-full !bg-slate-300 hover:!bg-slate-400 transition-colors duration-200" style="top: -6px; left: 50%; transform: translate(-50%, 0);" />
 
     <!-- 头部区域 -->
-    <div class="flex items-center justify-between px-4 py-3 bg-slate-50/50 rounded-t-xl border-b border-slate-100">
+      <div
+            class="flex items-center justify-between px-4 py-3 rounded-t-xl border-b transition-colors duration-300"
+            :class="headerStyle"
+          >
       <div class="flex items-center">
         <div :class="['p-2 rounded-lg text-white shadow-sm mr-3', config.color]">
           <component :is="config.icon" :size="18" />

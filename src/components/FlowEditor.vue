@@ -1,11 +1,12 @@
 <script setup>
 import { ref } from 'vue'
-import { VueFlow, useVueFlow, MarkerType } from '@vue-flow/core'
+import { VueFlow, useVueFlow, MarkerType, Panel } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import CustomNode from './Flow/CustomNode.vue'
 import ContextMenu from './Flow/ContextMenu.vue'
 import NodeEditorModal from './Flow/NodeEditorModal.vue'
+import InfoPanel from './Flow/InfoPanel.vue'
 import { useLayout } from '../utils/useLayout' // 确保你之前创建了此文件
 
 // --- 状态管理 ---
@@ -180,9 +181,8 @@ const handleMenuAction = ({ action, type, data, payload }) => {
 const handleEditorSave = (newData) => {
   const targetNode = findNode(editor.value.nodeId)
   if (targetNode) {
-    // 简单的类型保护，实际生产可增加更多校验
     targetNode.data = { ...newData, type: newData.type || targetNode.data.type }
-    nodes.value = [...nodes.value] // 触发响应式更新
+    nodes.value = [...nodes.value]
   }
   editor.value.visible = false
 }
@@ -195,6 +195,8 @@ const handleEditorSave = (newData) => {
       v-model:edges="edges"
       :node-types="nodeTypes"
       :default-zoom="1"
+      :min-zoom="0.1"
+      :max-zoom="4"
       fit-view-on-init
       @pane-context-menu="onPaneContextMenu"
       @node-context-menu="onNodeContextMenu"
@@ -204,6 +206,10 @@ const handleEditorSave = (newData) => {
     >
       <Background pattern-color="#cbd5e1" :gap="20" />
       <Controls />
+
+      <Panel position="top-right" class="m-4">
+        <InfoPanel :nodes="nodes" :edges="edges" />
+      </Panel>
 
       <ContextMenu
         v-if="menu.visible"
@@ -221,4 +227,9 @@ const handleEditorSave = (newData) => {
 <style>
 @import '@vue-flow/core/dist/style.css';
 @import '@vue-flow/controls/dist/style.css';
+
+/* 如果需要，可以在这里微调 panel 的 z-index，但通常 VueFlow 会自动处理 */
+.vue-flow__panel {
+  pointer-events: none; /* 让面板容器不阻挡下方点击，内部元素 auto */
+}
 </style>

@@ -31,8 +31,8 @@ const nodeTypes = [
   { label: '特征匹配 (Feature)', value: 'FeatureMatch', icon: Sparkles, color: 'text-violet-500' },
   { label: '颜色识别 (Color)', value: 'ColorMatch', icon: Palette, color: 'text-pink-500' },
   { label: 'OCR识别 (Text)', value: 'OCR', icon: ScanText, color: 'text-emerald-500' },
-  { label: 'AI 分类 (Classify)', value: 'NeuralNetworkClassify', icon: Brain, color: 'text-amber-500' },
-  { label: 'AI 检测 (Detect)', value: 'NeuralNetworkDetect', icon: ScanEye, color: 'text-orange-500' },
+  { label: '模型 分类 (Classify)', value: 'NeuralNetworkClassify', icon: Brain, color: 'text-amber-500' },
+  { label: '模型 检测 (Detect)', value: 'NeuralNetworkDetect', icon: ScanEye, color: 'text-orange-500' },
   { label: '自定义 (Custom)', value: 'Custom', icon: Code2, color: 'text-slate-500' },
 ]
 
