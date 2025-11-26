@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import {
   Trash2, Copy, Edit, PlusCircle, RefreshCw, XCircle, ChevronRight,
   PlayCircle, Cpu, GitBranch, Database, Mail,
-  Layout, Activity, Check, Move // 新增 Move 图标
+  Layout, Activity, Check, Move, Target, Image, Sparkles, Palette, ScanText, Brain, ScanEye, Code2, Bug // 新增 Move 图标
 } from 'lucide-vue-next'
 
 const props = defineProps({
@@ -26,11 +26,14 @@ const handleAction = (action, payload = null) => {
 
 // ... (节点类型配置保持不变) ...
 const nodeTypes = [
-  { label: '触发器', value: 'trigger', icon: PlayCircle, color: 'text-blue-500' },
-  { label: '数据处理', value: 'process', icon: Cpu, color: 'text-indigo-500' },
-  { label: '逻辑判断', value: 'decision', icon: GitBranch, color: 'text-amber-500' },
-  { label: '数据存储', value: 'storage', icon: Database, color: 'text-emerald-500' },
-  { label: '消息通知', value: 'notify', icon: Mail, color: 'text-rose-500' },
+  { label: '通用匹配 (DirectHit)', value: 'DirectHit', icon: Target, color: 'text-blue-500' },
+  { label: '模板匹配 (Template)', value: 'TemplateMatch', icon: Image, color: 'text-indigo-500' },
+  { label: '特征匹配 (Feature)', value: 'FeatureMatch', icon: Sparkles, color: 'text-violet-500' },
+  { label: '颜色识别 (Color)', value: 'ColorMatch', icon: Palette, color: 'text-pink-500' },
+  { label: 'OCR识别 (Text)', value: 'OCR', icon: ScanText, color: 'text-emerald-500' },
+  { label: 'AI 分类 (Classify)', value: 'NeuralNetworkClassify', icon: Brain, color: 'text-amber-500' },
+  { label: 'AI 检测 (Detect)', value: 'NeuralNetworkDetect', icon: ScanEye, color: 'text-orange-500' },
+  { label: '自定义 (Custom)', value: 'Custom', icon: Code2, color: 'text-slate-500' },
 ]
 
 // ... (连线类型配置保持不变) ...
@@ -49,6 +52,8 @@ const spacingTypes = computed(() => [
 const menuItems = computed(() => {
   if (props.type === 'node') {
     return [
+      { label: '调试该节点', action: 'debug', icon: Bug, color: 'text-amber-600' },
+      { type: 'divider' }, // 加个分割线好看点
       { label: '编辑数据', action: 'edit', icon: Edit, color: 'text-slate-600' },
       { label: '复制节点', action: 'duplicate', icon: Copy, color: 'text-slate-600' },
       { type: 'divider' },

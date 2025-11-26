@@ -71,13 +71,43 @@ const onNodeContextMenu = (params) => {
 
 const handleMenuAction = ({ action, type, data, payload }) => {
   closeMenu()
+
   switch (action) {
     case 'add':
-      // ... (添加节点逻辑不变) ...
-      const newNodeType = payload || 'process'
+      const newNodeType = payload || 'DirectHit'
       const newId = `N-${Date.now()}`
-      let defaultData = { id: newId, type: newNodeType }
-      nodes.value.push({ id: String(Date.now()), type: 'custom', position: menu.value.flowPos || { x: 100, y: 100 }, data: defaultData })
+
+      // 生成适配新类型的默认数据
+      let defaultData = { id: newId, type: newNodeType, status: 'idle' } // status: idle | running | error | ignored
+
+      switch (newNodeType) {
+        case 'TemplateMatch':
+        case 'FeatureMatch':
+          defaultData = { ...defaultData, imageName: 'sample_template_01.png', threshold: 0.8 }
+          break
+        case 'ColorMatch':
+          defaultData = { ...defaultData, targetColor: '#ec4899', tolerance: 10 }
+          break
+        case 'OCR':
+          defaultData = { ...defaultData, text: 'ABC-1234', language: 'eng' }
+          break
+        case 'NeuralNetworkClassify':
+        case 'NeuralNetworkDetect':
+          defaultData = { ...defaultData, modelLabel: 'Defect_Type_A', confidence: 95.5 }
+          break
+        case 'Custom':
+          defaultData = { ...defaultData, script: 'return true;', modelLabel: 'MyScript' }
+          break
+        default: // DirectHit
+          defaultData = { ...defaultData, description: 'Standard Match' }
+      }
+
+      nodes.value.push({
+        id: String(Date.now()),
+        type: 'custom',
+        position: menu.value.flowPos || { x: 100, y: 100 },
+        data: defaultData
+      })
       break
 
     // 1. 执行自动布局
@@ -113,6 +143,43 @@ const handleMenuAction = ({ action, type, data, payload }) => {
         copyNode.position = {x:data.position.x+50,y:data.position.y+50};
         nodes.value.push(copyNode);
         break;
+
+    case 'debug':
+      const targetNode = findNode(data.id)
+      if (targetNode) {
+        // 1. 先设置为 "运行中" (触发蓝色旋转 Loading)
+        console.log(`[Debug] 节点 ${data.id} 开始运行...`)
+        targetNode.data = { ...targetNode.data, status: 'running' }
+
+        // 2. 模拟 1~2秒 的异步处理时间
+        const delay = 1000 + Math.random() * 1000
+
+        setTimeout(() => {
+          // 3. 随机生成一个结果状态
+          const possibleStatuses = ['success', 'error', 'ignored', 'idle']
+          // 增加 success 的概率 (权宜之计，为了演示效果更好)
+          const weightedStatuses = [
+            'success', 'success', 'success',
+            'error',
+            'ignored',
+            'idle'
+          ]
+          const randomStatus = weightedStatuses[Math.floor(Math.random() * weightedStatuses.length)]
+
+          console.log(`[Debug] 节点 ${data.id} 运行结束: ${randomStatus}`)
+
+          // 4. 更新节点数据
+          // 注意：必须创建一个新对象赋值给 data，才能触发 Vue 的响应式更新
+          targetNode.data = {
+            ...targetNode.data,
+            status: randomStatus,
+            // 如果是 AI 节点，顺便模拟一下置信度变化
+            confidence: randomStatus === 'success' ? (80 + Math.random() * 20).toFixed(1) : 0
+          }
+
+        }, delay)
+      }
+      break;
     case 'delete': removeEdges(edges.value.filter(e => e.source === data.id || e.target === data.id)); nodes.value = nodes.value.filter(n => n.id !== data.id); break
     case 'reset': setViewport({ x: 0, y: 0, zoom: 1 }); break
     case 'clear': nodes.value = []; edges.value = []; break
