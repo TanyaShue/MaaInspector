@@ -1,0 +1,51 @@
+{
+    "devices": [
+        {
+            "adb_path": "C:/Android/adb.exe",
+            "address": "127.0.0.1:5555",
+            "config": {},
+            "name": "ADB Serial Device"
+        },
+        {
+            "adb_path": "D:/leidian/LDPlayer9/adb.exe",
+            "address": "emulator-5556",
+            "config": {
+                "extras": {
+                    "ld": {
+                        "enable": true
+                    }
+                }
+            },
+            "name": "Emulator LDPlayer"
+        }
+    ],
+    "default_resource_path": "",
+    "default_socket_id": "",
+    "resource_profiles": [
+        {
+            "name": "Default Profile",
+            "paths": [
+                "D:/Project/Assets/Level1",
+                "D:/Project/Assets/Common"
+            ]
+        },
+        {
+            "name": "啊啊",
+            "paths": [
+                "D:/New/Path",
+                "1234"
+            ]
+        },
+        {
+            "name": "New Profile",
+            "paths": []
+        }
+    ],
+    "agent_socket_id": "1234",
+    "current_state": {
+        "device_index": 1,
+        "resource_profile_index": 0,
+        "resource_file": "",
+        "agent_socket_id": "1234"
+    }
+}

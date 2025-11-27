@@ -8,5 +8,7 @@ export default {
   theme: {
     extend: {},
   },
-  plugins: [],
+  plugins: [
+      require("tailwindcss-animate"), // <--- 添加这一行
+  ],
 }

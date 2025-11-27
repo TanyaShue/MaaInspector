@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, markRaw } from 'vue' // 1. 引入 markRaw
 import { VueFlow, useVueFlow, MarkerType, Panel } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
@@ -36,7 +36,7 @@ const nodes = ref([
   { id: '2', type: 'custom', position: { x: 250, y: 250 }, data: { id: 'N-2', type: 'NeuralNetworkClassify', modelLabel: 'Initial_Check', confidence: 88, status: 'idle' } },
 ])
 const edges = ref([{ id: 'e1-2', source: '1', target: '2', sourceHandle: 'source-a', targetHandle: 'in', ...getEdgeStyle('source-a') }])
-const nodeTypes = { custom: CustomNode }
+const nodeTypes = { custom: markRaw(CustomNode) }
 
 // --- Vue Flow Hooks ---
 const { onConnect, addEdges, removeEdges, setViewport, screenToFlowCoordinate, findNode, fitView } = useVueFlow()
@@ -208,7 +208,7 @@ const handleEditorSave = (newData) => {
       <Controls />
 
       <Panel position="top-right" class="m-4">
-        <InfoPanel :nodes="nodes" :edges="edges" />
+        <InfoPanel :node-count="nodes.length" :edge-count="edges.length" />
       </Panel>
 
       <ContextMenu
