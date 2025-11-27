@@ -4,6 +4,7 @@ import os
 import time
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from maa.toolkit import Toolkit
 
 app = Flask(__name__)
 CORS(app)
@@ -99,57 +100,99 @@ def system_save_config():
 
 @app.route('/system/devices/search', methods=['POST'])
 def search_devices():
-    time.sleep(1.0)
-    found_devices = [
-        {"name": "ADB Device (USB)", "address": "127.0.0.1:5555", "adb_path": "", "config": {}},
-        {"name": "LDPlayer (Emulator)", "address": "emulator-5554", "adb_path": "", "config": {}}
-    ]
-    return jsonify({"message": "OK", "devices": found_devices})
+    devices=Toolkit.find_adb_devices()
+    formatted_devices = []
+    for d in devices:
+        formatted_devices.append({
+            "name": "ADB Device",  # 你可以改成 d.name  或自定义
+            "address": d.address.strip(),  # 去掉换行符
+            "adb_path": str(d.adb_path) if d.adb_path else "",
+            "config": d.config or {}
+        })
+    return jsonify({"message": "OK", "devices": formatted_devices})
 
 
 # === 资源接口 (核心修改) ===
 @app.route('/resource/load', methods=['POST'])
 def resource_load():
-    # 接收整个 profile 对象，包含 paths
     data = request.json
+
+    # 兼容你提供的格式 {'path': {...}}
+    if "path" in data:
+        data = data["path"]
+
     paths = data.get('paths', [])
     profile_name = data.get('name', 'Unknown')
-    print(data)
+
     mock_delay()
     states["resource"] = True
+    print(data)
 
-    # 模拟扫描多个路径
-    # 格式：{"file": "文件名", "source": "路径别名或最后一段路径"}
     combined_files = []
 
     for idx, path in enumerate(paths):
-        # 提取路径的最后一部分作为源标识，例如 "D:/Assets/Common" -> "Common"
-        source_label = os.path.basename(os.path.normpath(path)) if path else f"Path_{idx + 1}"
+        if not path:
+            continue
 
-        # 模拟不同路径下发现的文件
-        # 实际逻辑应该是 os.listdir(path)
-        mock_scan = []
-        if "Common" in path:
-            mock_scan = ["config.json", "styles.css", "base_model.pt"]
-        elif "Level" in path:
-            mock_scan = ["map_data.json", "enemy_config.json"]
-        else:
-            mock_scan = [f"unknown_{idx}.txt"]
+        # 路径最后一段
+        source_label = os.path.basename(os.path.normpath(path))
 
-        for f in mock_scan:
+        # ================================
+        # 1. 判断主路径是否存在
+        # ================================
+        if not os.path.exists(path):
             combined_files.append({
-                "label": f"{f} ({source_label})",  # 前端显示的文字：1.json (A)
-                "value": f,  # 选中后实际使用的值
-                "source": path,  # 文件的完整来源路径
+                "label": f"[Missing Folder] ({source_label})",
+                "value": None,
+                "source": path,
+                "filename": None
+            })
+            continue
+
+        # ================================
+        # 2. pipeline 子文件夹判断
+        # ================================
+        pipeline_dir = os.path.join(path, "pipeline")
+
+        if not os.path.exists(pipeline_dir) or not os.path.isdir(pipeline_dir):
+            combined_files.append({
+                "label": f"[No pipeline folder] ({source_label})",
+                "value": None,
+                "source": path,
+                "filename": None
+            })
+            continue
+
+        # ================================
+        # 3. 扫描 pipeline 目录下的所有 JSON 文件
+        # ================================
+        json_files = [f for f in os.listdir(pipeline_dir) if f.lower().endswith(".json")]
+
+        if not json_files:
+            combined_files.append({
+                "label": f"[No JSON Files] ({source_label})",
+                "value": None,
+                "source": pipeline_dir,
+                "filename": None
+            })
+            continue
+
+        # ================================
+        # 4. 加入返回列表
+        # ================================
+        for f in json_files:
+            combined_files.append({
+                "label": f"{f} ({source_label})",
+                "value": f,
+                "source": pipeline_dir,
                 "filename": f
             })
 
     return jsonify({
         "message": f"Loaded {len(combined_files)} resources",
-        "list": combined_files,  # 返回结构化列表
+        "list": combined_files,
         "info": {"Profile": profile_name, "Paths": len(paths)}
     })
-
 
 # === 设备与Agent接口 (保持简单兼容) ===
 @app.route('/device/connect', methods=['POST'])
@@ -183,4 +226,4 @@ def agent_disconnect():
 
 
 if __name__ == '__main__':
-    app.run(port=5000, debug=True)
+    app.run(port=5001, debug=True)

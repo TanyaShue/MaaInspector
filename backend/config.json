@@ -17,6 +17,18 @@
                 }
             },
             "name": "Emulator LDPlayer"
+        },
+        {
+            "adb_path": "",
+            "address": "emulator-5554",
+            "config": {},
+            "name": "LDPlayer (Emulator)"
+        },
+        {
+            "adb_path": "C:\\Android\\adb.exe",
+            "address": "List of devices attached",
+            "config": {},
+            "name": "ADB Device"
         }
     ],
     "default_resource_path": "",
@@ -25,8 +37,8 @@
         {
             "name": "Default Profile",
             "paths": [
-                "D:/Project/Assets/Level1",
-                "D:/Project/Assets/Common"
+                "D:\\DeveProject\\MFWPH\\assets\\resource\\MaaYYs\\resource_pack\\base",
+                "D:\\DeveProject\\MFWPH\\assets\\resource\\MaaYYs\\resource_pack\\bilibili"
             ]
         },
         {
@@ -43,9 +55,9 @@
     ],
     "agent_socket_id": "1234",
     "current_state": {
-        "device_index": 1,
+        "device_index": 2,
         "resource_profile_index": 0,
-        "resource_file": "",
+        "resource_file": "启动游戏.json",
         "agent_socket_id": "1234"
     }
 }

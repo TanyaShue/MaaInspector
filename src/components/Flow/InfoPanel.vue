@@ -3,14 +3,12 @@ import { computed, ref, reactive, onMounted, defineComponent, h, watch } from 'v
 import {
   Server, Database, Bot, Power, Settings, RefreshCw, CheckCircle2, XCircle, Loader2, HardDrive,
   FolderInput, Link, ChevronDown, Minimize2, Maximize2, Smartphone, Save, X, Edit3, Circle,
-  Radar, Plus, Trash2, ArrowUp, ArrowDown, FileText
+  Radar, Plus, Trash2, ArrowUp, ArrowDown, FileText, Wifi // 新增 Wifi 图标
 } from 'lucide-vue-next'
 import { useVueFlow } from '@vue-flow/core'
 import { deviceApi, resourceApi, agentApi, systemApi } from '../../services/api'
 
-// --- Props 修改 ---
-// 性能优化：不再接收整个 nodes/edges 数组，只接收数量
-// 这样当节点位置改变（拖拽）时，不会触发此组件重渲染
+// --- Props ---
 const props = defineProps({
   nodeCount: { type: Number, default: 0 },
   edgeCount: { type: Number, default: 0 }
@@ -40,6 +38,7 @@ const showResourceSettings = ref(false)
 const availableDevices = ref([])
 const resourceProfiles = ref([])
 const currentAgentSocket = ref('')
+const systemStatus = ref('disconnected') // 新增：系统后端连接状态
 
 // --- 选中状态 ---
 const selectedDeviceIndex = ref(0)
@@ -118,33 +117,53 @@ const handleAgentConnect = () => {
   agentCtrl.connect({ socket_id: currentAgentSocket.value })
 }
 
-// --- 初始化与自动保存 ---
+// --- 初始化与手动刷新 ---
 let isInit = true
 
-onMounted(async () => {
+// 新增：提取初始化逻辑
+const fetchSystemState = async () => {
+  systemStatus.value = 'loading'
+  isInit = true // 重新加载时暂停自动保存
+
   try {
     const data = await systemApi.getInitialState()
+
+    // 赋值配置
     if (data.devices) availableDevices.value = data.devices
     if (data.resource_profiles) resourceProfiles.value = data.resource_profiles
 
+    // 恢复状态
     const state = data.current_state || {}
     if (availableDevices.value[state.device_index]) selectedDeviceIndex.value = state.device_index
     if (resourceProfiles.value[state.resource_profile_index]) selectedProfileIndex.value = state.resource_profile_index
     if (state.resource_file) selectedResourceFile.value = state.resource_file
+
+    // 恢复 Agent Socket
     if (state.agent_socket_id) {
       currentAgentSocket.value = state.agent_socket_id
     } else if (data.agent_socket_id) {
       currentAgentSocket.value = data.agent_socket_id
     }
+
+    systemStatus.value = 'connected'
   } catch (e) {
     console.error("Init failed", e)
+    systemStatus.value = 'error'
   } finally {
+    // 稍微延迟开启 watch，避免初始化赋值触发保存
     setTimeout(() => { isInit = false }, 500)
   }
+}
+
+onMounted(() => {
+  fetchSystemState()
 })
 
 const saveAllConfig = async () => {
   if (isInit) return
+  // 如果系统本身连接失败，不要尝试保存，防止覆盖
+  if (systemStatus.value !== 'connected') return
+
   try {
     const payload = {
       devices: availableDevices.value,
@@ -167,7 +186,7 @@ watch([selectedDeviceIndex, selectedProfileIndex, selectedResourceFile, currentA
   saveAllConfig()
 }, { deep: false })
 
-// --- 弹窗编辑逻辑 ---
+// --- 弹窗编辑逻辑 (保持不变) ---
 const editingDevices = ref([])
 const editDevIndex = ref(0)
 const isSearching = ref(false)
@@ -254,7 +273,39 @@ const saveResourceSettings = async () => {
           <div class="flex items-center gap-2">
             <Settings class="w-4 h-4 text-slate-500" />
             <span class="font-bold text-slate-700 text-sm">系统控制台</span>
+
+            <div
+              class="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition-colors ml-1"
+              :class="{
+                'bg-emerald-50 border-emerald-100 text-emerald-600': systemStatus === 'connected',
+                'bg-red-50 border-red-100 text-red-500': systemStatus === 'error',
+                'bg-blue-50 border-blue-100 text-blue-500': systemStatus === 'loading',
+                'bg-slate-100 border-slate-200 text-slate-400': systemStatus === 'disconnected'
+              }"
+            >
+              <div
+                class="w-1.5 h-1.5 rounded-full"
+                :class="{
+                  'bg-emerald-500': systemStatus === 'connected',
+                  'bg-red-500': systemStatus === 'error',
+                  'bg-blue-500': systemStatus === 'loading',
+                  'bg-slate-400': systemStatus === 'disconnected'
+                }"
+              ></div>
+              <span class="font-bold">
+                {{ systemStatus === 'connected' ? 'ON' : (systemStatus === 'error' ? 'ERR' : (systemStatus === 'loading' ? '...' : 'OFF')) }}
+              </span>
+            </div>
+
+            <button
+              @click="fetchSystemState"
+              class="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-blue-500 transition-colors"
+              :title="'重新获取配置 (' + systemStatus + ')'"
+            >
+              <RefreshCw :size="12" :class="{'animate-spin': systemStatus === 'loading'}" />
+            </button>
           </div>
+
           <button @click="isCollapsed = true" class="p-1 rounded-md text-slate-400 hover:bg-slate-200"><Minimize2 :size="16" /></button>
         </div>
 
