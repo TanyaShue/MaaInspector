@@ -3,26 +3,28 @@ import { computed, ref, reactive, onMounted, defineComponent, h, watch } from 'v
 import {
   Server, Database, Bot, Power, Settings, RefreshCw, CheckCircle2, XCircle, Loader2, HardDrive,
   FolderInput, Link, ChevronDown, Minimize2, Maximize2, Smartphone, Save, X, Edit3, Circle,
-  Radar, Plus, Trash2, ArrowUp, ArrowDown, FileText, Wifi // 新增 Wifi 图标
+  Radar, Plus, Trash2, ArrowUp, ArrowDown, FileText
 } from 'lucide-vue-next'
 import { useVueFlow } from '@vue-flow/core'
 import { deviceApi, resourceApi, agentApi, systemApi } from '../../services/api'
 
-// --- Props ---
+// --- Props & Emits ---
 const props = defineProps({
   nodeCount: { type: Number, default: 0 },
   edgeCount: { type: Number, default: 0 }
 })
 
+const emit = defineEmits(['load-nodes'])
+
 // --- 内部组件 ---
 const StatusIndicator = defineComponent({
-  props: { status: String },
+  props: { status: String, size: { type: Number, default: 16 } },
   setup(props) {
     return () => {
-      if (props.status === 'connected') return h(CheckCircle2, { size: 16, class: 'text-emerald-500 fill-emerald-50' })
-      if (props.status === 'connecting' || props.status === 'disconnecting') return h(Loader2, { size: 16, class: 'text-blue-500 animate-spin' })
-      if (props.status === 'failed') return h(XCircle, { size: 16, class: 'text-red-500' })
-      return h(Circle, { size: 16, class: 'text-slate-300' })
+      if (props.status === 'connected') return h(CheckCircle2, { size: props.size, class: 'text-emerald-500 fill-emerald-50' })
+      if (props.status === 'connecting' || props.status === 'disconnecting') return h(Loader2, { size: props.size, class: 'text-blue-500 animate-spin' })
+      if (props.status === 'failed') return h(XCircle, { size: props.size, class: 'text-red-500' })
+      return h(Circle, { size: props.size, class: 'text-slate-300' })
     }
   }
 })
@@ -38,7 +40,7 @@ const showResourceSettings = ref(false)
 const availableDevices = ref([])
 const resourceProfiles = ref([])
 const currentAgentSocket = ref('')
-const systemStatus = ref('disconnected') // 新增：系统后端连接状态
+const systemStatus = ref('disconnected')
 
 // --- 选中状态 ---
 const selectedDeviceIndex = ref(0)
@@ -96,6 +98,31 @@ const currentDevice = computed(() => availableDevices.value[selectedDeviceIndex.
 const currentProfile = computed(() => resourceProfiles.value[selectedProfileIndex.value] || { name: 'None', paths: [] })
 const availableFiles = ref([])
 
+// --- 核心逻辑：获取并分发节点数据 ---
+const fetchAndEmitNodes = async () => {
+  if (!selectedResourceFile.value) return
+
+  const fileObj = availableFiles.value.find(f => f.value === selectedResourceFile.value)
+  if (!fileObj) return
+
+  try {
+    resourceCtrl.message = '加载节点中...'
+    // 调用 API 获取节点 JSON
+    const res = await resourceApi.getFileNodes(fileObj.source, fileObj.value)
+
+    if (res.nodes) {
+      emit('load-nodes', {
+        filename: fileObj.value,
+        nodes: res.nodes
+      })
+      resourceCtrl.message = `已加载: ${Object.keys(res.nodes).length} 节点`
+    }
+  } catch (e) {
+    console.error("加载节点失败", e)
+    resourceCtrl.message = '节点加载失败'
+  }
+}
+
 // --- 动作处理 ---
 const handleDeviceConnect = () => {
   deviceCtrl.connect(currentDevice.value)
@@ -106,11 +133,25 @@ const handleResourceLoad = async () => {
     const res = await resourceCtrl.connect(currentProfile.value)
     if (res.list) {
       availableFiles.value = res.list
-      if (!availableFiles.value.find(f => f.value === selectedResourceFile.value)) {
-        selectedResourceFile.value = availableFiles.value.length > 0 ? availableFiles.value[0].value : ''
+
+      const fileStillExists = availableFiles.value.find(f => f.value === selectedResourceFile.value)
+
+      if (!selectedResourceFile.value || !fileStillExists) {
+        if (availableFiles.value.length > 0) {
+          selectedResourceFile.value = availableFiles.value[0].value
+          await fetchAndEmitNodes()
+        } else {
+          selectedResourceFile.value = ''
+        }
+      } else {
+        await fetchAndEmitNodes()
       }
     }
   } catch(e) {}
+}
+
+const handleProfileSwitch = () => {
+  handleResourceLoad()
 }
 
 const handleAgentConnect = () => {
@@ -120,25 +161,21 @@ const handleAgentConnect = () => {
 // --- 初始化与手动刷新 ---
 let isInit = true
 
-// 新增：提取初始化逻辑
 const fetchSystemState = async () => {
   systemStatus.value = 'loading'
-  isInit = true // 重新加载时暂停自动保存
+  isInit = true
 
   try {
     const data = await systemApi.getInitialState()
 
-    // 赋值配置
     if (data.devices) availableDevices.value = data.devices
     if (data.resource_profiles) resourceProfiles.value = data.resource_profiles
 
-    // 恢复状态
     const state = data.current_state || {}
     if (availableDevices.value[state.device_index]) selectedDeviceIndex.value = state.device_index
     if (resourceProfiles.value[state.resource_profile_index]) selectedProfileIndex.value = state.resource_profile_index
     if (state.resource_file) selectedResourceFile.value = state.resource_file
 
-    // 恢复 Agent Socket
     if (state.agent_socket_id) {
       currentAgentSocket.value = state.agent_socket_id
     } else if (data.agent_socket_id) {
@@ -150,7 +187,6 @@ const fetchSystemState = async () => {
     console.error("Init failed", e)
     systemStatus.value = 'error'
   } finally {
-    // 稍微延迟开启 watch，避免初始化赋值触发保存
     setTimeout(() => { isInit = false }, 500)
   }
 }
@@ -161,7 +197,6 @@ onMounted(() => {
 
 const saveAllConfig = async () => {
   if (isInit) return
-  // 如果系统本身连接失败，不要尝试保存，防止覆盖
   if (systemStatus.value !== 'connected') return
 
   try {
@@ -186,7 +221,14 @@ watch([selectedDeviceIndex, selectedProfileIndex, selectedResourceFile, currentA
   saveAllConfig()
 }, { deep: false })
 
-// --- 弹窗编辑逻辑 (保持不变) ---
+// 监听文件切换
+watch(selectedResourceFile, (newVal) => {
+  if (newVal && !isInit) {
+    fetchAndEmitNodes()
+  }
+})
+
+// --- 弹窗编辑逻辑 (UI 代码保持不变，为节省篇幅略去部分样式) ---
 const editingDevices = ref([])
 const editDevIndex = ref(0)
 const isSearching = ref(false)
@@ -222,7 +264,6 @@ const saveDeviceSettings = async () => {
   saveAllConfig()
 }
 
-// 资源编辑
 const editingProfiles = ref([])
 const editProfIndex = ref(0)
 
@@ -260,11 +301,42 @@ const saveResourceSettings = async () => {
   <div class="relative flex flex-col items-end gap-2 font-sans select-none pointer-events-auto z-50">
 
     <Transition name="fade-scale" mode="out-in">
-      <div v-if="isCollapsed" @click="isCollapsed = false" class="bg-white/90 backdrop-blur shadow-lg border border-slate-200 rounded-full flex items-center gap-1.5 px-3 py-2 cursor-pointer hover:scale-105 transition-all duration-300 group">
-        <div class="w-2.5 h-2.5 rounded-full shadow-sm" :class="deviceCtrl.status === 'connected' ? 'bg-emerald-500' : 'bg-slate-300'"></div>
-        <div class="w-2.5 h-2.5 rounded-full shadow-sm" :class="resourceCtrl.status === 'connected' ? 'bg-emerald-500' : 'bg-slate-300'"></div>
-        <div class="w-2.5 h-2.5 rounded-full shadow-sm" :class="agentCtrl.status === 'connected' ? 'bg-emerald-500' : 'bg-slate-300'"></div>
-        <Maximize2 :size="14" class="text-slate-400 ml-1 opacity-0 group-hover:opacity-100 transition-opacity absolute right-[-20px]" />
+      <div v-if="isCollapsed" class="bg-white/90 backdrop-blur shadow-lg border border-slate-200 rounded-full flex items-center p-1 pl-3 pr-1 gap-3 transition-all duration-300">
+
+        <div class="flex items-center gap-1.5" :title="deviceCtrl.message">
+           <StatusIndicator :status="deviceCtrl.status" :size="12" />
+           <span class="text-xs font-bold text-slate-600 max-w-[80px] truncate">
+             {{ deviceCtrl.status === 'connected' ? currentDevice.name : '无设备' }}
+           </span>
+        </div>
+
+        <div class="w-px h-4 bg-slate-200"></div>
+
+        <div class="flex items-center gap-1.5">
+           <StatusIndicator :status="resourceCtrl.status" :size="12" />
+           <div class="relative group">
+             <select
+               v-model="selectedResourceFile"
+               class="appearance-none bg-transparent text-xs font-mono text-slate-600 outline-none w-[100px] truncate cursor-pointer hover:text-indigo-600 transition-colors pr-3"
+               :disabled="resourceCtrl.status !== 'connected' || availableFiles.length === 0"
+             >
+               <option v-for="file in availableFiles" :key="file.value" :value="file.value">{{ file.label }}</option>
+               <option v-if="resourceCtrl.status !== 'connected'" disabled>未加载资源</option>
+             </select>
+             <ChevronDown v-if="resourceCtrl.status === 'connected'" :size="10" class="absolute right-0 top-1 text-slate-400 pointer-events-none" />
+           </div>
+        </div>
+
+        <div class="w-px h-4 bg-slate-200"></div>
+
+        <div class="flex items-center gap-1" :title="agentCtrl.message">
+           <Bot :size="14" :class="agentCtrl.status === 'connected' ? 'text-violet-500' : 'text-slate-400'" />
+           <StatusIndicator :status="agentCtrl.status" :size="10" />
+        </div>
+
+        <button @click="isCollapsed = false" class="ml-1 p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-blue-500 transition-colors">
+          <Maximize2 :size="14" />
+        </button>
       </div>
 
       <div v-else class="w-80 bg-white/95 backdrop-blur-md shadow-xl border border-slate-200 rounded-xl overflow-hidden flex flex-col max-h-[90vh] origin-top-right transition-all">
@@ -353,10 +425,15 @@ const saveResourceSettings = async () => {
               <div class="flex gap-2">
                 <div class="relative flex-1">
                    <div class="absolute left-3 top-2.5 text-slate-400 pointer-events-none"><FolderInput :size="14" /></div>
-                   <select v-model="selectedProfileIndex" class="select-base pl-10" :disabled="resourceCtrl.status === 'connected'">
+                   <select
+                     v-model="selectedProfileIndex"
+                     @change="handleProfileSwitch"
+                     class="select-base pl-10"
+                   >
                      <option v-for="(prof, idx) in resourceProfiles" :key="idx" :value="idx">{{ prof.name }}</option>
                      <option v-if="resourceProfiles.length === 0" disabled>无配置...</option>
                    </select>
+                   <div class="absolute right-3 top-2.5 text-slate-400 pointer-events-none"><ChevronDown :size="14" /></div>
                 </div>
                 <button @click="openResourceSettings" class="btn-icon"><Settings :size="16" /></button>
               </div>
@@ -504,7 +581,6 @@ const saveResourceSettings = async () => {
 </template>
 
 <style scoped>
-/* 原子类提取，保持代码整洁 */
 .input-base { @apply w-full bg-white border border-slate-200 rounded-lg py-2 pr-3 text-xs text-slate-600 outline-none transition-all shadow-sm focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50; }
 .select-base { @apply w-full appearance-none bg-white border border-slate-200 rounded-lg py-2 pr-8 text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-indigo-100 cursor-pointer shadow-sm; }
 .btn-primary { @apply rounded-lg py-1.5 text-xs font-bold text-white transition-all shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5; }
@@ -516,19 +592,14 @@ const saveResourceSettings = async () => {
 .btn-soft-indigo { @apply bg-indigo-100 text-indigo-600 rounded-lg py-1.5 text-xs font-bold hover:bg-indigo-200 transition-colors flex items-center justify-center gap-1; }
 .label-xs { @apply text-[10px] font-bold text-slate-400 uppercase; }
 .textarea-code { @apply w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200 resize-none; }
-
-/* Modal 样式 */
 .modal-backdrop { @apply fixed inset-0 z-[100] flex items-center justify-center bg-black/20 backdrop-blur-sm animate-in fade-in duration-200; }
 .modal-box { @apply bg-white rounded-xl shadow-2xl border border-slate-200 flex overflow-hidden; }
 .modal-header { @apply flex items-center justify-between p-4 border-b border-slate-100; }
 .modal-footer { @apply p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-2; }
 .close-btn { @apply text-slate-400 hover:text-red-500 transition-colors; }
-
-/* List Item 样式 */
 .list-item { @apply px-3 py-2 rounded-lg cursor-pointer text-xs truncate border transition-all; }
 .list-item-active { @apply bg-white border-slate-200 shadow-sm text-indigo-600 font-bold; }
 .list-item-inactive { @apply border-transparent text-slate-600 hover:bg-slate-100; }
-
 .custom-scrollbar::-webkit-scrollbar { width: 4px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 4px; }

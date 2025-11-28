@@ -46,9 +46,13 @@ export const deviceApi = {
 }
 
 export const resourceApi = {
-  load: (path) => request('/resource/load', { method: 'POST', body: JSON.stringify({ path }) })
-}
+  load: (path) => request('/resource/load', { method: 'POST', body: JSON.stringify({ path }) }),
 
+  getFileNodes: (source, filename) => request('/resource/file/nodes', {
+    method: 'POST',
+    body: JSON.stringify({ source, filename })
+  })
+}
 export const agentApi = {
   connect: (socketId) => request('/agent/connect', { method: 'POST', body: JSON.stringify({ socket_id: socketId }) }),
   disconnect: () => request('/agent/disconnect', { method: 'POST' })

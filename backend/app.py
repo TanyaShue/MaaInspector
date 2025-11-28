@@ -6,31 +6,27 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from maa.toolkit import Toolkit
 
+from backend.untils import JsonNodeLoader
+
 app = Flask(__name__)
 CORS(app)
 
 CONFIG_FILE = 'config.json'
 
-# --- 新的默认配置结构 ---
 DEFAULT_CONFIG = {
-    # 设备列表
     "devices": [],
-    # 资源配置集列表 (每个配置集包含名字和有序路径列表)
     "resource_profiles": [
         {
             "name": "Default Profile",
             "paths": ["D:/Project/Assets/Common", "D:/Project/Assets/Level1"]
         }
     ],
-    # Agent 设置
     "agent_socket_id": "",
-
-    # --- 新增：记录当前UI选中状态 ---
     "current_state": {
         "device_index": 0,
         "resource_profile_index": 0,
-        "resource_file": "",  # 当前选中的具体文件
-        "agent_socket_id": ""  # 记录上次输入的ID
+        "resource_file": "",
+        "agent_socket_id": ""
     }
 }
 
@@ -81,8 +77,6 @@ def mock_delay():
     time.sleep(random.uniform(0.2, 0.6))
 
 
-# === 系统接口 ===
-
 @app.route('/system/init', methods=['GET'])
 def system_init():
     return jsonify(load_config())
@@ -90,7 +84,6 @@ def system_init():
 
 @app.route('/system/config/save', methods=['POST'])
 def system_save_config():
-    # 前端可能只发部分更新（比如只更新选中状态），也可能发全量
     data = request.json
     if save_config(data):
         return jsonify({"message": "Saved"})
@@ -117,7 +110,6 @@ def search_devices():
 def resource_load():
     data = request.json
 
-    # 兼容你提供的格式 {'path': {...}}
     if "path" in data:
         data = data["path"]
 
@@ -137,9 +129,6 @@ def resource_load():
         # 路径最后一段
         source_label = os.path.basename(os.path.normpath(path))
 
-        # ================================
-        # 1. 判断主路径是否存在
-        # ================================
         if not os.path.exists(path):
             combined_files.append({
                 "label": f"[Missing Folder] ({source_label})",
@@ -193,6 +182,39 @@ def resource_load():
         "list": combined_files,
         "info": {"Profile": profile_name, "Paths": len(paths)}
     })
+
+
+@app.route('/resource/file/nodes', methods=['POST'])
+def get_file_nodes():
+    """
+    获取指定文件的节点内容
+    Payload: { "source": "文件夹路径", "filename": "文件名.json" }
+    """
+    data = request.json
+    folder_path = data.get('source')
+    filename = data.get('filename')
+
+    if not folder_path or not filename:
+        return jsonify({"message": "Missing path or filename"}), 400
+
+    try:
+        # 实例化 Loader (仅针对当前请求的文件夹)
+        loader = JsonNodeLoader(folder_path)
+
+        # 获取该文件下的所有节点数据
+        # 格式: { "node_id_1": { ...content... }, "node_id_2": { ... } }
+        nodes_data = loader.get_nodes_by_file(filename)
+
+        if nodes_data is None:
+            return jsonify({"message": "File not found or empty", "nodes": {}}), 404
+
+        return jsonify({
+            "message": "Nodes loaded",
+            "nodes": nodes_data
+        })
+    except Exception as e:
+        print(f"Error loading nodes: {e}")
+        return jsonify({"message": f"Error: {str(e)}"}), 500
 
 # === 设备与Agent接口 (保持简单兼容) ===
 @app.route('/device/connect', methods=['POST'])

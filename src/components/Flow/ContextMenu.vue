@@ -2,17 +2,16 @@
 import { computed, ref } from 'vue'
 import {
   Trash2, Copy, Edit, PlusCircle, RefreshCw, XCircle, ChevronRight,
-  PlayCircle, Cpu, GitBranch, Database, Mail,
-  Layout, Activity, Check, Move, Target, Image, Sparkles, Palette, ScanText, Brain, ScanEye, Code2, Bug // 新增 Move 图标
+  Activity, Check, Move, Target, Image, Sparkles, Palette, ScanText, Brain, ScanEye, Code2, Bug,
+  Scissors // 新增剪刀图标用于断开连接
 } from 'lucide-vue-next'
 
 const props = defineProps({
   x: { type: Number, required: true },
   y: { type: Number, required: true },
-  type: { type: String, required: true },
+  type: { type: String, required: true }, // 'node' | 'edge' | 'pane'
   data: { type: Object, default: null },
   currentEdgeType: { type: String, default: 'smoothstep' },
-  // 新增：接收当前的间距模式 key
   currentSpacing: { type: String, default: 'normal' }
 })
 
@@ -41,25 +40,29 @@ const edgeTypes = computed(() => [
   { label: '直角连线 (Step)', value: 'smoothstep', icon: Activity },
   { label: '贝塞尔曲线 (Bezier)', value: 'default', icon: Activity },
 ])
-
-// 新增：布局间距配置
 const spacingTypes = computed(() => [
-  { label: '紧凑 (Compact)', value: 'compact', icon: Move }, // ranksep: 30, nodesep: 20
-  { label: '默认 (Normal)', value: 'normal', icon: Move },   // ranksep: 60, nodesep: 60
-  { label: '宽松 (Loose)', value: 'loose', icon: Move },     // ranksep: 100, nodesep: 100
+  { label: '紧凑 (Compact)', value: 'compact', icon: Move },
+  { label: '默认 (Normal)', value: 'normal', icon: Move },
+  { label: '宽松 (Loose)', value: 'loose', icon: Move },
 ])
 
 const menuItems = computed(() => {
   if (props.type === 'node') {
     return [
       { label: '调试该节点', action: 'debug', icon: Bug, color: 'text-amber-600' },
-      { type: 'divider' }, // 加个分割线好看点
+      { type: 'divider' },
       { label: '编辑数据', action: 'edit', icon: Edit, color: 'text-slate-600' },
       { label: '复制节点', action: 'duplicate', icon: Copy, color: 'text-slate-600' },
       { type: 'divider' },
       { label: '删除节点', action: 'delete', icon: Trash2, color: 'text-red-500' },
     ]
+  } else if (props.type === 'edge') {
+    // --- 新增：连线菜单 ---
+    return [
+       { label: '断开连接', action: 'delete', icon: Scissors, color: 'text-red-500' }
+    ]
   } else {
+    // --- 画布菜单 ---
     return [
       {
         key: 'add-node',
@@ -74,10 +77,9 @@ const menuItems = computed(() => {
       {
         label: '自动布局 (Dagre)',
         action: 'layout',
-        icon: Layout,
+        icon: Move,
         color: 'text-indigo-600'
       },
-      // 新增：布局间距子菜单
       {
         key: 'layout-spacing',
         label: '布局间距',
@@ -108,10 +110,13 @@ const menuItems = computed(() => {
     :style="{ top: `${y}px`, left: `${x}px` }"
     @contextmenu.prevent
   >
-    <!-- ... (头部保持不变) ... -->
     <div v-if="type === 'node'" class="px-3 py-2 bg-slate-50 border-b border-slate-100">
       <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Node ID</div>
       <div class="font-mono text-xs text-slate-600 truncate">#{{ data.id }}</div>
+    </div>
+    <div v-if="type === 'edge'" class="px-3 py-2 bg-slate-50 border-b border-slate-100">
+      <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Link</div>
+      <div class="font-mono text-xs text-slate-600 truncate">{{ data.label || 'Edge' }}</div>
     </div>
 
     <ul class="py-1 m-0 list-none">
@@ -130,20 +135,14 @@ const menuItems = computed(() => {
           >
             <div class="flex items-center gap-2">
               <component :is="item.icon" :size="16" :class="item.color" />
-              <span :class="['font-medium text-slate-600', item.label === '删除节点' ? 'text-red-500' : '']">{{ item.label }}</span>
+              <span :class="['font-medium text-slate-600', (item.label === '删除节点' || item.label === '断开连接') ? 'text-red-500' : '']">{{ item.label }}</span>
             </div>
             <ChevronRight v-if="item.submenu" :size="14" class="text-slate-400" />
           </div>
 
-          <!-- 子菜单 -->
           <div
             v-if="item.submenu && showSubmenu === item.key"
-            class="
-              absolute left-full top-0 ml-1 w-48
-              bg-white rounded-lg shadow-xl border border-slate-100
-              animate-in slide-in-from-left-2 duration-150
-              before:content-[''] before:absolute before:top-0 before:-left-2 before:h-full before:w-4
-            "
+            class="absolute left-full top-0 ml-1 w-48 bg-white rounded-lg shadow-xl border border-slate-100 animate-in slide-in-from-left-2 duration-150"
           >
             <ul class="py-1">
               <li
@@ -156,20 +155,7 @@ const menuItems = computed(() => {
                   <component v-if="sub.icon" :is="sub.icon" :size="14" :class="sub.color || 'text-slate-500'" />
                   <span class="text-slate-600 font-medium">{{ sub.label }}</span>
                 </div>
-
-                <!-- 连线类型选中状态 -->
-                <Check
-                  v-if="item.key === 'edge-type' && sub.value === currentEdgeType"
-                  :size="14"
-                  class="text-blue-600"
-                />
-
-                <!-- 新增：布局间距选中状态 -->
-                <Check
-                  v-if="item.key === 'layout-spacing' && sub.value === currentSpacing"
-                  :size="14"
-                  class="text-blue-600"
-                />
+                <Check v-if="(item.key === 'edge-type' && sub.value === currentEdgeType) || (item.key === 'layout-spacing' && sub.value === currentSpacing)" :size="14" class="text-blue-600" />
               </li>
             </ul>
           </div>

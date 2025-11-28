@@ -7,27 +7,18 @@
             "name": "ADB Serial Device"
         },
         {
-            "adb_path": "D:/leidian/LDPlayer9/adb.exe",
+            "adb_path": "D:\\leidian\\LDPlayer9\\adb.exe",
             "address": "emulator-5556",
             "config": {
                 "extras": {
                     "ld": {
-                        "enable": true
+                        "enable": true,
+                        "index": 1,
+                        "path": "D:/leidian/LDPlayer9",
+                        "pid": 23036
                     }
                 }
             },
-            "name": "Emulator LDPlayer"
-        },
-        {
-            "adb_path": "",
-            "address": "emulator-5554",
-            "config": {},
-            "name": "LDPlayer (Emulator)"
-        },
-        {
-            "adb_path": "C:\\Android\\adb.exe",
-            "address": "List of devices attached",
-            "config": {},
             "name": "ADB Device"
         }
     ],
@@ -43,21 +34,14 @@
         },
         {
             "name": "啊啊",
-            "paths": [
-                "D:/New/Path",
-                "1234"
-            ]
-        },
-        {
-            "name": "New Profile",
             "paths": []
         }
     ],
     "agent_socket_id": "1234",
     "current_state": {
-        "device_index": 2,
+        "device_index": 0,
         "resource_profile_index": 0,
-        "resource_file": "启动游戏.json",
+        "resource_file": "寮突.json",
         "agent_socket_id": "1234"
     }
 }
