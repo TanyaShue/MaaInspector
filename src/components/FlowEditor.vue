@@ -9,7 +9,7 @@ import NodeEditorModal from './Flow/NodeEditorModal.vue'
 import InfoPanel from './Flow/InfoPanel.vue'
 import { useLayout } from '../utils/useLayout'
 
-// ... (SPACING_OPTIONS, PORT_MAPPING, getEdgeStyle 保持不变) ...
+// --- 状态管理 ---
 const currentEdgeType = ref('smoothstep')
 const currentSpacing = ref('normal')
 const SPACING_OPTIONS = {
@@ -18,10 +18,11 @@ const SPACING_OPTIONS = {
   loose:   { ranksep: 120, nodesep: 150 }
 }
 
+// --- 端口映射配置 ---
 const PORT_MAPPING = {
-  'source-a': { field: 'next',         type: 'array',  color: '#3b82f6' },
-  'source-b': { field: 'interrupt',    type: 'array',  color: '#f59e0b' },
-  'source-c': { field: 'on_error',     type: 'string', color: '#f43f5e' }
+  'source-a': { field: 'next',         type: 'array',  color: '#3b82f6' }, // Blue
+  'source-b': { field: 'interrupt',    type: 'array',  color: '#f59e0b' }, // Amber
+  'source-c': { field: 'on_error',     type: 'string', color: '#f43f5e' }  // Rose
 }
 
 const getEdgeStyle = (handleId) => {
@@ -29,16 +30,17 @@ const getEdgeStyle = (handleId) => {
   return {
     style: { stroke: config.color, strokeWidth: 2 },
     animated: true,
-    type: currentEdgeType.value, // 使用当前的 type
+    type: currentEdgeType.value,
     markerEnd: MarkerType.ArrowClosed,
   }
 }
 
-// ... (初始化变量保持不变) ...
+// --- 初始化 ---
 const nodes = ref([])
 const edges = ref([])
 const nodeTypes = { custom: markRaw(CustomNode) }
 
+// --- Vue Flow Hooks ---
 const {
   onConnect,
   addEdges,
@@ -51,30 +53,26 @@ const {
 } = useVueFlow()
 const { layout } = useLayout()
 
-// ... (onValidateConnection, onConnect, onEdgesChange, handleNodeUpdate 保持不变) ...
+// --- 1. 连接校验 ---
 const onValidateConnection = (connection) => {
-    if (connection.targetHandle !== 'in') return false
-    return true
+  if (connection.targetHandle !== 'in') return false
+  return true
 }
 
 // --- 2. 建立连接 (Toggle模式: 无则连, 有则断) ---
 onConnect((params) => {
-  // 1. 查找是否存在完全相同的连线
   const existingEdge = edges.value.find(e =>
     e.source === params.source && e.target === params.target &&
     e.sourceHandle === params.sourceHandle
   )
 
-  // 获取端口配置
   const portConfig = PORT_MAPPING[params.sourceHandle]
   const sourceNode = findNode(params.source)
 
-  // 2. [Toggle 逻辑] 如果已存在连线 -> 执行断开逻辑
+  // A. [Toggle] 已存在连线 -> 断开
   if (existingEdge) {
-    // A. 移除视觉连线
     removeEdges([existingEdge.id])
-
-    // B. 移除业务数据 (确保数据立刻同步，不依赖 onEdgesChange 的异步查找)
+    // 手动清理数据 (比等待 onEdgesChange 更快更安全)
     if (sourceNode && portConfig && sourceNode.data.data) {
       const field = portConfig.field
       const targetId = params.target
@@ -85,31 +83,27 @@ onConnect((params) => {
           const idx = arr.indexOf(targetId)
           if (idx > -1) {
             arr.splice(idx, 1)
-            console.log(`[Flow] Toggle: Unlinked ${params.source} -x-> ${targetId} (${field})`)
+            console.log(`[Flow] Unlinked (Toggle): ${params.source} -x-> ${targetId}`)
           }
         }
       } else {
-        // 字符串类型 (如 on_error)
         if (sourceNode.data.data[field] === targetId) {
           delete sourceNode.data.data[field]
-           console.log(`[Flow] Toggle: Unlinked ${params.source} -x-> ${targetId} (${field})`)
+          console.log(`[Flow] Unlinked (Toggle): ${params.source} -x-> ${targetId}`)
         }
       }
     }
-    // C. 阻止后续的添加逻辑
     return
   }
 
-  // 3. [原有逻辑] 如果不存在连线 -> 执行连接逻辑
-
-  // 添加视觉连线
+  // B. [Connect] 不存在连线 -> 连接
   addEdges({
     ...params,
     ...getEdgeStyle(params.sourceHandle),
     label: portConfig ? portConfig.field : undefined
   })
 
-  // 更新业务数据: 将目标ID写入源节点
+  // 写入数据
   if (sourceNode && portConfig) {
     const field = portConfig.field
     const targetId = params.target
@@ -120,14 +114,16 @@ onConnect((params) => {
       if (!Array.isArray(sourceNode.data.data[field])) sourceNode.data.data[field] = []
       if (!sourceNode.data.data[field].includes(targetId)) {
         sourceNode.data.data[field].push(targetId)
-        console.log(`[Flow] Linked: ${sourceNode.id} -> ${targetId} (${field})`)
+        console.log(`[Flow] Linked: ${sourceNode.id} -> ${targetId}`)
       }
     } else {
       sourceNode.data.data[field] = targetId
-      console.log(`[Flow] Linked: ${sourceNode.id} -> ${targetId} (${field})`)
+      console.log(`[Flow] Linked: ${sourceNode.id} -> ${targetId}`)
     }
   }
 })
+
+// --- 3. 断开连接 (监听外部删除事件) ---
 onEdgesChange((changes) => {
   changes.forEach(change => {
     if (change.type === 'remove') {
@@ -136,6 +132,7 @@ onEdgesChange((changes) => {
         const sourceNode = findNode(edge.source)
         const targetId = edge.target
         const portConfig = PORT_MAPPING[edge.sourceHandle]
+
         if (sourceNode && portConfig && sourceNode.data.data) {
           const field = portConfig.field
           if (portConfig.type === 'array') {
@@ -153,39 +150,53 @@ onEdgesChange((changes) => {
   })
 })
 
+// --- 4. 节点更新处理 ---
 const handleNodeUpdate = ({ oldId, newId, newType }) => {
-    const node = findNode(oldId)
-    if (!node) return
-    if (oldId !== newId) {
-        if (findNode(newId)) return alert(`ID "${newId}" already exists!`)
-        node.id = newId
-        node.data.id = newId
-        node.data.data.id = newId
-        edges.value = edges.value.map(e => {
-            let update = {}
-            if (e.source === oldId) update.source = newId
-            if (e.target === oldId) update.target = newId
-            if (update.source || update.target) return { ...e, ...update, id: e.id.replace(oldId, newId) }
-            return e
-        })
-        nodes.value.forEach(n => {
-            if (n.id === newId) return
-            const d = n.data.data
-            if (!d) return
-            ['next', 'interrupt'].forEach(field => {
-                if (Array.isArray(d[field])) {
-                    const idx = d[field].indexOf(oldId)
-                    if (idx > -1) d[field][idx] = newId
-                }
-            })
-            const singleFields = ['on_error', 'timeout_next']
-            singleFields.forEach(field => { if (d[field] === oldId) d[field] = newId })
-        })
-    }
-    node.data.type = newType
-    node.data.data.recognition = newType
-    nodes.value = [...nodes.value]
+  const node = findNode(oldId)
+  if (!node) return
+
+  if (oldId !== newId) {
+    if (findNode(newId)) { alert(`ID "${newId}" already exists!`); return }
+
+    // 更新自身 ID
+    node.id = newId
+    node.data.id = newId
+    node.data.data.id = newId
+
+    // 更新连线
+    edges.value = edges.value.map(e => {
+      let update = {}
+      if (e.source === oldId) update.source = newId
+      if (e.target === oldId) update.target = newId
+      if (update.source || update.target) {
+        return { ...e, ...update, id: e.id.replace(oldId, newId) }
+      }
+      return e
+    })
+
+    // 更新其他节点引用
+    nodes.value.forEach(n => {
+      if (n.id === newId) return
+      const d = n.data.data
+      if (!d) return
+      ['next', 'interrupt'].forEach(field => {
+        if (Array.isArray(d[field])) {
+          const idx = d[field].indexOf(oldId)
+          if (idx > -1) d[field][idx] = newId
+        }
+      })
+      const singleFields = ['on_error', 'timeout_next']
+      singleFields.forEach(field => {
+        if (d[field] === oldId) d[field] = newId
+      })
+    })
+  }
+
+  node.data.type = newType
+  node.data.data.recognition = newType
+  nodes.value = [...nodes.value]
 }
+
 provide('updateNode', handleNodeUpdate)
 
 // --- 菜单状态 ---
@@ -195,7 +206,6 @@ const editor = ref({ visible: false, nodeId: null, nodeData: null })
 const closeMenu = () => { menu.value.visible = false }
 const getEvent = (params) => params.event || params
 
-// 画布右键
 const onPaneContextMenu = (params) => {
   const event = getEvent(params)
   event.preventDefault()
@@ -203,20 +213,19 @@ const onPaneContextMenu = (params) => {
   menu.value = { visible: true, x: event.clientX, y: event.clientY, type: 'pane', data: null, flowPos }
 }
 
-// 节点右键
 const onNodeContextMenu = (params) => {
   const event = getEvent(params)
   event.preventDefault()
   menu.value = { visible: true, x: event.clientX, y: event.clientY, type: 'node', data: params.node }
 }
 
-// --- 修复1：新增连线右键 ---
 const onEdgeContextMenu = (params) => {
   const event = getEvent(params)
   event.preventDefault()
   menu.value = { visible: true, x: event.clientX, y: event.clientY, type: 'edge', data: params.edge }
 }
 
+// --- 数据辅助 ---
 const createNodeObject = (id, rawContent, isMissing = false) => {
   let logicType = rawContent.recognition || 'DirectHit'
   if (isMissing) logicType = 'Unknown'
@@ -224,105 +233,119 @@ const createNodeObject = (id, rawContent, isMissing = false) => {
     id: id,
     type: 'custom',
     position: { x: 0, y: 0 },
-    data: { id: id, type: logicType, data: { ...rawContent, id: id, recognition: logicType }, _isMissing: isMissing }
+    data: {
+      id: id,
+      type: logicType,
+      data: { ...rawContent, id: id, recognition: logicType },
+      _isMissing: isMissing,
+      status: 'idle' // 默认状态
+    }
   }
 }
 
-// --- 数据加载 ---
 const onNodesLoaded = ({ filename, nodes: rawNodesData }) => {
-    // ... (保持原有的加载逻辑) ...
-    const newNodes = []
-    const newEdges = []
-    const createdNodeIds = new Set()
-    for (const [nodeId, nodeContent] of Object.entries(rawNodesData)) {
-        newNodes.push(createNodeObject(nodeId, nodeContent))
-        createdNodeIds.add(nodeId)
-    }
-    for (const [nodeId, nodeContent] of Object.entries(rawNodesData)) {
-        const linkFields = [
-            { key: 'next', handle: 'source-a' }, { key: 'interrupt', handle: 'source-b' },
-            { key: 'on_error', handle: 'source-c' }, { key: 'timeout_next', handle: 'source-c' }
-        ]
-        linkFields.forEach(({ key, handle }) => {
-            if (nodeContent[key]) {
-                const targets = Array.isArray(nodeContent[key]) ? nodeContent[key] : [nodeContent[key]]
-                targets.forEach(targetId => {
-                    if (!targetId) return
-                    if (!createdNodeIds.has(targetId)) {
-                        newNodes.push(createNodeObject(targetId, {}, true))
-                        createdNodeIds.add(targetId)
-                    }
-                    newEdges.push({
-                        id: `e-${nodeId}-${targetId}-${key}`, source: nodeId, target: targetId,
-                        sourceHandle: handle, targetHandle: 'in', label: key, ...getEdgeStyle(handle)
-                    })
-                })
-            }
+  const newNodes = []
+  const newEdges = []
+  const createdNodeIds = new Set()
+
+  for (const [nodeId, nodeContent] of Object.entries(rawNodesData)) {
+    newNodes.push(createNodeObject(nodeId, nodeContent))
+    createdNodeIds.add(nodeId)
+  }
+
+  for (const [nodeId, nodeContent] of Object.entries(rawNodesData)) {
+    const linkFields = [
+      { key: 'next',         handle: 'source-a' },
+      { key: 'interrupt',    handle: 'source-b' },
+      { key: 'on_error',     handle: 'source-c' },
+      { key: 'timeout_next', handle: 'source-c' }
+    ]
+
+    linkFields.forEach(({ key, handle }) => {
+      if (nodeContent[key]) {
+        const targets = Array.isArray(nodeContent[key]) ? nodeContent[key] : [nodeContent[key]]
+        targets.forEach(targetId => {
+          if (!targetId) return
+          if (!createdNodeIds.has(targetId)) {
+            newNodes.push(createNodeObject(targetId, {}, true))
+            createdNodeIds.add(targetId)
+          }
+          newEdges.push({
+            id: `e-${nodeId}-${targetId}-${key}`,
+            source: nodeId,
+            target: targetId,
+            sourceHandle: handle,
+            targetHandle: 'in',
+            label: key,
+            ...getEdgeStyle(handle)
+          })
         })
-    }
-    // 加载时使用当前配置的间距
-    const layoutedNodes = layout(newNodes, newEdges, SPACING_OPTIONS[currentSpacing.value])
-    nodes.value = layoutedNodes
-    edges.value = newEdges
-    setTimeout(() => fitView({ padding: 0.2, duration: 800 }), 50)
+      }
+    })
+  }
+
+  const layoutedNodes = layout(newNodes, newEdges, SPACING_OPTIONS[currentSpacing.value])
+  nodes.value = layoutedNodes
+  edges.value = newEdges
+  setTimeout(() => fitView({ padding: 0.2, duration: 800 }), 50)
 }
 
-
-// --- 修复2：完善 handleMenuAction ---
+// --- 菜单动作处理 ---
 const handleMenuAction = ({ action, type, data, payload }) => {
   closeMenu()
 
   switch (action) {
-    // --- 节点操作 ---
     case 'add':
       const newNodeType = payload || 'DirectHit'
       const newId = `N-${Date.now()}`
       let defaultBusinessData = { id: newId, recognition: newNodeType }
       nodes.value.push(createNodeObject(newId, defaultBusinessData))
-      // 放在鼠标点击的位置
       if (menu.value.flowPos) {
-         // 这里要确保获取的是最新的 nodes 引用中的最后一个元素
-         const lastNode = nodes.value[nodes.value.length - 1]
-         lastNode.position = { ...menu.value.flowPos }
+        const lastNode = nodes.value[nodes.value.length - 1]
+        lastNode.position = { ...menu.value.flowPos }
       }
       break
 
-    case 'duplicate':
-        // 简单实现复制
-        if (data) {
-            const copyId = `N-${Date.now()}`
-            const copyData = JSON.parse(JSON.stringify(data.data.data))
-            copyData.id = copyId
-            const copyNode = createNodeObject(copyId, copyData)
-            copyNode.position = { x: data.position.x + 50, y: data.position.y + 50 }
-            nodes.value.push(copyNode)
-        }
-        break
-
-    case 'delete':
-      // 如果是节点
+    // --- 修复: 调试节点逻辑 ---
+    case 'debug':
       if (type === 'node') {
-        removeEdges(edges.value.filter(e => e.source === data.id || e.target === data.id))
-        nodes.value = nodes.value.filter(n => n.id !== data.id)
-      }
-      // 如果是连线
-      else if (type === 'edge') {
-        removeEdges([data.id])
+        const node = findNode(data.id)
+        if (node) {
+          console.log(`[Debug] Running node: ${data.id}`, node.data.data)
+          // 模拟状态变更: Idle -> Running -> Success
+          node.data.status = 'running'
+          setTimeout(() => {
+            node.data.status = 'success'
+          }, 1500)
+
+          // 如果需要自动恢复成 idle，可以再加个 timeout
+          // setTimeout(() => { node.data.status = 'idle' }, 4000)
+        }
       }
       break
 
     case 'edit':
-       editor.value = { visible: true, nodeId: data.id, nodeData: JSON.parse(JSON.stringify(data.data.data)) }
-       break
-
-    // --- 全局操作 ---
-    case 'clear':
-      nodes.value = []
-      edges.value = []
+      editor.value = { visible: true, nodeId: data.id, nodeData: JSON.parse(JSON.stringify(data.data.data)) }
       break
 
-    case 'reset':
-      fitView({ padding: 0.2, duration: 500 })
+    case 'duplicate':
+      if (data) {
+        const copyId = `N-${Date.now()}`
+        const copyData = JSON.parse(JSON.stringify(data.data.data))
+        copyData.id = copyId
+        const copyNode = createNodeObject(copyId, copyData)
+        copyNode.position = { x: data.position.x + 50, y: data.position.y + 50 }
+        nodes.value.push(copyNode)
+      }
+      break
+
+    case 'delete':
+      if (type === 'node') {
+        removeEdges(edges.value.filter(e => e.source === data.id || e.target === data.id))
+        nodes.value = nodes.value.filter(n => n.id !== data.id)
+      } else if (type === 'edge') {
+        removeEdges([data.id])
+      }
       break
 
     case 'layout':
@@ -330,26 +353,28 @@ const handleMenuAction = ({ action, type, data, payload }) => {
       setTimeout(() => fitView({ padding: 0.2, duration: 500 }), 50)
       break
 
-    // --- 修复3：布局间距切换 ---
     case 'changeSpacing':
       if (payload && SPACING_OPTIONS[payload]) {
         currentSpacing.value = payload
-        // 切换后立即重新布局
         nodes.value = layout(nodes.value, edges.value, SPACING_OPTIONS[payload])
         setTimeout(() => fitView({ padding: 0.2, duration: 500 }), 50)
       }
       break
 
-    // --- 修复4：连线样式切换 ---
     case 'changeEdgeType':
       if (payload) {
         currentEdgeType.value = payload
-        // 遍历更新所有现存连线的 type
-        edges.value = edges.value.map(edge => ({
-          ...edge,
-          type: payload
-        }))
+        edges.value = edges.value.map(edge => ({ ...edge, type: payload }))
       }
+      break
+
+    case 'reset':
+      fitView({ padding: 0.2, duration: 500 })
+      break
+
+    case 'clear':
+      nodes.value = []
+      edges.value = []
       break
   }
 }

@@ -41,7 +41,7 @@
     "current_state": {
         "device_index": 0,
         "resource_profile_index": 0,
-        "resource_file": "寮突.json",
+        "resource_file": "999.json",
         "agent_socket_id": "1234"
     }
 }

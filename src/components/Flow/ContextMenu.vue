@@ -2,8 +2,7 @@
 import { computed, ref } from 'vue'
 import {
   Trash2, Copy, Edit, PlusCircle, RefreshCw, XCircle, ChevronRight,
-  Activity, Check, Move, Target, Image, Sparkles, Palette, ScanText, Brain, ScanEye, Code2, Bug,
-  Scissors // 新增剪刀图标用于断开连接
+  Activity, Check, Move, Target, Image, Sparkles, Palette, ScanText, Brain, ScanEye, Code2, Bug, Scissors
 } from 'lucide-vue-next'
 
 const props = defineProps({
@@ -16,6 +15,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'action'])
+// 移除定时器变量，只需要记录当前激活的 submenu key
 const showSubmenu = ref(null)
 
 const handleAction = (action, payload = null) => {
@@ -23,7 +23,16 @@ const handleAction = (action, payload = null) => {
   emit('close')
 }
 
-// ... (节点类型配置保持不变) ...
+// --- 简单的交互逻辑：纯靠 CSS 桥接维持状态 ---
+const handleMouseEnter = (key) => {
+  showSubmenu.value = key
+}
+
+const handleMouseLeave = () => {
+  showSubmenu.value = null
+}
+
+// ... 配置保持不变 ...
 const nodeTypes = [
   { label: '通用匹配 (DirectHit)', value: 'DirectHit', icon: Target, color: 'text-blue-500' },
   { label: '模板匹配 (Template)', value: 'TemplateMatch', icon: Image, color: 'text-indigo-500' },
@@ -35,11 +44,11 @@ const nodeTypes = [
   { label: '自定义 (Custom)', value: 'Custom', icon: Code2, color: 'text-slate-500' },
 ]
 
-// ... (连线类型配置保持不变) ...
 const edgeTypes = computed(() => [
   { label: '直角连线 (Step)', value: 'smoothstep', icon: Activity },
   { label: '贝塞尔曲线 (Bezier)', value: 'default', icon: Activity },
 ])
+
 const spacingTypes = computed(() => [
   { label: '紧凑 (Compact)', value: 'compact', icon: Move },
   { label: '默认 (Normal)', value: 'normal', icon: Move },
@@ -57,12 +66,10 @@ const menuItems = computed(() => {
       { label: '删除节点', action: 'delete', icon: Trash2, color: 'text-red-500' },
     ]
   } else if (props.type === 'edge') {
-    // --- 新增：连线菜单 ---
     return [
        { label: '断开连接', action: 'delete', icon: Scissors, color: 'text-red-500' }
     ]
   } else {
-    // --- 画布菜单 ---
     return [
       {
         key: 'add-node',
@@ -126,8 +133,8 @@ const menuItems = computed(() => {
         <li
           v-else
           class="relative group"
-          @mouseenter="item.submenu ? showSubmenu = item.key : null"
-          @mouseleave="item.submenu ? showSubmenu = null : null"
+          @mouseenter="item.submenu ? handleMouseEnter(item.key) : null"
+          @mouseleave="handleMouseLeave()"
         >
           <div
             class="flex items-center justify-between px-3 py-2 cursor-pointer transition-colors hover:bg-slate-50 active:bg-slate-100"
@@ -142,7 +149,22 @@ const menuItems = computed(() => {
 
           <div
             v-if="item.submenu && showSubmenu === item.key"
-            class="absolute left-full top-0 ml-1 w-48 bg-white rounded-lg shadow-xl border border-slate-100 animate-in slide-in-from-left-2 duration-150"
+            class="
+              absolute left-full top-0 ml-1 w-48
+              bg-white rounded-lg shadow-xl border border-slate-100
+              animate-in slide-in-from-left-2 duration-150
+              z-[60]
+
+              /* --- 隐形桥核心代码 --- */
+              /* before 元素作为桥梁，填充父菜单和子菜单之间的空隙 */
+              before:content-['']
+              before:absolute
+              before:-left-4      /* 向左延伸，覆盖 ml-1 的间隙并稍微重叠父菜单 */
+              before:-top-2       /* 稍微向上延伸，增加斜向移动容错 */
+              before:w-6          /* 宽度足够覆盖间隙 */
+              before:h-[110%]     /* 高度稍微增加，防止从边缘滑出 */
+              before:bg-transparent /* 透明，用户不可见 */
+            "
           >
             <ul class="py-1">
               <li
@@ -155,7 +177,11 @@ const menuItems = computed(() => {
                   <component v-if="sub.icon" :is="sub.icon" :size="14" :class="sub.color || 'text-slate-500'" />
                   <span class="text-slate-600 font-medium">{{ sub.label }}</span>
                 </div>
-                <Check v-if="(item.key === 'edge-type' && sub.value === currentEdgeType) || (item.key === 'layout-spacing' && sub.value === currentSpacing)" :size="14" class="text-blue-600" />
+                <Check
+                  v-if="(item.key === 'edge-type' && sub.value === currentEdgeType) || (item.key === 'layout-spacing' && sub.value === currentSpacing)"
+                  :size="14"
+                  class="text-blue-600"
+                />
               </li>
             </ul>
           </div>
