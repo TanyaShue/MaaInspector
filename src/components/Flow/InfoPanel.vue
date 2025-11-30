@@ -2,12 +2,14 @@
 import { computed, ref, reactive, onMounted, defineComponent, h, watch } from 'vue'
 import {
   Server, Database, Bot, Power, Settings, RefreshCw, CheckCircle2, XCircle, Loader2, HardDrive,
-  FolderInput, Link, ChevronDown, Minimize2, Maximize2, Smartphone, FileText, Circle
+  FolderInput, Link, ChevronDown, Minimize2, Maximize2, Smartphone, FileText, Circle,
+  FilePlus // [新增] 图标
 } from 'lucide-vue-next'
 import { useVueFlow } from '@vue-flow/core'
 import { deviceApi, resourceApi, agentApi, systemApi } from '../../services/api'
 import DeviceSettingsModal from './Modals/DeviceSettingsModal.vue'
 import ResourceSettingsModal from './Modals/ResourceSettingsModal.vue'
+import CreateResourceModal from './Modals/CreateResourceModal.vue' // [新增] 引入创建文件弹窗
 
 // --- Props & Emits ---
 const props = defineProps({
@@ -36,6 +38,7 @@ const zoomPercentage = computed(() => Math.round((viewport.value.zoom || 1) * 10
 const isCollapsed = ref(false)
 const showDeviceSettings = ref(false)
 const showResourceSettings = ref(false)
+const showCreateFileModal = ref(false) // [新增] 控制创建文件弹窗
 
 // --- 全局数据源 ---
 const availableDevices = ref([])
@@ -108,10 +111,10 @@ const fetchAndEmitNodes = async () => {
   try {
     resourceCtrl.message = '加载节点中...'
     const res = await resourceApi.getFileNodes(fileObj.source, fileObj.value)
-    if (res.nodes) {
-      emit('load-nodes', { filename: fileObj.value, nodes: res.nodes })
-      resourceCtrl.message = `已加载: ${Object.keys(res.nodes).length} 节点`
-    }
+    // 即使是新创建的文件(空对象)，res.nodes 也会是 {}，这里需要处理一下
+    const nodes = res.nodes || {}
+    emit('load-nodes', { filename: fileObj.value, nodes: nodes })
+    resourceCtrl.message = `已加载: ${Object.keys(nodes).length} 节点`
   } catch (e) {
     console.error("加载节点失败", e)
     resourceCtrl.message = '节点加载失败'
@@ -127,18 +130,60 @@ const handleResourceLoad = async () => {
     if (res.list) {
       availableFiles.value = res.list
       const fileStillExists = availableFiles.value.find(f => f.value === selectedResourceFile.value)
+
+      // 如果当前选中的文件不存在了（比如切换了配置），或者之前没选中
       if (!selectedResourceFile.value || !fileStillExists) {
         if (availableFiles.value.length > 0) {
+          // 默认选中第一个
           selectedResourceFile.value = availableFiles.value[0].value
           await fetchAndEmitNodes()
         } else {
           selectedResourceFile.value = ''
+          // 如果列表为空，也许应该清空画布？这里暂时保留画布
         }
       } else {
+        // 如果文件还存在，重新加载它的内容（防止外部修改）
         await fetchAndEmitNodes()
       }
     }
-  } catch(e) {}
+  } catch(e) {
+    console.error("资源加载流程异常", e)
+  }
+}
+
+// [新增] 创建文件的处理逻辑
+const handleCreateFile = async ({ path, filename }) => {
+  try {
+    resourceCtrl.message = '创建文件中...'
+    // 1. 调用 API
+    await resourceApi.createFile(path, filename)
+
+    // 2. 关闭弹窗
+    showCreateFileModal.value = false
+
+    // 3. 重新加载资源列表以获取新文件
+    // 注意：这里需要确保 handleResourceLoad 完成后再继续
+    await handleResourceLoad()
+
+    // 4. 尝试自动选中新文件
+    // 后端返回的 value 通常带 .json 后缀
+    const simpleName = filename.endsWith('.json') ? filename : filename + '.json'
+    const newFileObj = availableFiles.value.find(f => f.value === simpleName)
+
+    if (newFileObj) {
+      selectedResourceFile.value = newFileObj.value
+      // 5. 加载这个新文件（它是空的）
+      await fetchAndEmitNodes()
+      resourceCtrl.message = '新建成功并已加载'
+    } else {
+      resourceCtrl.message = '创建成功 (请手动选择)'
+    }
+
+  } catch (e) {
+    console.error(e)
+    alert(`创建失败: ${e.message || '未知错误'}`)
+    resourceCtrl.message = '创建失败'
+  }
 }
 
 const handleProfileSwitch = () => handleResourceLoad()
@@ -194,13 +239,17 @@ const saveAllConfig = async () => {
 }
 
 watch([selectedDeviceIndex, selectedProfileIndex, selectedResourceFile, currentAgentSocket], () => saveAllConfig(), { deep: false })
-watch(selectedResourceFile, (newVal) => { if (newVal && !isInit) fetchAndEmitNodes() })
+// 注意：这里由于 handleResourceLoad 内部也会改变 selectedResourceFile，如果不加判断可能会循环调用 fetchAndEmitNodes
+// 但目前的逻辑是单向依赖，应该没问题。
+watch(selectedResourceFile, (newVal) => {
+  if (newVal && !isInit) fetchAndEmitNodes()
+})
 
 // --- Modal Handlers ---
 const saveDeviceSettings = (data) => {
   availableDevices.value = data.devices
   if (selectedDeviceIndex.value >= availableDevices.value.length) selectedDeviceIndex.value = 0
-  if (data.index !== undefined) selectedDeviceIndex.value = data.index // 可选：保持选中
+  if (data.index !== undefined) selectedDeviceIndex.value = data.index
   showDeviceSettings.value = false
   saveAllConfig()
 }
@@ -258,6 +307,7 @@ const saveResourceSettings = (data) => {
         </div>
 
         <div class="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
+
           <section class="space-y-2">
             <div class="flex items-center justify-between text-xs mb-1">
               <div class="flex items-center gap-1.5 font-bold text-slate-700"><Smartphone :size="14" class="text-indigo-500" /> 设备管理</div>
@@ -301,10 +351,23 @@ const saveResourceSettings = (data) => {
                 </div>
                 <button @click="showResourceSettings = true" class="btn-icon"><Settings :size="16" /></button>
               </div>
-              <button @click="handleResourceLoad" :disabled="resourceCtrl.status === 'connecting'" class="w-full btn-primary bg-emerald-500 shadow-emerald-100">
-                 <component :is="resourceCtrl.status === 'connecting' ? RefreshCw : HardDrive" :size="12" :class="{'animate-spin': resourceCtrl.status === 'connecting'}" />
-                 <span>{{ resourceCtrl.status === 'connected' ? '重新加载' : '加载资源' }}</span>
-              </button>
+
+              <div class="flex gap-2">
+                 <button @click="handleResourceLoad" :disabled="resourceCtrl.status === 'connecting'" class="flex-1 btn-primary bg-emerald-500 shadow-emerald-100">
+                    <component :is="resourceCtrl.status === 'connecting' ? RefreshCw : HardDrive" :size="12" :class="{'animate-spin': resourceCtrl.status === 'connecting'}" />
+                    <span>{{ resourceCtrl.status === 'connected' ? '重新加载' : '加载资源' }}</span>
+                 </button>
+
+                 <button
+                   @click="showCreateFileModal = true"
+                   :disabled="resourceProfiles.length === 0"
+                   class="px-3 bg-white border border-slate-200 rounded-lg text-emerald-600 hover:bg-emerald-50 hover:border-emerald-200 transition-colors shadow-sm flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                   title="新建资源文件"
+                 >
+                    <FilePlus :size="16" />
+                 </button>
+              </div>
+
               <div v-if="resourceCtrl.status === 'connected'" class="animate-in fade-in slide-in-from-top-2">
                 <div class="relative">
                   <div class="absolute left-3 top-2.5 text-emerald-600 pointer-events-none"><FileText :size="14" /></div>
@@ -355,6 +418,13 @@ const saveResourceSettings = (data) => {
       :currentIndex="selectedProfileIndex"
       @close="showResourceSettings = false"
       @save="saveResourceSettings"
+    />
+
+    <CreateResourceModal
+      :visible="showCreateFileModal"
+      :paths="currentProfile.paths"
+      @close="showCreateFileModal = false"
+      @create="handleCreateFile"
     />
 
   </div>

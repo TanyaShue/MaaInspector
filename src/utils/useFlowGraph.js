@@ -1,7 +1,7 @@
 // src/composables/useFlowGraph.js
 import { ref, markRaw } from 'vue'
 import { useVueFlow, MarkerType } from '@vue-flow/core'
-import { useLayout } from '../utils/useLayout.js' // 假设原来的 useLayout 在这里
+import { useLayout } from './useLayout.js' // 假设原来的 useLayout 在这里
 import CustomNode from '../components/Flow/CustomNode.vue' // 注意路径调整
 
 export function useFlowGraph() {

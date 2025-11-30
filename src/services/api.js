@@ -45,12 +45,20 @@ export const deviceApi = {
   disconnect: () => request('/device/disconnect', { method: 'POST' })
 }
 
+// src/services/api.js 的 resourceApi 部分修改如下：
+
 export const resourceApi = {
   load: (path) => request('/resource/load', { method: 'POST', body: JSON.stringify({ path }) }),
 
   getFileNodes: (source, filename) => request('/resource/file/nodes', {
     method: 'POST',
     body: JSON.stringify({ source, filename })
+  }),
+
+  // 新增创建文件接口
+  createFile: (path, filename) => request('/resource/file/create', {
+    method: 'POST',
+    body: JSON.stringify({ path, filename })
   })
 }
 export const agentApi = {

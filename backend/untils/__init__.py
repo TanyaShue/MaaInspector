@@ -243,11 +243,11 @@ class JsonNodeLoader:
 
         dfs(start_node)
         return result
-if __name__ == "__main__":
-    loader = JsonNodeLoader("D:\\DeveProject\\MFWPH\\assets\\resource\\MaaYYs\\resource_pack\\base\\pipeline")
-
-    # print("所有文件:", loader.get_files())
-    # print("所有节点:", loader.get_all_nodes())
-    print("某个文件的节点:", loader.get_nodes_by_file("test.json"))
-    # print("指定节点内容:", loader.get_node_value("999"))
-    # print("节点来自文件:", loader.get_node_source_file("999"))
+# if __name__ == "__main__":
+#     loader = JsonNodeLoader("D:\\DeveProject\\MFWPH\\assets\\resource\\MaaYYs\\resource_pack\\base\\pipeline")
+#
+#     # print("所有文件:", loader.get_files())
+#     # print("所有节点:", loader.get_all_nodes())
+#     print("某个文件的节点:", loader.get_nodes_by_file("test.json"))
+#     # print("指定节点内容:", loader.get_node_value("999"))
+#     # print("节点来自文件:", loader.get_node_source_file("999"))

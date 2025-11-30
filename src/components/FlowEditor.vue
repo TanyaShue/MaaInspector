@@ -6,7 +6,7 @@ import { Controls } from '@vue-flow/controls'
 import ContextMenu from './Flow/ContextMenu.vue'
 import NodeEditorModal from './Flow/NodeEditorModal.vue'
 import InfoPanel from './Flow/InfoPanel.vue'
-import { useFlowGraph } from '../composables/useFlowGraph'
+import { useFlowGraph } from '../utils/useFlowGraph.js'
 
 // --- 引入逻辑 Hook ---
 const {

@@ -216,6 +216,46 @@ def get_file_nodes():
         print(f"Error loading nodes: {e}")
         return jsonify({"message": f"Error: {str(e)}"}), 500
 
+
+@app.route('/resource/file/create', methods=['POST'])
+def resource_file_create():
+    data = request.json
+    base_path = data.get('path')  # 用户选择的基础路径 (resource profile path)
+    filename = data.get('filename')
+
+    if not base_path or not filename:
+        return jsonify({"message": "Path and filename are required"}), 400
+
+    if not filename.endswith('.json'):
+        filename += '.json'
+
+    # 逻辑适配：根据你的 resource_load 逻辑，文件应位于 pipeline 子目录
+    pipeline_dir = os.path.join(base_path, "pipeline")
+
+    try:
+        # 如果 pipeline 目录不存在，自动创建
+        if not os.path.exists(pipeline_dir):
+            os.makedirs(pipeline_dir)
+
+        full_path = os.path.join(pipeline_dir, filename)
+
+        if os.path.exists(full_path):
+            return jsonify({"message": "File already exists"}), 409  # Conflict
+
+        # 创建空的 JSON 结构，或者包含基础 ID 的结构
+        initial_content = {}
+
+        with open(full_path, 'w', encoding='utf-8') as f:
+            json.dump(initial_content, f, indent=4, ensure_ascii=False)
+
+        return jsonify({
+            "message": "File created successfully",
+            "filename": filename,
+            "full_path": full_path
+        })
+    except Exception as e:
+        print(f"Error creating file: {e}")
+        return jsonify({"message": f"Create failed: {str(e)}"}), 500
 # === 设备与Agent接口 (保持简单兼容) ===
 @app.route('/device/connect', methods=['POST'])
 def device_connect():
