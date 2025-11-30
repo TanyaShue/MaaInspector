@@ -2,6 +2,8 @@
 
 一款为 [maafw](https://github.com/MaaAssistantArknights/framework) 设计的可视化节点编辑器，旨在提供一个图形化、低代码的工作流创建与调试环境。
 
+**当前处于开发阶段,无法正常使用**
+
 ## 功能特性
 
 - **可视化编辑**: 通过拖拽节点和连接来直观地构建 `maafw` 工作流。
