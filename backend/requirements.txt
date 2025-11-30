@@ -1,2 +1,3 @@
 Flask
 Flask-Cors
+maafw >= 5.1.0
