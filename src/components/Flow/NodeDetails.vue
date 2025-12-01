@@ -91,7 +91,9 @@ const deviceScreenConfig = reactive({
   targetField: '',
   referenceField: '',
   referenceRect: null,
-  title: '区域选择'
+  referenceLabel: '', // 新增：用于显示参考框的名称
+  title: '区域选择',
+  mode: 'coordinate' // 'coordinate' | 'ocr'
 })
 
 // ========== 计算属性 ==========
@@ -218,34 +220,50 @@ const parseRect = (val) => {
   return null
 }
 
-const openDevicePicker = (field, referenceField = null) => {
+const openDevicePicker = (field, referenceField = null, mode = 'coordinate', refLabel = null) => {
   deviceScreenConfig.targetField = field
   deviceScreenConfig.referenceField = referenceField
   deviceScreenConfig.referenceRect = null
+  deviceScreenConfig.mode = mode
+  deviceScreenConfig.referenceLabel = refLabel || referenceField || '参考区域' // 设置参考框标签
 
-  if (field.includes('offset')) {
+  // 处理标题
+  if (mode === 'ocr') {
+    deviceScreenConfig.title = 'OCR 区域识别'
+  } else if (field.includes('offset')) {
     deviceScreenConfig.title = `设置偏移 (${field})`
-    if (referenceField) {
-      const refVal = getValue(referenceField)
-      deviceScreenConfig.referenceRect = parseRect(refVal)
-    }
   } else {
     deviceScreenConfig.title = `选取区域 (${field})`
   }
+
+  // 处理参考框
+  if (referenceField) {
+    const refVal = getValue(referenceField)
+    deviceScreenConfig.referenceRect = parseRect(refVal)
+  }
+
   showDeviceScreen.value = true
 }
 
-const handleDevicePick = (rect) => {
+const handleDevicePick = (result) => {
   const field = deviceScreenConfig.targetField
   const refRect = deviceScreenConfig.referenceRect
-  if (field.includes('offset') && refRect) {
-    const offsetX = rect[0] - refRect[0]
-    const offsetY = rect[1] - refRect[1]
-    const offsetW = rect[2] - refRect[2]
-    const offsetH = rect[3] - refRect[3]
-    setValue(field, [offsetX, offsetY, offsetW, offsetH])
+  const mode = deviceScreenConfig.mode
+
+  if (mode === 'ocr') {
+    // OCR 模式下，result 应该是字符串（识别结果）
+    setValue(field, result)
   } else {
-    setValue(field, rect)
+    // 坐标模式下，result 是数组 [x,y,w,h]
+    if (field.includes('offset') && refRect) {
+      const offsetX = result[0] - refRect[0]
+      const offsetY = result[1] - refRect[1]
+      const offsetW = result[2] - refRect[2]
+      const offsetH = result[3] - refRect[3]
+      setValue(field, [offsetX, offsetY, offsetW, offsetH])
+    } else {
+      setValue(field, result)
+    }
   }
 }
 
@@ -354,14 +372,14 @@ watch(() => props.nodeData?.data, (newData) => {
                   <label class="text-[10px] font-semibold text-slate-500 uppercase">识别区域 (ROI)</label>
                   <div class="flex gap-1">
                     <input :value="getValue('roi', '')" @input="setValue('roi', $event.target.value)" class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono min-w-0" placeholder="[x,y,w,h]" />
-                    <button @click="openDevicePicker('roi')" class="px-2 bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 rounded-lg flex items-center justify-center" title="框选区域"><Crop :size="12" /></button>
+                    <button @click="openDevicePicker('roi', null, 'coordinate', 'ROI')" class="px-2 bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 rounded-lg flex items-center justify-center" title="框选区域"><Crop :size="12" /></button>
                   </div>
                 </div>
                 <div class="space-y-1">
                   <label class="text-[10px] font-semibold text-slate-500 uppercase">区域偏移</label>
                   <div class="flex gap-1">
                     <input :value="getValue('roi_offset', '')" @input="setValue('roi_offset', $event.target.value)" class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono min-w-0" placeholder="[x,y,w,h]" />
-                    <button @click="openDevicePicker('roi_offset', 'roi')" class="px-2 bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 rounded-lg flex items-center justify-center" title="设置偏移"><Crosshair :size="12" /></button>
+                    <button @click="openDevicePicker('roi_offset', 'roi', 'coordinate', 'ROI区域')" class="px-2 bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 rounded-lg flex items-center justify-center" title="设置偏移"><Crosshair :size="12" /></button>
                   </div>
                 </div>
               </div>
@@ -384,7 +402,13 @@ watch(() => props.nodeData?.data, (newData) => {
               </template>
 
               <template v-if="currentRecognition === 'OCR'">
-                <div class="space-y-1"><label class="text-[10px] font-semibold text-slate-500 uppercase">期望文本</label><input :value="getValue('expected', '')" @input="setValue('expected', $event.target.value)" class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400" placeholder="期望文本或正则" /></div>
+                <div class="space-y-1">
+                  <label class="text-[10px] font-semibold text-slate-500 uppercase">期望文本</label>
+                  <div class="flex gap-1">
+                    <input :value="getValue('expected', '')" @input="setValue('expected', $event.target.value)" class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400" placeholder="期望文本或正则" />
+                    <button @click="openDevicePicker('expected', 'roi', 'ocr', 'ROI区域')" class="px-2 bg-purple-50 text-purple-600 border border-purple-200 hover:bg-purple-100 rounded-lg flex items-center justify-center" title="OCR 识别取词"><ScanText :size="12" /></button>
+                  </div>
+                </div>
                 <div class="grid grid-cols-2 gap-2"><div class="space-y-1"><label class="text-[10px] font-semibold text-slate-500 uppercase">匹配阈值</label><input type="number" step="0.1" min="0" max="1" :value="getValue('threshold', 0.3)" @input="setValue('threshold', parseFloat($event.target.value) || 0.3)" class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400" /></div><div class="space-y-1"><label class="text-[10px] font-semibold text-slate-500 uppercase">模型路径</label><input :value="getValue('model', '')" @input="setValue('model', $event.target.value)" class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono" placeholder="model/ocr/" /></div></div>
                 <div class="space-y-1"><label class="text-[10px] font-semibold text-slate-500 uppercase">文本替换</label><input :value="getValue('replace', '')" @input="setValue('replace', $event.target.value)" class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono" placeholder='["原","替"]' /></div>
                 <label class="inline-flex items-center gap-1.5 cursor-pointer"><input type="checkbox" :checked="getValue('only_rec', false)" @change="setValue('only_rec', $event.target.checked)" class="w-3.5 h-3.5 rounded text-indigo-600" /><span class="text-[11px] text-slate-600">仅识别</span></label>
@@ -415,14 +439,14 @@ watch(() => props.nodeData?.data, (newData) => {
                   <label class="text-[10px] font-semibold text-slate-500 uppercase">点击目标</label>
                   <div class="flex gap-1">
                     <input :value="getValue('target', '')" @input="setValue('target', $event.target.value)" class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono min-w-0" placeholder="节点名或 [x,y,w,h]" />
-                    <button @click="openDevicePicker('target')" class="px-2 bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 rounded-lg flex items-center justify-center"><Crop :size="12" /></button>
+                    <button @click="openDevicePicker('target', null, 'coordinate', 'Target')" class="px-2 bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 rounded-lg flex items-center justify-center"><Crop :size="12" /></button>
                   </div>
                 </div>
                 <div class="space-y-1">
                   <label class="text-[10px] font-semibold text-slate-500 uppercase">目标偏移</label>
                   <div class="flex gap-1">
                     <input :value="getValue('target_offset', '')" @input="setValue('target_offset', $event.target.value)" class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono min-w-0" placeholder="[x,y,w,h]" />
-                    <button @click="openDevicePicker('target_offset', 'target')" class="px-2 bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 rounded-lg flex items-center justify-center"><Crosshair :size="12" /></button>
+                    <button @click="openDevicePicker('target_offset', 'target', 'coordinate', '目标区域')" class="px-2 bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 rounded-lg flex items-center justify-center"><Crosshair :size="12" /></button>
                   </div>
                 </div>
               </template>
@@ -431,19 +455,19 @@ watch(() => props.nodeData?.data, (newData) => {
                 <div class="grid grid-cols-2 gap-2">
                   <div class="space-y-1">
                     <label class="text-[10px] font-semibold text-slate-500 uppercase">起点</label>
-                    <div class="flex gap-1"><input :value="getValue('begin', '')" @input="setValue('begin', $event.target.value)" class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0" placeholder="[x,y,w,h]" /><button @click="openDevicePicker('begin')" class="px-2 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg"><Crop :size="12" /></button></div>
+                    <div class="flex gap-1"><input :value="getValue('begin', '')" @input="setValue('begin', $event.target.value)" class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0" placeholder="[x,y,w,h]" /><button @click="openDevicePicker('begin', null, 'coordinate', '起点')" class="px-2 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg"><Crop :size="12" /></button></div>
                   </div>
                   <div class="space-y-1">
                     <label class="text-[10px] font-semibold text-slate-500 uppercase">起点偏移</label>
-                    <div class="flex gap-1"><input :value="getValue('begin_offset', '')" @input="setValue('begin_offset', $event.target.value)" class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0" placeholder="[x,y,w,h]" /><button @click="openDevicePicker('begin_offset', 'begin')" class="px-2 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg"><Crosshair :size="12" /></button></div>
+                    <div class="flex gap-1"><input :value="getValue('begin_offset', '')" @input="setValue('begin_offset', $event.target.value)" class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0" placeholder="[x,y,w,h]" /><button @click="openDevicePicker('begin_offset', 'begin', 'coordinate', '起点')" class="px-2 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg"><Crosshair :size="12" /></button></div>
                   </div>
                   <div class="space-y-1">
                     <label class="text-[10px] font-semibold text-slate-500 uppercase">终点</label>
-                    <div class="flex gap-1"><input :value="getValue('end', '')" @input="setValue('end', $event.target.value)" class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0" placeholder="[x,y,w,h]" /><button @click="openDevicePicker('end')" class="px-2 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg"><Crop :size="12" /></button></div>
+                    <div class="flex gap-1"><input :value="getValue('end', '')" @input="setValue('end', $event.target.value)" class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0" placeholder="[x,y,w,h]" /><button @click="openDevicePicker('end', 'begin', 'coordinate', '起点')" class="px-2 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg"><Crop :size="12" /></button></div>
                   </div>
                   <div class="space-y-1">
                     <label class="text-[10px] font-semibold text-slate-500 uppercase">终点偏移</label>
-                    <div class="flex gap-1"><input :value="getValue('end_offset', '')" @input="setValue('end_offset', $event.target.value)" class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0" placeholder="[x,y,w,h]" /><button @click="openDevicePicker('end_offset', 'end')" class="px-2 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg"><Crosshair :size="12" /></button></div>
+                    <div class="flex gap-1"><input :value="getValue('end_offset', '')" @input="setValue('end_offset', $event.target.value)" class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0" placeholder="[x,y,w,h]" /><button @click="openDevicePicker('end_offset', 'end', 'coordinate', '终点')" class="px-2 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg"><Crosshair :size="12" /></button></div>
                   </div>
                 </div>
                 <div class="space-y-1"><label class="text-[10px] font-semibold text-slate-500 uppercase">持续时间 (ms)</label><input type="number" :value="getValue('duration', 200)" @input="setValue('duration', parseInt($event.target.value) || 200)" class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs" /></div>
@@ -474,7 +498,7 @@ watch(() => props.nodeData?.data, (newData) => {
                   <label class="text-[10px] font-semibold text-slate-500 uppercase">点击目标</label>
                   <div class="flex gap-1">
                     <input :value="getValue('target', '')" @input="setValue('target', $event.target.value)" class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0" placeholder="节点名或 [x,y,w,h]" />
-                    <button @click="openDevicePicker('target')" class="px-2 bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 rounded-lg flex items-center justify-center"><Crop :size="12" /></button>
+                    <button @click="openDevicePicker('target', null, 'coordinate', 'Target')" class="px-2 bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 rounded-lg flex items-center justify-center"><Crop :size="12" /></button>
                   </div>
                 </div>
               </template>
@@ -497,7 +521,15 @@ watch(() => props.nodeData?.data, (newData) => {
   </transition>
 
   <Teleport to="body">
-    <DeviceScreen :visible="showDeviceScreen" :title="deviceScreenConfig.title" :reference-rect="deviceScreenConfig.referenceRect" @confirm="handleDevicePick" @close="showDeviceScreen = false" />
+    <DeviceScreen
+      :visible="showDeviceScreen"
+      :title="deviceScreenConfig.title"
+      :reference-rect="deviceScreenConfig.referenceRect"
+      :reference-label="deviceScreenConfig.referenceLabel"
+      :mode="deviceScreenConfig.mode"
+      @confirm="handleDevicePick"
+      @close="showDeviceScreen = false"
+    />
   </Teleport>
 </template>
 

@@ -2,14 +2,15 @@
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import {
   Smartphone, RefreshCw, Crosshair, Check, X, Maximize, MousePointer2,
-  ZoomIn, Move, RotateCcw
+  ZoomIn, Move, RotateCcw, ScanText, Loader2
 } from 'lucide-vue-next'
 import { deviceApi } from '../../services/api'
 
 const props = defineProps({
   visible: Boolean,
-  mode: { type: String, default: 'select' },
+  mode: { type: String, default: 'coordinate' }, // 'coordinate' | 'ocr'
   referenceRect: { type: Array, default: null },
+  referenceLabel: { type: String, default: '参考区域' },
   initialRect: { type: Array, default: null },
   title: { type: String, default: '设备屏幕选取' }
 })
@@ -18,12 +19,16 @@ const emit = defineEmits(['close', 'confirm'])
 
 // --- 状态 ---
 const isLoading = ref(false)
+const isOcrLoading = ref(false)
 const imageUrl = ref('')
 const containerRef = ref(null)
 const contentRef = ref(null)
 const isDragging = ref(false)
 const isPanning = ref(false)
 const isCtrlPressed = ref(false)
+
+// OCR 结果状态
+const ocrResult = ref('')
 
 // 视图变换状态
 const viewState = reactive({
@@ -46,6 +51,7 @@ const selection = reactive({ x: 0, y: 0, w: 0, h: 0 })
 watch(() => props.visible, async (val) => {
   if (val) {
     resetView()
+    ocrResult.value = '' // 重置 OCR 结果
     await fetchScreenshot()
     if (props.initialRect && props.initialRect.length === 4) {
       selection.x = props.initialRect[0]
@@ -79,7 +85,6 @@ const resetView = () => {
 }
 
 // --- 样式计算 ---
-// 将逻辑坐标转换为百分比，确保在父容器缩放时位置正确
 const getRectStyle = (rect) => {
   if (!rect || rect[2] <= 0 || rect[3] <= 0) return { display: 'none' }
   return {
@@ -96,17 +101,15 @@ const referenceStyle = computed(() => props.referenceRect ? getRectStyle(props.r
 const contentStyle = computed(() => ({
   transform: `translate(${viewState.x}px, ${viewState.y}px) scale(${viewState.scale})`,
   transformOrigin: 'center center',
-  // 强制宽高比，确保坐标计算基准一致
   width: '100%',
   aspectRatio: '16/9'
 }))
 
-// --- 全局事件监听 (解决拖动黏连的关键) ---
+// --- 全局事件监听 ---
 const handleKeyDown = (e) => { if (e.key === 'Control') isCtrlPressed.value = true }
 const handleKeyUp = (e) => { if (e.key === 'Control') isCtrlPressed.value = false }
 
 onMounted(() => {
-  // 将 move 和 up 绑定到 window，防止鼠标移出 div 时事件丢失
   window.addEventListener('mousemove', handleGlobalMouseMove)
   window.addEventListener('mouseup', handleGlobalMouseUp)
   window.addEventListener('keydown', handleKeyDown)
@@ -132,25 +135,17 @@ const handleWheel = (e) => {
 const getLogicalPos = (clientX, clientY) => {
   if (!contentRef.value) return { x: 0, y: 0 }
   const rect = contentRef.value.getBoundingClientRect()
-
-  // 核心公式：(鼠标当前屏幕位置 - 图片左上角屏幕位置) * (逻辑宽度 / 图片实际显示宽度)
   const scaleX = BASE_WIDTH / rect.width
   const scaleY = BASE_HEIGHT / rect.height
-
   let x = (clientX - rect.left) * scaleX
   let y = (clientY - rect.top) * scaleY
-
-  // 严格钳位：不允许出现负数或超出 1280x720
   x = Math.max(0, Math.min(x, BASE_WIDTH))
   y = Math.max(0, Math.min(y, BASE_HEIGHT))
-
   return { x, y }
 }
 
 const handleMouseDown = (e) => {
   if (!imageUrl.value || !contentRef.value) return
-
-  // 1. 平移模式
   if (e.ctrlKey || e.button === 1) {
     isPanning.value = true
     mouseStart.x = e.clientX
@@ -159,14 +154,10 @@ const handleMouseDown = (e) => {
     viewStart.y = viewState.y
     return
   }
-
-  // 2. 框选模式
   isDragging.value = true
   const pos = getLogicalPos(e.clientX, e.clientY)
-
   startPos.x = pos.x
   startPos.y = pos.y
-
   selection.x = pos.x
   selection.y = pos.y
   selection.w = 0
@@ -174,7 +165,6 @@ const handleMouseDown = (e) => {
 }
 
 const handleGlobalMouseMove = (e) => {
-  // 处理平移
   if (isPanning.value) {
     const dx = e.clientX - mouseStart.x
     const dy = e.clientY - mouseStart.y
@@ -182,18 +172,12 @@ const handleGlobalMouseMove = (e) => {
     viewState.y = viewStart.y + dy
     return
   }
-
-  // 处理框选
   if (!isDragging.value) return
-
   const currPos = getLogicalPos(e.clientX, e.clientY)
-
-  // 计算新的矩形，确保不出现负宽高
   const minX = Math.min(startPos.x, currPos.x)
   const minY = Math.min(startPos.y, currPos.y)
   const width = Math.abs(currPos.x - startPos.x)
   const height = Math.abs(currPos.y - startPos.y)
-
   selection.x = minX
   selection.y = minY
   selection.w = width
@@ -205,10 +189,30 @@ const handleGlobalMouseUp = () => {
   isPanning.value = false
 }
 
-// --- 确认逻辑 ---
+// --- 业务逻辑 ---
+
+const handleOcr = async () => {
+  if (selection.w === 0) return
+  isOcrLoading.value = true
+  try {
+    // 模拟 API 调用
+    await new Promise(resolve => setTimeout(resolve, 800))
+    ocrResult.value = "这是识别结果"
+  } catch (e) {
+    console.error("OCR 失败", e)
+    ocrResult.value = "识别失败"
+  } finally {
+    isOcrLoading.value = false
+  }
+}
+
 const handleConfirm = () => {
-  const result = [Math.round(selection.x), Math.round(selection.y), Math.round(selection.w), Math.round(selection.h)]
-  emit('confirm', result)
+  if (props.mode === 'ocr') {
+    emit('confirm', ocrResult.value)
+  } else {
+    const result = [Math.round(selection.x), Math.round(selection.y), Math.round(selection.w), Math.round(selection.h)]
+    emit('confirm', result)
+  }
   emit('close')
 }
 </script>
@@ -249,9 +253,9 @@ const handleConfirm = () => {
           />
 
           <div v-if="props.referenceRect" class="absolute border-2 border-dashed border-blue-400 bg-blue-500/10 pointer-events-none z-10" :style="referenceStyle">
-            <div class="absolute -top-6 left-0 bg-blue-500 text-white text-[10px] px-1.5 py-0.5 rounded font-mono shadow-sm"
+            <div class="absolute -top-6 left-0 bg-blue-500 text-white text-[10px] px-1.5 py-0.5 rounded font-mono shadow-sm whitespace-nowrap"
                  :style="{ transform: `scale(${1/viewState.scale})`, transformOrigin: 'bottom left' }">
-               Ref
+               {{ props.referenceLabel }}
             </div>
           </div>
 
@@ -283,8 +287,31 @@ const handleConfirm = () => {
           <h3 class="font-bold text-slate-700 text-sm flex items-center gap-2"><Crosshair :size="16" class="text-indigo-500" /> {{ title }}</h3>
         </div>
 
-        <div class="flex-1 p-4 space-y-6 overflow-y-auto">
-          <div class="space-y-2">
+        <div class="flex-1 p-4 space-y-5 overflow-y-auto">
+
+          <div v-if="props.mode === 'ocr'" class="space-y-2">
+            <div class="text-xs font-semibold text-purple-500 uppercase tracking-wider flex items-center gap-1"><ScanText :size="12" /> OCR 识别</div>
+            <div class="bg-white border border-slate-200 rounded-lg p-3 space-y-3 shadow-sm">
+              <button @click="handleOcr" :disabled="selection.w === 0 || isOcrLoading" class="w-full py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-600 border border-purple-200 rounded text-xs font-bold transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed">
+                <Loader2 v-if="isOcrLoading" :size="12" class="animate-spin" />
+                <ScanText v-else :size="12" />
+                {{ isOcrLoading ? '识别中...' : '开始识别' }}
+              </button>
+
+              <div class="space-y-1">
+                <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">识别结果(最高评分)</label>
+                <textarea
+                  v-model="ocrResult"
+                  rows="1"
+                  class="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-purple-400 transition-colors resize-none font-mono leading-relaxed overflow-hidden h-9"
+                  placeholder="等待识别..."
+                  spellcheck="false"
+                ></textarea>
+              </div>
+            </div>
+          </div>
+
+          <div v-else class="space-y-2">
             <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1"><MousePointer2 :size="12" /> 当前选区</div>
             <div class="bg-white border border-slate-200 rounded-lg p-3 space-y-2 font-mono text-xs shadow-sm select-text">
               <div class="flex justify-between"><span class="text-slate-400">X:</span><span class="font-bold text-slate-700">{{ Math.round(selection.x) }}</span></div>
@@ -311,19 +338,25 @@ const handleConfirm = () => {
                </div>
                <div class="flex items-start gap-2">
                   <RotateCcw :size="14" class="text-indigo-400 mt-0.5 shrink-0"/>
-                  <span> <strong>重置</strong> 重置图片位置。</span>
+                  <span> <strong>重置</strong> 重置视图位置。</span>
                </div>
             </div>
           </div>
 
           <div v-if="props.referenceRect" class="space-y-2">
-             <div class="text-xs font-semibold text-blue-500 uppercase tracking-wider flex items-center gap-1"><Maximize :size="12" /> 参考区域</div>
+             <div class="text-xs font-semibold text-blue-500 uppercase tracking-wider flex items-center gap-1"><Maximize :size="12" /> {{ props.referenceLabel }}</div>
              <div class="bg-blue-50 border border-blue-100 rounded-lg p-2 text-[10px] text-blue-700 font-mono break-all">[{{ props.referenceRect.join(', ') }}]</div>
           </div>
         </div>
 
         <div class="p-4 border-t border-slate-200 bg-white space-y-2">
-          <button @click="handleConfirm" :disabled="selection.w === 0" class="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold shadow-md shadow-indigo-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"><Check :size="16" /> 确认选取</button>
+          <button
+            @click="handleConfirm"
+            :disabled="props.mode === 'ocr' ? (!ocrResult && !isOcrLoading) : selection.w === 0"
+            class="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold shadow-md shadow-indigo-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Check :size="16" /> 确认{{ props.mode === 'ocr' ? '结果' : '选取' }}
+          </button>
           <button @click="$emit('close')" class="w-full py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"><X :size="16" /> 取消</button>
         </div>
       </div>
