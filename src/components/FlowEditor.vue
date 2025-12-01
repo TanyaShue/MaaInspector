@@ -6,6 +6,7 @@ import { Controls } from '@vue-flow/controls'
 import ContextMenu from './Flow/ContextMenu.vue'
 import NodeEditorModal from './Flow/NodeEditorModal.vue'
 import InfoPanel from './Flow/InfoPanel.vue'
+import NodeSearch from './Flow/NodeSearch.vue'
 import { useFlowGraph } from '../utils/useFlowGraph.js'
 import { resourceApi } from '../services/api.js'
 
@@ -19,12 +20,17 @@ const {
 
 const { fitView, removeEdges, findNode, screenToFlowCoordinate } = useVueFlow()
 
+// --- 关闭所有节点详情面板的信号 ---
+const closeAllDetailsSignal = ref(0)
+provide('closeAllDetailsSignal', closeAllDetailsSignal)
+
 // --- 提供更新方法给子组件 (CustomNode) ---
 provide('updateNode', handleNodeUpdate)
 
 // --- 菜单与弹窗状态 ---
 const menu = ref({ visible: false, x: 0, y: 0, type: null, data: null, flowPos: { x: 0, y: 0 } })
 const editor = ref({ visible: false, nodeId: '', nodeData: null })
+const searchVisible = ref(false)
 
 const closeMenu = () => { menu.value.visible = false }
 const getEvent = (params) => params.event || params
@@ -126,7 +132,36 @@ const handleMenuAction = ({ action, type, data, payload }) => {
     case 'clear':
       nodes.value = []; edges.value = [];
       break
+
+    case 'search':
+      searchVisible.value = true
+      break
+
+    case 'closeAllDetails':
+      closeAllDetailsSignal.value++
+      break
   }
+}
+
+// --- 定位到节点 ---
+const handleLocateNode = (nodeId) => {
+  // 先取消所有节点选中，然后选中目标节点
+  nodes.value = nodes.value.map(n => ({
+    ...n,
+    selected: n.id === nodeId
+  }))
+  
+  // 使用 fitView 聚焦到目标节点，将其居中显示
+  // 延迟一帧确保节点选中状态已更新
+  setTimeout(() => {
+    fitView({
+      nodes: [nodeId],  // 只聚焦目标节点
+      padding: 0.5,     // 增加 padding 让节点更突出
+      maxZoom: 1.5,     // 最大缩放限制
+      minZoom: 0.8,     // 最小缩放限制
+      duration: 600     // 平滑动画
+    })
+  }, 50)
 }
 
 const handleEditorSave = (newBusinessData) => {
@@ -215,6 +250,14 @@ const handleSaveNodes = async ({ source, filename }) => {
       :nodeData="editor.nodeData" 
       @close="editor.visible = false" 
       @save="handleEditorSave" 
+    />
+
+    <!-- 节点搜索面板 -->
+    <NodeSearch
+      :visible="searchVisible"
+      :nodes="nodes"
+      @close="searchVisible = false"
+      @locate-node="handleLocateNode"
     />
   </div>
 </template>

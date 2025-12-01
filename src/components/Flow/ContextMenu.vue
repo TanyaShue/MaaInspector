@@ -2,7 +2,8 @@
 import { computed, ref } from 'vue' // computed 仅用于 menuItems
 import {
   Trash2, Copy, Edit, PlusCircle, RefreshCw, XCircle, ChevronRight,
-  Activity, Check, Move, Target, Image, Sparkles, Palette, ScanText, Brain, ScanEye, Code2, Bug, Scissors, HelpCircle
+  Activity, Check, Move, Target, Image, Sparkles, Palette, ScanText, Brain, ScanEye, Code2, Bug, Scissors, HelpCircle,
+  Search, FolderClosed
 } from 'lucide-vue-next'
 
 const props = defineProps({
@@ -60,7 +61,7 @@ const menuItems = computed(() => {
     return [
       { label: '调试该节点', action: 'debug', icon: Bug, color: 'text-amber-600' },
       { type: 'divider' },
-      { label: '编辑节点样式', action: 'edit', icon: Edit, color: 'text-slate-600' },
+      // { label: '编辑节点样式', action: 'edit', icon: Edit, color: 'text-slate-600' }, // 暂时注释，避免与双击打开的NodeDetails混淆
       { label: '复制节点', action: 'duplicate', icon: Copy, color: 'text-slate-600' },
       { type: 'divider' },
       { label: '删除节点', action: 'delete', icon: Trash2, color: 'text-red-500' },
@@ -80,6 +81,9 @@ const menuItems = computed(() => {
         submenu: nodeTypes,
         submenuAction: 'add'
       },
+      { type: 'divider' },
+      { label: '搜索节点', action: 'search', icon: Search, color: 'text-emerald-600' },
+      { label: '关闭所有节点面板', action: 'closeAllDetails', icon: FolderClosed, color: 'text-slate-600' },
       { type: 'divider' },
       {
         label: '自动布局 (Dagre)',

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, inject } from 'vue'
+import { computed, ref, inject, watch } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import {
   Target, Image, Sparkles, Palette, ScanText, Brain, ScanEye, Code2, HelpCircle,
@@ -14,6 +14,7 @@ const props = defineProps({
 })
 
 const updateNode = inject('updateNode', () => console.warn('updateNode not provided'))
+const closeAllDetailsSignal = inject('closeAllDetailsSignal', ref(0))
 
 // --- Config ---
 const nodeConfig = {
@@ -34,6 +35,11 @@ const businessData = computed(() => props.data.data || {})
 
 const showDetails = ref(false)
 const toggleDetails = () => { showDetails.value = !showDetails.value }
+
+// 监听关闭所有节点详情的信号
+watch(closeAllDetailsSignal, () => {
+  showDetails.value = false
+})
 
 // --- Event Handlers ---
 const handleUpdateId = ({ oldId, newId }) => {
