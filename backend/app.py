@@ -1,3 +1,5 @@
+import base64
+import mimetypes
 import random
 import json
 import os
@@ -216,6 +218,99 @@ def get_file_nodes():
         print(f"Error loading nodes: {e}")
         return jsonify({"message": f"Error: {str(e)}"}), 500
 
+
+@app.route('/resource/file/templates', methods=['POST'])
+def get_file_templates():
+    """
+    获取指定文件中所有节点 template 属性对应的图片数据 (Base64)
+    Payload: { "source": "pipeline文件夹路径", "filename": "文件名.json" }
+    """
+    data = request.json
+    pipeline_path = data.get('source')
+    filename = data.get('filename')
+
+    if not pipeline_path or not filename:
+        return jsonify({"message": "Missing path or filename"}), 400
+
+    # 1. 推导 image 目录路径
+    # source 传入的是 .../resource_v1/pipeline
+    # 我们需要找到 .../resource_v1/image
+    try:
+        # 去掉路径末尾可能的斜杠以确保 dirname 工作正常
+        clean_pipeline_path = os.path.normpath(pipeline_path)
+        profile_path = os.path.dirname(clean_pipeline_path)  # 回退一级
+        image_base_path = os.path.join(profile_path, "image")  # 进入 image 目录
+
+        if not os.path.exists(image_base_path):
+            return jsonify({
+                "message": "Image directory not found",
+                "image_path": image_base_path,
+                "results": {}
+            }), 404
+
+        # 2. 加载节点数据
+        loader = JsonNodeLoader(pipeline_path)
+        nodes_data = loader.get_nodes_by_file(filename)
+
+        if not nodes_data:
+            return jsonify({"message": "File empty or not found", "results": {}}), 404
+
+        results = {}
+
+        # 3. 遍历节点查找 template
+        for node_id, node_content in nodes_data.items():
+            if "template" not in node_content:
+                continue
+
+            templates = node_content["template"]
+
+            # 统一转为列表处理
+            if isinstance(templates, str):
+                templates = [templates]
+            elif not isinstance(templates, list):
+                continue  # 如果既不是str也不是list，跳过
+
+            node_images = []
+
+            for img_rel_path in templates:
+                # 拼接完整路径: image_base_path + template值 (e.g. "寮30/寮301.png")
+                full_img_path = os.path.join(image_base_path, img_rel_path)
+
+                img_info = {
+                    "path": img_rel_path,
+                    "found": False,
+                    "base64": None
+                }
+
+                if os.path.exists(full_img_path):
+                    try:
+                        # 识别 mime type (e.g., image/png)
+                        mime_type, _ = mimetypes.guess_type(full_img_path)
+                        if not mime_type:
+                            mime_type = "image/png"  # 默认 fallback
+
+                        with open(full_img_path, "rb") as img_f:
+                            # 读取二进制并转为 Base64
+                            b64_data = base64.b64encode(img_f.read()).decode('utf-8')
+                            img_info["found"] = True
+                            img_info["base64"] = f"data:{mime_type};base64,{b64_data}"
+                    except Exception as e:
+                        print(f"Error reading image {full_img_path}: {e}")
+
+                node_images.append(img_info)
+
+            if node_images:
+                results[node_id] = node_images
+
+        return jsonify({
+            "message": "Images loaded",
+            "base_image_path": image_base_path,
+            "results": results
+        })
+
+    except Exception as e:
+        print(f"Error processing templates: {e}")
+        return jsonify({"message": f"Error: {str(e)}"}), 500
 
 @app.route('/resource/file/create', methods=['POST'])
 def resource_file_create():

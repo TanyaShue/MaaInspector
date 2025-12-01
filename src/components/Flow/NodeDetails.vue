@@ -75,7 +75,7 @@ const expandedSections = reactive({
   basic: true,
   flow: false,
   common: false,
-  delay: false,
+  // delay: false, // 已合并到 common
   recognition: true,
   action: false
 })
@@ -443,30 +443,21 @@ const jumpToSettings = (type) => {
                   <span class="text-[11px] text-slate-600">关注</span>
                 </label>
               </div>
-            </div>
-          </div>
 
-          <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <button
-              @click="toggleSection('delay')"
-              class="w-full flex items-center justify-between px-3 py-2 bg-slate-50/80 hover:bg-slate-100 transition-colors"
-            >
-              <div class="flex items-center gap-1.5">
-                <Clock :size="12" class="text-violet-500" />
-                <span class="font-semibold text-slate-700 text-xs">延迟设置</span>
-              </div>
-              <component :is="expandedSections.delay ? ChevronDown : ChevronRight" :size="14" class="text-slate-400" />
-            </button>
+              <div class="h-px bg-slate-100 my-1 w-full"></div>
 
-            <div v-show="expandedSections.delay" class="p-3 border-t border-slate-100">
               <div class="grid grid-cols-2 gap-2">
                 <div class="space-y-1">
-                  <label class="text-[10px] font-semibold text-slate-500 uppercase">前延迟 (ms)</label>
+                  <label class="text-[10px] font-semibold text-slate-500 uppercase flex items-center gap-1">
+                    <Clock :size="10" class="text-violet-500"/> 前延迟 (ms)
+                  </label>
                   <input type="number" :value="getValue('pre_delay', 200)" @input="setValue('pre_delay', parseInt($event.target.value) || 200)"
                     class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 transition-all" />
                 </div>
                 <div class="space-y-1">
-                  <label class="text-[10px] font-semibold text-slate-500 uppercase">后延迟 (ms)</label>
+                  <label class="text-[10px] font-semibold text-slate-500 uppercase flex items-center gap-1">
+                     <Clock :size="10" class="text-violet-500"/> 后延迟 (ms)
+                  </label>
                   <input type="number" :value="getValue('post_delay', 200)" @input="setValue('post_delay', parseInt($event.target.value) || 200)"
                     class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 transition-all" />
                 </div>

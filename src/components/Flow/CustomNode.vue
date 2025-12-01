@@ -2,8 +2,12 @@
 import { computed, ref, inject, watch } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import {
+  // 识别类型图标
   Target, Image, Sparkles, Palette, ScanText, Brain, ScanEye, Code2, HelpCircle,
-  Loader2, AlertCircle, Ban, CheckCircle2
+  // 状态图标
+  Loader2, AlertCircle, Ban, CheckCircle2,
+  // 动作图标
+  MousePointer, ArrowRight, Keyboard, Type, Play, Square, Terminal, Wand2
 } from 'lucide-vue-next'
 import NodeDetails from './NodeDetails.vue'
 
@@ -16,7 +20,7 @@ const props = defineProps({
 const updateNode = inject('updateNode', () => console.warn('updateNode not provided'))
 const closeAllDetailsSignal = inject('closeAllDetailsSignal', ref(0))
 
-// --- Config ---
+// --- Config: 识别类型 ---
 const nodeConfig = {
   'DirectHit':             { label: '通用匹配', icon: Target,    color: 'bg-blue-500',    text: 'text-blue-600',    border: 'border-blue-200' },
   'TemplateMatch':         { label: '模板匹配', icon: Image,     color: 'bg-indigo-500',  text: 'text-indigo-600',  border: 'border-indigo-200' },
@@ -29,14 +33,39 @@ const nodeConfig = {
   'Unknown':               { label: '未知节点', icon: HelpCircle, color: 'bg-gray-400',    text: 'text-gray-500',    border: 'border-gray-300' }
 }
 
+// --- Config: 动作类型 ---
+const actionConfigMap = {
+  'Click':     { icon: MousePointer, label: '点击目标', color: 'text-blue-500', bg: 'bg-blue-50' },
+  'Swipe':     { icon: ArrowRight,   label: '滑动屏幕', color: 'text-indigo-500', bg: 'bg-indigo-50' },
+  'Key':       { icon: Keyboard,     label: '物理按键', color: 'text-violet-500', bg: 'bg-violet-50' },
+  'InputText': { icon: Type,         label: '输入文本', color: 'text-emerald-500', bg: 'bg-emerald-50' },
+  'StartApp':  { icon: Play,         label: '启动应用', color: 'text-green-500', bg: 'bg-green-50' },
+  'StopApp':   { icon: Square,       label: '停止应用', color: 'text-red-500', bg: 'bg-red-50' },
+  'StopTask':  { icon: Square,       label: '停止任务', color: 'text-rose-500', bg: 'bg-rose-50' },
+  'Command':   { icon: Terminal,     label: 'Shell命令', color: 'text-amber-500', bg: 'bg-amber-50' },
+  'Custom':    { icon: Wand2,        label: '自定义动作', color: 'text-slate-500', bg: 'bg-slate-50' }
+}
+
 const config = computed(() => nodeConfig[props.data.type] || nodeConfig['DirectHit'])
 const availableTypes = Object.keys(nodeConfig).filter(t => t !== 'Unknown')
 const businessData = computed(() => props.data.data || {})
 
+// 计算当前动作配置
+const currentActionConfig = computed(() => {
+  const action = businessData.value.action
+  if (!action || action === 'DoNothing') return null
+  return actionConfigMap[action] || actionConfigMap['Custom']
+})
+
 const showDetails = ref(false)
 const toggleDetails = () => { showDetails.value = !showDetails.value }
 
-// 监听关闭所有节点详情的信号
+// 安全获取文件名的辅助函数（修复报错的核心）
+const getFileName = (path) => {
+  if (!path || typeof path !== 'string') return '未选择图片'
+  return path.split('/').pop()
+}
+
 watch(closeAllDetailsSignal, () => {
   showDetails.value = false
 })
@@ -111,46 +140,66 @@ const headerStyle = computed(() => {
       </div>
     </div>
 
-    <div class="p-4 bg-white min-h-[80px] flex flex-col justify-center">
-      <div v-if="data._isMissing" class="text-center text-slate-400 text-xs italic bg-slate-50 p-2 rounded border border-dashed border-slate-200">节点引用缺失<br><span class="text-[10px] opacity-70">Target node not found</span></div>
+    <div class="p-4 bg-white min-h-[80px] flex items-center gap-3">
 
-      <div v-else-if="data.type === 'Unknown'" class="text-center text-slate-400 text-xs italic">
-        未知逻辑节点<br><span class="text-[10px] opacity-70">Placeholder</span>
+      <div class="flex-1 min-w-0">
+        <div v-if="data._isMissing" class="text-center text-slate-400 text-xs italic bg-slate-50 p-2 rounded border border-dashed border-slate-200">
+          引用缺失
+        </div>
+        <div v-else-if="data.type === 'Unknown'" class="text-center text-slate-400 text-xs italic">
+          未知节点
+        </div>
+
+        <div v-else-if="['TemplateMatch', 'FeatureMatch'].includes(data.type)" class="space-y-1">
+          <div class="w-full h-12 bg-slate-50 rounded-lg border border-slate-200 border-dashed flex items-center justify-center text-slate-400 overflow-hidden relative group/img">
+            <component :is="config.icon" :size="20" class="opacity-20 group-hover/img:scale-110 transition-transform" />
+            <span class="text-[9px] absolute bottom-0.5">Preview</span>
+          </div>
+          <div class="text-[10px] text-center text-slate-500 truncate" :title="String(businessData.template)">
+            {{ getFileName(businessData.template) }}
+          </div>
+        </div>
+
+        <div v-else-if="data.type === 'ColorMatch'" class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded shadow-sm border border-slate-100 ring-1 ring-slate-200" :style="{ backgroundColor: businessData.targetColor || '#000000' }"></div>
+          <div class="flex flex-col overflow-hidden">
+            <span class="text-[10px] text-slate-400 uppercase">Target</span>
+            <span class="font-mono text-xs font-bold text-slate-700 truncate">{{ businessData.targetColor || '#N/A' }}</span>
+          </div>
+        </div>
+
+        <div v-else-if="['OCR', 'NeuralNetworkClassify', 'NeuralNetworkDetect'].includes(data.type)" class="space-y-1">
+          <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider flex items-center gap-1">
+            Expected / Target
+          </div>
+          <div class="bg-slate-50 px-2 py-1.5 rounded border border-slate-100 text-xs font-mono text-slate-700 break-all leading-tight min-h-[1.5em]">
+            {{ businessData.expected || (data.type === 'OCR' ? 'Any Text' : 'Any Class') }}
+          </div>
+        </div>
+
+        <div v-else class="text-center">
+          <div class="text-xs text-slate-500 line-clamp-2">{{ businessData.description || '通用逻辑处理' }}</div>
+        </div>
       </div>
 
-      <div v-else-if="['TemplateMatch', 'FeatureMatch'].includes(data.type)" class="space-y-2">
-        <div class="w-full h-16 bg-slate-100 rounded-lg border border-slate-200 border-dashed flex items-center justify-center text-slate-400 overflow-hidden relative group/img">
-          <component :is="config.icon" :size="24" class="opacity-20 group-hover/img:scale-110 transition-transform" />
-          <span class="text-[10px] absolute bottom-1">Image Preview</span>
+      <div v-if="currentActionConfig" class="shrink-0 flex flex-col items-center justify-center">
+        <div class="h-8 w-px bg-slate-100 absolute right-[50px] top-1/2 -translate-y-1/2 hidden"></div>
+
+        <div
+          class="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 cursor-help hover:scale-105 shadow-sm border border-slate-100"
+          :class="currentActionConfig.bg"
+          :title="`执行动作: ${currentActionConfig.label}`"
+        >
+          <component :is="currentActionConfig.icon" :size="18" :class="currentActionConfig.color" />
         </div>
-        <div class="text-xs text-center text-slate-500 truncate">{{ businessData.imageName || 'unknown.png' }}</div>
       </div>
-      <div v-else-if="data.type === 'ColorMatch'" class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-lg shadow-sm border border-slate-100 ring-2 ring-white" :style="{ backgroundColor: businessData.targetColor || '#000000' }"></div>
-        <div class="flex flex-col"><span class="text-xs text-slate-400">Target HEX</span><span class="font-mono text-sm font-bold text-slate-700">{{ businessData.targetColor || '#N/A' }}</span></div>
-      </div>
-      <div v-else-if="data.type === 'OCR'" class="space-y-1">
-        <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Detected Text</div>
-        <div class="bg-slate-50 p-2 rounded border border-slate-100 text-xs font-mono text-slate-700 break-all leading-relaxed">{{ businessData.text || 'Waiting for input...' }}</div>
-      </div>
-      <div v-else-if="['NeuralNetworkClassify', 'NeuralNetworkDetect', 'Custom'].includes(data.type)" class="text-center">
-        <div class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200">
-          <component :is="config.icon" :size="12" :class="config.text" />
-          <span class="text-xs font-bold text-slate-600">{{ businessData.modelLabel || 'No Model' }}</span>
-        </div>
-        <div class="mt-2 text-[10px] text-slate-400">Confidence: {{ businessData.confidence || 0 }}%</div>
-      </div>
-      <div v-else class="text-center space-y-2">
-        <div class="text-xs text-slate-500">{{ businessData.description || '通用流程节点' }}</div>
-        <div class="w-full h-1 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-blue-500 w-2/3"></div></div>
-      </div>
+
     </div>
 
     <div
       v-if="!data._isMissing && data.type !== 'Unknown'"
       class="flex h-6 w-full border-t border-slate-100 divide-x divide-slate-100"
     >
-      <!-- Next 输出端口 -->
       <div class="flex-1 relative group hover:bg-blue-50 flex justify-center items-center cursor-crosshair transition-colors">
         <span class="text-[10px] font-bold text-blue-500 opacity-60 group-hover:opacity-100 transition-opacity">Next</span>
         <Handle
@@ -162,7 +211,6 @@ const headerStyle = computed(() => {
         <div class="absolute bottom-0 w-full h-1 bg-blue-200 group-hover:bg-blue-500 transition-colors rounded-bl-xl"></div>
       </div>
 
-      <!-- Interrupt 输出端口 -->
       <div class="flex-1 relative group hover:bg-amber-50 flex justify-center items-center cursor-crosshair transition-colors">
         <span class="text-[10px] font-bold text-amber-500 opacity-60 group-hover:opacity-100 transition-opacity">Int.</span>
         <Handle
@@ -174,7 +222,6 @@ const headerStyle = computed(() => {
         <div class="absolute bottom-0 w-full h-1 bg-amber-200 group-hover:bg-amber-500 transition-colors"></div>
       </div>
 
-      <!-- Error 输出端口 -->
       <div class="flex-1 relative group hover:bg-rose-50 flex justify-center items-center cursor-crosshair transition-colors">
         <span class="text-[10px] font-bold text-rose-500 opacity-60 group-hover:opacity-100 transition-opacity">Err.</span>
         <Handle

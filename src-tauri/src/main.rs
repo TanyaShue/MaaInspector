@@ -6,7 +6,6 @@ use tauri::{Manager, WindowEvent};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
-// 使用Tauri的State管理功能来保存子进程的句柄
 struct AppState(Mutex<Option<Child>>);
 
 fn main() {
