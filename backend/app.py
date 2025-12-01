@@ -455,6 +455,38 @@ def device_connect():
 def device_disconnect():
     return jsonify({"message": "Device Offline"})
 
+@app.route('/device/screenshot', methods=['GET'])
+def device_screenshot():
+    """
+    获取设备截图
+    目前返回静态图片 banner_placeholder.jpg
+    """
+    try:
+        print("111111111111")
+        # 假设图片在 static 或者当前目录下，这里为了方便直
+        # 接在根目录或 backend 目录下找
+        # 你需要确保目录下有一张名为 banner_placeholder.jpg 的图片
+        img_path = 'banner_placeholder.jpg'
+
+        # 如果文件不存在，为了防止报错，创建一个简单的提示 (仅演示逻辑，实际请放入一张图片)
+        if not os.path.exists(img_path):
+            return jsonify({"success": False, "message": "Placeholder image not found on server"}), 404
+
+        mime_type, _ = mimetypes.guess_type(img_path)
+        if not mime_type:
+            mime_type = "image/jpeg"
+
+        with open(img_path, "rb") as img_f:
+            b64_data = base64.b64encode(img_f.read()).decode('utf-8')
+            return jsonify({
+                "success": True,
+                "image": f"data:{mime_type};base64,{b64_data}",
+                "size": [1280, 720]  # 告知前端原始尺寸
+            })
+
+    except Exception as e:
+        print(f"Error getting screenshot: {e}")
+        return jsonify({"success": False, "message": str(e)}), 500
 
 @app.route('/agent/connect', methods=['POST'])
 def agent_connect():
@@ -472,4 +504,4 @@ def agent_disconnect():
 
 
 if __name__ == '__main__':
-    app.run(port=5001, debug=True)
+    app.run(port=5000, debug=True)

@@ -1,6 +1,6 @@
 // src/services/api.js
 
-const API_BASE_URL = 'http://127.0.0.1:5001'
+const API_BASE_URL = 'http://127.0.0.1:5000'
 
 async function request(endpoint, options = {}) {
   const url = `${API_BASE_URL}${endpoint}`
@@ -40,7 +40,9 @@ export const deviceApi = {
     method: 'POST',
     body: JSON.stringify(deviceData)
   }),
-  disconnect: () => request('/device/disconnect', { method: 'POST' })
+  disconnect: () => request('/device/disconnect', { method: 'POST' }),
+
+  getScreenshot: () => request('/device/screenshot', { method: 'GET' })
 }
 
 export const resourceApi = {

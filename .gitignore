@@ -27,3 +27,6 @@ dist-ssr
 src-tauri/python-runtime/
 get-pip.py
 /test/
+/backend/config/
+/backend/debug/
+/.vscode/

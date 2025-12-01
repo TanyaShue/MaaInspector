@@ -19,8 +19,8 @@ const props = defineProps({
   currentFilename: { type: String, default: '' }
 })
 
-// [修改] 新增 load-images 事件
-const emit = defineEmits(['load-nodes', 'load-images', 'save-nodes', 'before-switch-file'])
+// [修改] 增加 device-connected 事件
+const emit = defineEmits(['load-nodes', 'load-images', 'save-nodes', 'before-switch-file', 'device-connected'])
 
 // --- 内部组件 (Keep small) ---
 const StatusIndicator = defineComponent({
@@ -125,16 +125,14 @@ const fetchAndEmitNodes = async () => {
     emit('load-nodes', { filename: fileObj.value, nodes: nodes })
     resourceCtrl.message = `已加载: ${Object.keys(nodes).length} 节点`
 
-    // 2. [新增] 异步加载图片数据
+    // 2. 异步加载图片数据
     try {
       const imgRes = await resourceApi.getTemplateImages(fileObj.source, fileObj.value)
       if (imgRes.results) {
-        // 发送图片数据给父组件
         emit('load-images', imgRes.results)
       }
     } catch (imgError) {
       console.warn("图片加载失败 (非致命)", imgError)
-      // 不中断流程，只打印警告
     }
 
   } catch (e) {
@@ -193,7 +191,22 @@ const cancelSwitch = () => {
 }
 
 // --- 动作处理 ---
-const handleDeviceConnect = () => deviceCtrl.connect(currentDevice.value)
+
+// [修改] 处理设备连接并发出事件
+const handleDeviceConnect = async () => {
+  try {
+    await deviceCtrl.connect(currentDevice.value)
+    emit('device-connected', true)
+  } catch (e) {
+    emit('device-connected', false)
+  }
+}
+
+// [新增] 处理设备断开并发出事件
+const handleDeviceDisconnect = async () => {
+  await deviceCtrl.disconnect()
+  emit('device-connected', false)
+}
 
 const handleResourceLoad = async () => {
   try {
@@ -399,7 +412,7 @@ const saveResourceSettings = (data) => {
               </div>
               <div class="flex gap-2">
                 <button v-if="deviceCtrl.status !== 'connected'" @click="handleDeviceConnect" :disabled="deviceCtrl.status === 'connecting' || availableDevices.length === 0" class="btn-primary flex-1 bg-indigo-500 shadow-indigo-100"><Power :size="14" /> 连接</button>
-                <button v-else @click="deviceCtrl.disconnect()" class="btn-danger flex-1"><Power :size="14" /> 断开</button>
+                <button v-else @click="handleDeviceDisconnect" class="btn-danger flex-1"><Power :size="14" /> 断开</button>
                 <button @click="showDeviceSettings = true" class="btn-icon"><Settings :size="16" /></button>
               </div>
             </div>

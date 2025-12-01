@@ -7,6 +7,7 @@ import ContextMenu from './Flow/ContextMenu.vue'
 import NodeEditorModal from './Flow/NodeEditorModal.vue'
 import InfoPanel from './Flow/InfoPanel.vue'
 import NodeSearch from './Flow/NodeSearch.vue'
+import DeviceScreen from './Flow/DeviceScreen.vue' // [新增] 引入设备投屏组件
 import { useFlowGraph } from '../utils/useFlowGraph.js'
 import { resourceApi } from '../services/api.js'
 
@@ -26,6 +27,9 @@ provide('closeAllDetailsSignal', closeAllDetailsSignal)
 
 // --- 提供更新方法给子组件 (CustomNode) ---
 provide('updateNode', handleNodeUpdate)
+
+// --- 新增：设备连接状态 ---
+const isDeviceConnected = ref(false)
 
 // --- 菜单与弹窗状态 ---
 const menu = ref({ visible: false, x: 0, y: 0, type: null, data: null, flowPos: { x: 0, y: 0 } })
@@ -174,18 +178,17 @@ const handleEditorSave = (newBusinessData) => {
   editor.value.visible = false
 }
 
-// [新增] 处理图片加载
+// 处理图片加载
 const handleLoadImages = (imageDataMap) => {
   if (!imageDataMap) return
 
   nodes.value = nodes.value.map(node => {
-    // 检查是否有该节点的图片数据
     if (imageDataMap[node.id]) {
       return {
         ...node,
         data: {
           ...node.data,
-          _images: imageDataMap[node.id] // 将图片注入到 _images 字段
+          _images: imageDataMap[node.id]
         }
       }
     }
@@ -232,6 +235,10 @@ const handleSaveNodes = async ({ source, filename }) => {
       <Background pattern-color="#cbd5e1" :gap="20" />
       <Controls />
 
+      <Panel position="top-left" class="m-4 h-[240px] aspect-video pointer-events-auto">
+        <DeviceScreen :connected="isDeviceConnected" />
+      </Panel>
+
       <Panel position="top-right" class="m-4 pointer-events-none">
         <InfoPanel
           :node-count="nodes.length"
@@ -241,6 +248,7 @@ const handleSaveNodes = async ({ source, filename }) => {
           @load-nodes="loadNodes"
           @load-images="handleLoadImages"
           @save-nodes="handleSaveNodes"
+          @device-connected="(val) => isDeviceConnected = val"
         />
       </Panel>
 
