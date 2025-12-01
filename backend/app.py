@@ -9,6 +9,7 @@ from flask_cors import CORS
 from maa.toolkit import Toolkit
 
 from backend.untils import JsonNodeLoader
+from backend.untils.maafw import maafw
 
 app = Flask(__name__)
 CORS(app)
@@ -118,10 +119,6 @@ def resource_load():
     paths = data.get('paths', [])
     profile_name = data.get('name', 'Unknown')
 
-    mock_delay()
-    states["resource"] = True
-    print(data)
-
     combined_files = []
 
     for idx, path in enumerate(paths):
@@ -218,6 +215,73 @@ def get_file_nodes():
         print(f"Error loading nodes: {e}")
         return jsonify({"message": f"Error: {str(e)}"}), 500
 
+
+@app.route('/resource/file/save', methods=['POST'])
+def resource_file_save():
+    """
+    保存节点数据到指定 JSON 文件
+    """
+    try:
+        data = request.json
+        # print(data) # 调试用
+        folder_path = data.get('source')
+        filename = data.get('filename')
+        nodes_data = data.get('nodes', {})  # 变量名改一下，避免歧义
+
+        if not folder_path or not filename:
+            return jsonify({"message": "Missing path or filename"}), 400
+
+        full_path = os.path.join(folder_path, filename)
+
+        save_content = {}
+
+        # === 核心修复逻辑 ===
+        # 判断前端传的是 字典(已处理) 还是 列表(VueFlow原始数据)
+        if isinstance(nodes_data, dict):
+            # 情况 A: 前端已经把数据格式化为 { "ID": { ... } }
+            # 直接使用，或者做简单的清理
+            save_content = nodes_data
+
+        elif isinstance(nodes_data, list):
+            # 情况 B: 前端传的是数组 [ {id: "xx", data: { ... }}, ... ]
+            # 需要执行之前的提取逻辑
+            for node in nodes_data:
+                node_id = node.get('id')
+
+                # 获取 data.data (业务数据)
+                node_data_wrapper = node.get('data', {})
+                # 兼容处理：有的节点可能直接把数据放在 data 下，有的在 data.data 下
+                business_data = node_data_wrapper.get('data', node_data_wrapper)
+
+                clean_data = business_data.copy() if isinstance(business_data, dict) else {}
+
+                # 移除冗余的 id
+                if 'id' in clean_data:
+                    del clean_data['id']
+
+                save_content[node_id] = clean_data
+        else:
+            return jsonify({"message": "Invalid nodes format (must be dict or list)"}), 400
+
+        # === 写入文件 ===
+        # 确保父目录存在
+        parent_dir = os.path.dirname(full_path)
+        if not os.path.exists(parent_dir):
+            os.makedirs(parent_dir)  # 自动创建缺失的文件夹
+
+        with open(full_path, 'w', encoding='utf-8') as f:
+            json.dump(save_content, f, indent=4, ensure_ascii=False)
+
+        return jsonify({
+            "success": True,
+            "message": f"Saved {len(save_content)} nodes to {filename}"
+        })
+
+    except Exception as e:
+        print(f"Error saving file: {e}")
+        import traceback
+        traceback.print_exc()  # 打印完整堆栈方便调试
+        return jsonify({"message": f"Save failed: {str(e)}", "success": False}), 500
 
 @app.route('/resource/file/templates', methods=['POST'])
 def get_file_templates():
@@ -354,16 +418,41 @@ def resource_file_create():
 # === 设备与Agent接口 (保持简单兼容) ===
 @app.route('/device/connect', methods=['POST'])
 def device_connect():
-    mock_delay()
-    states["device"]["connected"] = True
     info = request.json or {}
-    return jsonify({"message": "Device Ready", "info": {"ID": info.get('name'), "IP": info.get('address')}})
 
+    adb_path = info.get("adb_path")
+    address = info.get("address")
+    config = info.get("config")
+    name = info.get("name")
+    print(config)
+    # 调用底层 adb 连接
+    r = maafw.connect_adb(adb_path, address, config)
+    print("connect result:", r)
+
+    # r 结构形如：(True/False, "Message...")
+    success, message = r if isinstance(r, tuple) and len(r) == 2 else (False, "Invalid return value from connect_adb")
+
+    if success:
+        # 连接成功
+        return jsonify({
+            "success": True,
+            "message": "Device Ready",
+            "info": {
+                "id": name,
+                "ip": address,
+                "detail": message
+            }
+        }), 200
+
+    # 连接失败
+    return jsonify({
+        "success": False,
+        "message": "Device Not Ready",
+        "error": message
+    }), 400
 
 @app.route('/device/disconnect', methods=['POST'])
 def device_disconnect():
-    mock_delay()
-    states["device"]["connected"] = False
     return jsonify({"message": "Device Offline"})
 
 

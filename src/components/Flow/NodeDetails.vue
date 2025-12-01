@@ -4,7 +4,8 @@ import {
   X, Check, ChevronDown, ChevronRight,
   Settings, GitBranch, Clock, Zap, FileJson,
   Target, Image, Sparkles, Palette, ScanText, Brain, ScanEye, Code2,
-  MousePointer, ArrowRight, Keyboard, Type, Play, Square, Terminal, Wand2
+  MousePointer, ArrowRight, Keyboard, Type, Play, Square, Terminal, Wand2,
+  AlertCircle
 } from 'lucide-vue-next'
 
 const props = defineProps({
@@ -75,7 +76,6 @@ const expandedSections = reactive({
   basic: true,
   flow: false,
   common: false,
-  // delay: false, // 已合并到 common
   recognition: true,
   action: false
 })
@@ -83,9 +83,9 @@ const expandedSections = reactive({
 const editingId = ref('')
 const formData = ref({})
 const jsonStr = ref('')
+const jsonError = ref('')
 
 // Refs 用于滚动跳转
-const containerRef = ref(null)
 const recSectionRef = ref(null)
 const actSectionRef = ref(null)
 
@@ -93,21 +93,24 @@ const actSectionRef = ref(null)
 watch(() => props.visible, (val) => {
   if (val) {
     editingId.value = props.nodeId
+    // 深拷贝数据
     formData.value = JSON.parse(JSON.stringify(props.nodeData?.data || {}))
     updateJsonFromForm()
+    jsonError.value = ''
   }
 }, { immediate: true })
 
-// 监听节点数据变化（外部更新时同步）
+// 监听节点数据变化
 watch(() => props.nodeData?.data, (newData) => {
   if (props.visible && newData) {
-    formData.value = JSON.parse(JSON.stringify(newData))
-    updateJsonFromForm()
+    if (activeTab.value !== 'json' || !jsonError.value) {
+      formData.value = JSON.parse(JSON.stringify(newData))
+      updateJsonFromForm()
+    }
   }
 }, { deep: true })
 
 // ========== 计算属性 ==========
-const businessData = computed(() => props.nodeData?.data || {})
 const currentRecognition = computed(() => formData.value.recognition || DEFAULTS.recognition)
 const currentAction = computed(() => formData.value.action || DEFAULTS.action)
 
@@ -128,6 +131,39 @@ const updateJsonFromForm = () => {
   jsonStr.value = JSON.stringify(formData.value, null, 2)
 }
 
+const handleJsonInput = (event) => {
+  const newVal = event.target.value
+  jsonStr.value = newVal
+
+  try {
+    const parsed = JSON.parse(newVal)
+    jsonError.value = ''
+    formData.value = parsed
+    emitUpdateData()
+  } catch (e) {
+    jsonError.value = e.message
+  }
+}
+
+const setExpectedValue = (rawVal) => {
+  let val = rawVal
+  const recType = currentRecognition.value
+  if (['NeuralNetworkClassify', 'NeuralNetworkDetect'].includes(recType)) {
+    if (val === '') { setValue('expected', ''); return }
+    try {
+      const parsed = JSON.parse(val)
+      if (typeof parsed === 'number' || Array.isArray(parsed)) { setValue('expected', parsed); return }
+    } catch (e) {}
+    if (typeof val === 'string' && val.includes(',')) {
+      const arr = val.split(',').map(s => s.trim()).filter(s => s !== '')
+      const isNumArray = arr.every(s => !isNaN(Number(s)))
+      if (isNumArray && arr.length > 0) { setValue('expected', arr.map(Number)); return }
+    }
+    if (!isNaN(Number(val)) && val.trim() !== '') { setValue('expected', Number(val)); return }
+  }
+  setValue('expected', val)
+}
+
 const getValue = (key, defaultVal) => {
   return formData.value[key] !== undefined ? formData.value[key] : (defaultVal ?? DEFAULTS[key])
 }
@@ -138,7 +174,6 @@ const setValue = (key, value) => {
   } else {
     formData.value[key] = value
   }
-  // 实时同步更新
   emitUpdateData()
 }
 
@@ -154,12 +189,13 @@ const setArrayValue = (key, value) => {
   } else {
     formData.value[key] = value.split(',').map(s => s.trim()).filter(Boolean)
   }
-  // 实时同步更新
   emitUpdateData()
 }
 
-// 实时更新数据到节点
 const emitUpdateData = () => {
+  if (activeTab.value !== 'json') {
+    updateJsonFromForm()
+  }
   emit('update-data', { ...formData.value })
 }
 
@@ -174,18 +210,21 @@ const handleTypeChange = (newType) => {
   emit('update-type', newType)
 }
 
-// 跳转到对应设置区域
 const jumpToSettings = (type) => {
-  // 展开面板
   expandedSections[type] = true
-
-  // 等待DOM更新后滚动
   nextTick(() => {
+    // 这里的 scrollIntoView 会自动在父级 overflow 容器中滚动
     const target = type === 'recognition' ? recSectionRef.value : actSectionRef.value
-    if (target && containerRef.value) {
+    if (target) {
       target.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
   })
+}
+
+const getExpectedDisplayValue = () => {
+  const val = getValue('expected', '')
+  if (typeof val === 'object') { return JSON.stringify(val) }
+  return val
 }
 </script>
 
@@ -204,7 +243,7 @@ const jumpToSettings = (type) => {
       @dblclick.stop
       @wheel.stop
     >
-      <div class="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-slate-50 to-slate-100/80 border-b border-slate-100">
+      <div class="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-slate-50 to-slate-100/80 border-b border-slate-100 shrink-0">
         <div class="flex items-center gap-2.5">
           <div class="p-1.5 rounded-lg bg-white shadow-sm border border-slate-100">
             <component :is="recognitionConfig.icon" :size="16" :class="recognitionConfig.color" />
@@ -222,7 +261,7 @@ const jumpToSettings = (type) => {
         </button>
       </div>
 
-      <div class="flex border-b border-slate-100 bg-slate-50/30">
+      <div class="flex border-b border-slate-100 bg-slate-50/30 shrink-0">
         <button
           @click="activeTab = 'properties'"
           class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-all"
@@ -245,10 +284,12 @@ const jumpToSettings = (type) => {
         </button>
       </div>
 
-      <div ref="containerRef" class="flex-1 overflow-y-auto custom-scrollbar">
+      <div class="flex-1 min-h-0 grid grid-cols-1 grid-rows-1 relative">
 
-        <div v-show="activeTab === 'properties'" class="p-3 space-y-2.5">
-
+        <div
+          class="col-start-1 row-start-1 overflow-y-auto custom-scrollbar p-3 space-y-2.5"
+          :class="{ 'invisible': activeTab === 'json' }"
+        >
           <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
             <button
               @click="toggleSection('basic')"
@@ -641,7 +682,7 @@ const jumpToSettings = (type) => {
                 <div class="grid grid-cols-2 gap-2">
                   <div class="space-y-1">
                     <label class="text-[10px] font-semibold text-slate-500 uppercase">期望标签</label>
-                    <input :value="getValue('expected', '')" @input="setValue('expected', $event.target.value)"
+                    <input :value="getExpectedDisplayValue()" @input="setExpectedValue($event.target.value)"
                       class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 transition-all font-mono"
                       placeholder="0 或 [0,1,2]" />
                   </div>
@@ -792,11 +833,37 @@ const jumpToSettings = (type) => {
 
         </div>
 
-        <div v-show="activeTab === 'json'" class="p-3">
-          <div class="bg-slate-900 rounded-xl p-3 overflow-hidden">
-            <pre class="font-mono text-[10px] text-green-400 whitespace-pre-wrap break-all leading-relaxed max-h-[400px] overflow-y-auto custom-scrollbar">{{ jsonStr }}</pre>
+        <div
+          v-if="activeTab === 'json'"
+          class="col-start-1 row-start-1 z-10 w-full h-full p-3 flex flex-col bg-white overflow-hidden"
+        >
+          <div class="flex-1 bg-slate-900 rounded-xl overflow-hidden border border-slate-700 flex flex-col relative">
+            <textarea
+              class="w-full h-full bg-transparent text-[10px] font-mono text-green-400 p-3 outline-none resize-none custom-scrollbar"
+              :value="jsonStr"
+              @input="handleJsonInput"
+              spellcheck="false"
+            ></textarea>
+
+            <transition
+              enter-active-class="transition duration-200 ease-out"
+              enter-from-class="translate-y-full opacity-0"
+              enter-to-class="translate-y-0 opacity-100"
+              leave-active-class="transition duration-150 ease-in"
+              leave-from-class="translate-y-0 opacity-100"
+              leave-to-class="translate-y-full opacity-0"
+            >
+              <div v-if="jsonError" class="absolute bottom-3 left-3 right-3 bg-red-500/90 text-white px-3 py-2 rounded-lg backdrop-blur-sm shadow-lg flex items-start gap-2 z-10">
+                <AlertCircle :size="16" class="shrink-0 mt-0.5" />
+                <div class="text-[10px] font-mono break-all leading-tight">{{ jsonError }}</div>
+              </div>
+            </transition>
+          </div>
+          <div class="mt-2 text-[10px] text-slate-400 text-center shrink-0">
+            编辑后自动保存，格式错误将不会生效
           </div>
         </div>
+
       </div>
 
     </div>

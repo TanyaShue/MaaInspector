@@ -9,16 +9,13 @@
         {
             "adb_path": "D:\\leidian\\LDPlayer9\\adb.exe",
             "address": "emulator-5556",
-            "config": {
-                "extras": {
-                    "ld": {
-                        "enable": true,
-                        "index": 1,
-                        "path": "D:/leidian/LDPlayer9",
-                        "pid": 23036
-                    }
-                }
-            },
+            "config": {},
+            "name": "ADB Device"
+        },
+        {
+            "adb_path": "C:\\Android\\adb.exe",
+            "address": "List of devices attached",
+            "config": {},
             "name": "ADB Device"
         }
     ],
@@ -42,9 +39,9 @@
     ],
     "agent_socket_id": "1234",
     "current_state": {
-        "device_index": 0,
+        "device_index": 1,
         "resource_profile_index": 1,
-        "resource_file": "kun28.json",
+        "resource_file": "1.json",
         "agent_socket_id": "1234"
     }
 }

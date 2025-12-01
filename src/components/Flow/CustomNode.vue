@@ -2,11 +2,8 @@
 import { computed, ref, inject, watch } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import {
-  // 识别类型图标
   Target, Image, Sparkles, Palette, ScanText, Brain, ScanEye, Code2, HelpCircle,
-  // 状态图标
   Loader2, AlertCircle, Ban, CheckCircle2,
-  // 动作图标
   MousePointer, ArrowRight, Keyboard, Type, Play, Square, Terminal, Wand2
 } from 'lucide-vue-next'
 import NodeDetails from './NodeDetails.vue'
@@ -20,7 +17,6 @@ const props = defineProps({
 const updateNode = inject('updateNode', () => console.warn('updateNode not provided'))
 const closeAllDetailsSignal = inject('closeAllDetailsSignal', ref(0))
 
-// --- Config: 识别类型 ---
 const nodeConfig = {
   'DirectHit':             { label: '通用匹配', icon: Target,    color: 'bg-blue-500',    text: 'text-blue-600',    border: 'border-blue-200' },
   'TemplateMatch':         { label: '模板匹配', icon: Image,     color: 'bg-indigo-500',  text: 'text-indigo-600',  border: 'border-indigo-200' },
@@ -33,7 +29,6 @@ const nodeConfig = {
   'Unknown':               { label: '未知节点', icon: HelpCircle, color: 'bg-gray-400',    text: 'text-gray-500',    border: 'border-gray-300' }
 }
 
-// --- Config: 动作类型 ---
 const actionConfigMap = {
   'Click':     { icon: MousePointer, label: '点击目标', color: 'text-blue-500', bg: 'bg-blue-50' },
   'Swipe':     { icon: ArrowRight,   label: '滑动屏幕', color: 'text-indigo-500', bg: 'bg-indigo-50' },
@@ -49,8 +44,6 @@ const actionConfigMap = {
 const config = computed(() => nodeConfig[props.data.type] || nodeConfig['DirectHit'])
 const availableTypes = Object.keys(nodeConfig).filter(t => t !== 'Unknown')
 const businessData = computed(() => props.data.data || {})
-
-// 计算当前动作配置
 const currentActionConfig = computed(() => {
   const action = businessData.value.action
   if (!action || action === 'DoNothing') return null
@@ -59,29 +52,17 @@ const currentActionConfig = computed(() => {
 
 const showDetails = ref(false)
 const toggleDetails = () => { showDetails.value = !showDetails.value }
-
-// 安全获取文件名的辅助函数（修复报错的核心）
 const getFileName = (path) => {
   if (!path || typeof path !== 'string') return '未选择图片'
   return path.split('/').pop()
 }
 
-watch(closeAllDetailsSignal, () => {
-  showDetails.value = false
-})
+watch(closeAllDetailsSignal, () => { showDetails.value = false })
 
-// --- Event Handlers ---
-const handleUpdateId = ({ oldId, newId }) => {
-  updateNode({ oldId, newId, newType: props.data.type })
-}
-const handleUpdateType = (newType) => {
-  updateNode({ oldId: props.id, newId: props.id, newType })
-}
-const handleUpdateData = (newData) => {
-  updateNode({ oldId: props.id, newId: props.id, newType: newData.recognition || props.data.type, newData })
-}
+const handleUpdateId = ({ oldId, newId }) => updateNode({ oldId, newId, newType: props.data.type })
+const handleUpdateType = (newType) => updateNode({ oldId: props.id, newId: props.id, newType })
+const handleUpdateData = (newData) => updateNode({ oldId: props.id, newId: props.id, newType: newData.recognition || props.data.type, newData })
 
-// --- Status Styling ---
 const statusConfig = computed(() => {
   if (props.data._isMissing) return { icon: AlertCircle, color: 'text-gray-400', spin: false }
   switch (props.data.status) {
@@ -102,6 +83,51 @@ const headerStyle = computed(() => {
     default:        return 'bg-slate-50/50 border-slate-100'
   }
 })
+
+// === 修改部分开始 ===
+
+const isImageNode = computed(() => ['TemplateMatch', 'FeatureMatch'].includes(props.data.type))
+
+// 1. 截取最多 16 张图片
+const nodeImages = computed(() => {
+  const images = props.data._images || []
+  return images.filter(img => img.found && img.base64).slice(0, 16)
+})
+
+// 2. 扩展 Grid 逻辑到 4x4
+const gridClass = computed(() => {
+  const count = nodeImages.value.length
+  if (count <= 1) return 'grid-cols-1 grid-rows-1'
+  if (count === 2) return 'grid-cols-2 grid-rows-1'
+  if (count <= 4) return 'grid-cols-2 grid-rows-2'
+  if (count <= 6) return 'grid-cols-3 grid-rows-2'
+  if (count <= 9) return 'grid-cols-3 grid-rows-3'
+  if (count <= 12) return 'grid-cols-4 grid-rows-3'
+  return 'grid-cols-4 grid-rows-4'
+})
+
+// 3. 计算 Grid 列数，用于控制边框
+const gridCols = computed(() => {
+  const cls = gridClass.value
+  if (cls.includes('grid-cols-4')) return 4
+  if (cls.includes('grid-cols-3')) return 3
+  if (cls.includes('grid-cols-2')) return 2
+  return 1
+})
+
+const contentHeightClass = computed(() => {
+  if (isImageNode.value) {
+    // 图片越多，容器越高，给图片留足空间
+    const count = nodeImages.value.length
+    if (count === 0) return 'h-12' // 无图片
+    if (count <= 2) return 'h-24'  // 1行
+    if (count <= 6) return 'h-32'  // 2行
+    if (count <= 9) return 'h-40'  // 3行
+    return 'h-48'                  // 4行
+  }
+  return 'h-12'
+})
+// === 修改部分结束 ===
 </script>
 
 <template>
@@ -146,17 +172,40 @@ const headerStyle = computed(() => {
         <div v-if="data._isMissing" class="text-center text-slate-400 text-xs italic bg-slate-50 p-2 rounded border border-dashed border-slate-200">
           引用缺失
         </div>
+
         <div v-else-if="data.type === 'Unknown'" class="text-center text-slate-400 text-xs italic">
           未知节点
         </div>
 
-        <div v-else-if="['TemplateMatch', 'FeatureMatch'].includes(data.type)" class="space-y-1">
-          <div class="w-full h-12 bg-slate-50 rounded-lg border border-slate-200 border-dashed flex items-center justify-center text-slate-400 overflow-hidden relative group/img">
-            <component :is="config.icon" :size="20" class="opacity-20 group-hover/img:scale-110 transition-transform" />
-            <span class="text-[9px] absolute bottom-0.5">Preview</span>
-          </div>
-          <div class="text-[10px] text-center text-slate-500 truncate" :title="String(businessData.template)">
-            {{ getFileName(businessData.template) }}
+        <div v-else-if="isImageNode" class="space-y-1">
+          <div
+            class="w-full bg-slate-50 rounded-lg border border-slate-200 border-dashed overflow-hidden relative transition-all duration-300"
+            :class="contentHeightClass"
+          >
+            <div v-if="nodeImages.length > 0" class="grid w-full h-full" :class="gridClass">
+              <div
+                v-for="(img, idx) in nodeImages"
+                :key="idx"
+                class="relative overflow-hidden border-white/50 group/img"
+                :class="{
+                  'border-r': (idx + 1) % gridCols !== 0,
+                  'border-b': idx < nodeImages.length - gridCols
+                }"
+              >
+                <img :src="img.base64" class="w-full h-full object-fill transform hover:scale-110 transition-transform duration-300" />
+
+                <div class="absolute inset-0 bg-black/60 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-end justify-center p-1 pointer-events-none">
+                  <span class="text-[9px] text-white font-mono truncate w-full text-center leading-tight">
+                    {{ getFileName(img.path) }}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div v-else class="w-full h-full flex flex-col items-center justify-center gap-1">
+               <component :is="config.icon" :size="24" class="text-slate-300" />
+               <span class="text-[9px] text-slate-400">No Image</span>
+            </div>
           </div>
         </div>
 
@@ -183,8 +232,6 @@ const headerStyle = computed(() => {
       </div>
 
       <div v-if="currentActionConfig" class="shrink-0 flex flex-col items-center justify-center">
-        <div class="h-8 w-px bg-slate-100 absolute right-[50px] top-1/2 -translate-y-1/2 hidden"></div>
-
         <div
           class="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 cursor-help hover:scale-105 shadow-sm border border-slate-100"
           :class="currentActionConfig.bg"

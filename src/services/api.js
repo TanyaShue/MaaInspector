@@ -6,6 +6,7 @@ async function request(endpoint, options = {}) {
   const url = `${API_BASE_URL}${endpoint}`
   const controller = new AbortController()
 
+  // 搜索接口给长一点超时，其他默认 10s
   const timeoutMs = endpoint.includes('search') ? 60000 : 10000
 
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
@@ -26,14 +27,11 @@ async function request(endpoint, options = {}) {
 }
 
 export const systemApi = {
-  // 获取所有初始状态
   getInitialState: () => request('/system/init', { method: 'GET' }),
-
   saveDeviceConfig: (fullConfig) => request('/system/config/save', {
     method: 'POST',
     body: JSON.stringify(fullConfig)
   }),
-
   searchDevices: () => request('/system/devices/search', { method: 'POST' })
 }
 
@@ -45,8 +43,6 @@ export const deviceApi = {
   disconnect: () => request('/device/disconnect', { method: 'POST' })
 }
 
-// src/services/api.js 的 resourceApi 部分修改如下：
-
 export const resourceApi = {
   load: (path) => request('/resource/load', { method: 'POST', body: JSON.stringify({ path }) }),
 
@@ -55,26 +51,23 @@ export const resourceApi = {
     body: JSON.stringify({ source, filename })
   }),
 
-  // 新增创建文件接口
+  getTemplateImages: (source, filename) => request('/resource/file/templates', {
+    method: 'POST',
+    body: JSON.stringify({ source, filename })
+  }),
+
   createFile: (path, filename) => request('/resource/file/create', {
     method: 'POST',
     body: JSON.stringify({ path, filename })
   }),
 
-  // 保存节点数据到文件（伪实现）
-  saveFileNodes: async (source, filename, nodes) => {
-    // 伪实现：模拟网络延迟后返回成功
-    await new Promise(resolve => setTimeout(resolve, 300))
-    console.log('[Mock API] 保存文件:', { source, filename, nodes })
-    return { success: true, message: '保存成功' }
-    
-    // 真实实现时使用：
-    // return request('/resource/file/save', {
-    //   method: 'POST',
-    //   body: JSON.stringify({ source, filename, nodes })
-    // })
-  }
+  // [修改] 真实保存接口
+  saveFileNodes: (source, filename, nodes) => request('/resource/file/save', {
+    method: 'POST',
+    body: JSON.stringify({ source, filename, nodes })
+  })
 }
+
 export const agentApi = {
   connect: (socketId) => request('/agent/connect', { method: 'POST', body: JSON.stringify({ socket_id: socketId }) }),
   disconnect: () => request('/agent/disconnect', { method: 'POST' })

@@ -79,10 +79,9 @@ const handleMenuAction = ({ action, type, data, payload }) => {
       break
 
     case 'edit':
-      // 传递节点的业务数据 (data.data.data)，包含 id 和 recognition 等属性
-      editor.value = { 
-        visible: true, 
-        nodeId: data.id, 
+      editor.value = {
+        visible: true,
+        nodeId: data.id,
         nodeData: JSON.parse(JSON.stringify(data.data.data || { id: data.id, recognition: 'DirectHit' }))
       }
       break
@@ -143,23 +142,18 @@ const handleMenuAction = ({ action, type, data, payload }) => {
   }
 }
 
-// --- 定位到节点 ---
 const handleLocateNode = (nodeId) => {
-  // 先取消所有节点选中，然后选中目标节点
   nodes.value = nodes.value.map(n => ({
     ...n,
     selected: n.id === nodeId
   }))
-  
-  // 使用 fitView 聚焦到目标节点，将其居中显示
-  // 延迟一帧确保节点选中状态已更新
   setTimeout(() => {
     fitView({
-      nodes: [nodeId],  // 只聚焦目标节点
-      padding: 0.5,     // 增加 padding 让节点更突出
-      maxZoom: 1.5,     // 最大缩放限制
-      minZoom: 0.8,     // 最小缩放限制
-      duration: 600     // 平滑动画
+      nodes: [nodeId],
+      padding: 0.5,
+      maxZoom: 1.5,
+      minZoom: 0.8,
+      duration: 600
     })
   }, 50)
 }
@@ -167,24 +161,38 @@ const handleLocateNode = (nodeId) => {
 const handleEditorSave = (newBusinessData) => {
   const targetNode = findNode(editor.value.nodeId)
   if (targetNode) {
-    // 更新节点的业务数据
     targetNode.data.data = { ...newBusinessData }
-    // 如果 ID 发生变化，更新节点 ID
     if (newBusinessData.id && newBusinessData.id !== targetNode.id) {
       targetNode.id = newBusinessData.id
       targetNode.data.id = newBusinessData.id
     }
-    // 如果识别算法发生变化，更新节点类型
     if (newBusinessData.recognition) {
       targetNode.data.type = newBusinessData.recognition
     }
-    // 触发响应式更新
     nodes.value = [...nodes.value]
   }
   editor.value.visible = false
 }
 
-// 保存节点到文件
+// [新增] 处理图片加载
+const handleLoadImages = (imageDataMap) => {
+  if (!imageDataMap) return
+
+  nodes.value = nodes.value.map(node => {
+    // 检查是否有该节点的图片数据
+    if (imageDataMap[node.id]) {
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          _images: imageDataMap[node.id] // 将图片注入到 _images 字段
+        }
+      }
+    }
+    return node
+  })
+}
+
 const handleSaveNodes = async ({ source, filename }) => {
   try {
     const nodesData = getNodesData()
@@ -231,6 +239,7 @@ const handleSaveNodes = async ({ source, filename }) => {
           :is-dirty="isDirty"
           :current-filename="currentFilename"
           @load-nodes="loadNodes"
+          @load-images="handleLoadImages"
           @save-nodes="handleSaveNodes"
         />
       </Panel>
@@ -244,15 +253,13 @@ const handleSaveNodes = async ({ source, filename }) => {
         @action="handleMenuAction"
       />
     </VueFlow>
-    <NodeEditorModal 
-      :visible="editor.visible" 
+    <NodeEditorModal
+      :visible="editor.visible"
       :nodeId="editor.nodeId"
-      :nodeData="editor.nodeData" 
-      @close="editor.visible = false" 
-      @save="handleEditorSave" 
+      :nodeData="editor.nodeData"
+      @close="editor.visible = false"
+      @save="handleEditorSave"
     />
-
-    <!-- 节点搜索面板 -->
     <NodeSearch
       :visible="searchVisible"
       :nodes="nodes"
