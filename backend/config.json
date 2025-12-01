@@ -41,7 +41,7 @@
     "current_state": {
         "device_index": 1,
         "resource_profile_index": 1,
-        "resource_file": "debug.json",
+        "resource_file": "1.json",
         "agent_socket_id": "1234"
     }
 }

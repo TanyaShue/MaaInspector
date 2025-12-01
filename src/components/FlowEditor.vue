@@ -1,5 +1,5 @@
 <script setup>
-import { ref, provide } from 'vue'
+import { ref, provide, onMounted, onBeforeUnmount } from 'vue'
 import { VueFlow, useVueFlow, Panel } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
@@ -34,6 +34,31 @@ const isDeviceConnected = ref(false)
 const menu = ref({ visible: false, x: 0, y: 0, type: null, data: null, flowPos: { x: 0, y: 0 } })
 const editor = ref({ visible: false, nodeId: '', nodeData: null })
 const searchVisible = ref(false)
+
+// ----------------------------------------------------------------
+// [新增逻辑] 监听浏览器关闭/刷新事件，防止未保存丢失
+// ----------------------------------------------------------------
+const handleBeforeUnload = (e) => {
+  // 如果当前有未保存的修改
+  if (isDirty.value) {
+    // 阻止默认行为，触发浏览器原生的询问弹窗
+    e.preventDefault()
+    // 现代浏览器（Chrome/Edge等）要求设置 returnValue
+    e.returnValue = ''
+    return ''
+  }
+}
+
+onMounted(() => {
+  // 组件挂载时添加监听
+  window.addEventListener('beforeunload', handleBeforeUnload)
+})
+
+onBeforeUnmount(() => {
+  // 组件销毁前移除监听，防止内存泄漏
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+})
+// ----------------------------------------------------------------
 
 const closeMenu = () => { menu.value.visible = false }
 const getEvent = (params) => params.event || params
