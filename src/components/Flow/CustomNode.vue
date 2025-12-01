@@ -1,10 +1,14 @@
+--- START OF FILE CustomNode.vue ---
+
 <script setup>
 import { computed, ref, inject, watch } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import {
   Target, Image, Sparkles, Palette, ScanText, Brain, ScanEye, Code2, HelpCircle,
   Loader2, AlertCircle, Ban, CheckCircle2,
-  MousePointer, ArrowRight, Keyboard, Type, Play, Square, Terminal, Wand2
+  MousePointer, ArrowRight, Keyboard, Type, Play, Square, Terminal, Wand2,
+  // 新增图标引入
+  Hand, Layers, Fingerprint, Move, Mouse
 } from 'lucide-vue-next'
 import NodeDetails from './NodeDetails.vue'
 
@@ -29,16 +33,28 @@ const nodeConfig = {
   'Unknown':               { label: '未知节点', icon: HelpCircle, color: 'bg-gray-400',    text: 'text-gray-500',    border: 'border-gray-300' }
 }
 
+// === 修改部分：补全所有动作图标配置 ===
 const actionConfigMap = {
-  'Click':     { icon: MousePointer, label: '点击目标', color: 'text-blue-500', bg: 'bg-blue-50' },
-  'Swipe':     { icon: ArrowRight,   label: '滑动屏幕', color: 'text-indigo-500', bg: 'bg-indigo-50' },
-  'Key':       { icon: Keyboard,     label: '物理按键', color: 'text-violet-500', bg: 'bg-violet-50' },
-  'InputText': { icon: Type,         label: '输入文本', color: 'text-emerald-500', bg: 'bg-emerald-50' },
-  'StartApp':  { icon: Play,         label: '启动应用', color: 'text-green-500', bg: 'bg-green-50' },
-  'StopApp':   { icon: Square,       label: '停止应用', color: 'text-red-500', bg: 'bg-red-50' },
-  'StopTask':  { icon: Square,       label: '停止任务', color: 'text-rose-500', bg: 'bg-rose-50' },
-  'Command':   { icon: Terminal,     label: 'Shell命令', color: 'text-amber-500', bg: 'bg-amber-50' },
-  'Custom':    { icon: Wand2,        label: '自定义动作', color: 'text-slate-500', bg: 'bg-slate-50' }
+  'DoNothing':    { icon: Square,       label: '无动作',     color: 'text-slate-400', bg: 'bg-slate-50' },
+  'Click':        { icon: MousePointer, label: '点击目标',   color: 'text-blue-500',  bg: 'bg-blue-50' },
+  'LongPress':    { icon: Hand,         label: '长按目标',   color: 'text-blue-600',  bg: 'bg-blue-50' },
+  'Swipe':        { icon: ArrowRight,   label: '滑动屏幕',   color: 'text-indigo-500', bg: 'bg-indigo-50' },
+  'MultiSwipe':   { icon: Layers,       label: '多指滑动',   color: 'text-indigo-600', bg: 'bg-indigo-50' },
+  'TouchDown':    { icon: Fingerprint,  label: '手指按下',   color: 'text-violet-500', bg: 'bg-violet-50' },
+  'TouchMove':    { icon: Move,         label: '手指移动',   color: 'text-violet-500', bg: 'bg-violet-50' },
+  'TouchUp':      { icon: Hand,         label: '手指抬起',   color: 'text-violet-500', bg: 'bg-violet-50' },
+  'Scroll':       { icon: Mouse,        label: '滚动滚轮',   color: 'text-cyan-500',   bg: 'bg-cyan-50' },
+  'Key':          { icon: Keyboard,     label: '物理按键',   color: 'text-emerald-500', bg: 'bg-emerald-50' },
+  'ClickKey':     { icon: Keyboard,     label: '点击按键',   color: 'text-emerald-500', bg: 'bg-emerald-50' },
+  'LongPressKey': { icon: Keyboard,     label: '长按按键',   color: 'text-emerald-600', bg: 'bg-emerald-50' },
+  'KeyDown':      { icon: Keyboard,     label: '按键按下',   color: 'text-teal-500',    bg: 'bg-teal-50' },
+  'KeyUp':        { icon: Keyboard,     label: '按键抬起',   color: 'text-teal-500',    bg: 'bg-teal-50' },
+  'InputText':    { icon: Type,         label: '输入文本',   color: 'text-green-500',   bg: 'bg-green-50' },
+  'StartApp':     { icon: Play,         label: '启动应用',   color: 'text-sky-500',     bg: 'bg-sky-50' },
+  'StopApp':      { icon: Square,       label: '停止应用',   color: 'text-red-500',     bg: 'bg-red-50' },
+  'StopTask':     { icon: Square,       label: '停止任务',   color: 'text-rose-500',    bg: 'bg-rose-50' },
+  'Command':      { icon: Terminal,     label: 'Shell命令',  color: 'text-amber-500',   bg: 'bg-amber-50' },
+  'Custom':       { icon: Wand2,        label: '自定义动作', color: 'text-slate-500',   bg: 'bg-slate-50' }
 }
 
 const config = computed(() => nodeConfig[props.data.type] || nodeConfig['DirectHit'])
@@ -84,8 +100,6 @@ const headerStyle = computed(() => {
   }
 })
 
-// === 修改部分开始 ===
-
 const isImageNode = computed(() => ['TemplateMatch', 'FeatureMatch'].includes(props.data.type))
 
 // 1. 截取最多 16 张图片
@@ -117,17 +131,15 @@ const gridCols = computed(() => {
 
 const contentHeightClass = computed(() => {
   if (isImageNode.value) {
-    // 图片越多，容器越高，给图片留足空间
     const count = nodeImages.value.length
-    if (count === 0) return 'h-12' // 无图片
-    if (count <= 2) return 'h-24'  // 1行
-    if (count <= 6) return 'h-32'  // 2行
-    if (count <= 9) return 'h-40'  // 3行
-    return 'h-48'                  // 4行
+    if (count === 0) return 'h-12'
+    if (count <= 2) return 'h-24'
+    if (count <= 6) return 'h-32'
+    if (count <= 9) return 'h-40'
+    return 'h-48'
   }
   return 'h-12'
 })
-// === 修改部分结束 ===
 </script>
 
 <template>
