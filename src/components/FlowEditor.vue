@@ -7,7 +7,6 @@ import ContextMenu from './Flow/ContextMenu.vue'
 import NodeEditorModal from './Flow/NodeEditorModal.vue'
 import InfoPanel from './Flow/InfoPanel.vue'
 import NodeSearch from './Flow/NodeSearch.vue'
-import DeviceScreen from './Flow/DeviceScreen.vue' // [新增] 引入设备投屏组件
 import { useFlowGraph } from '../utils/useFlowGraph.js'
 import { resourceApi } from '../services/api.js'
 
@@ -234,10 +233,6 @@ const handleSaveNodes = async ({ source, filename }) => {
     >
       <Background pattern-color="#cbd5e1" :gap="20" />
       <Controls />
-
-      <Panel position="top-left" class="m-4 h-[240px] aspect-video pointer-events-auto">
-        <DeviceScreen :connected="isDeviceConnected" />
-      </Panel>
 
       <Panel position="top-right" class="m-4 pointer-events-none">
         <InfoPanel
