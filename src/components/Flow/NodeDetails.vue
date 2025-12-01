@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, reactive } from 'vue'
+import { ref, computed, watch, reactive, nextTick } from 'vue'
 import {
   X, Check, ChevronDown, ChevronRight,
   Settings, GitBranch, Clock, Zap, FileJson,
@@ -84,6 +84,11 @@ const editingId = ref('')
 const formData = ref({})
 const jsonStr = ref('')
 
+// Refs 用于滚动跳转
+const containerRef = ref(null)
+const recSectionRef = ref(null)
+const actSectionRef = ref(null)
+
 // 初始化 - 监听 visible 和 nodeData 变化
 watch(() => props.visible, (val) => {
   if (val) {
@@ -106,11 +111,11 @@ const businessData = computed(() => props.nodeData?.data || {})
 const currentRecognition = computed(() => formData.value.recognition || DEFAULTS.recognition)
 const currentAction = computed(() => formData.value.action || DEFAULTS.action)
 
-const recognitionConfig = computed(() => 
+const recognitionConfig = computed(() =>
   recognitionTypes.find(r => r.value === currentRecognition.value) || recognitionTypes[0]
 )
 
-const actionConfig = computed(() => 
+const actionConfig = computed(() =>
   actionTypes.find(a => a.value === currentAction.value) || actionTypes[0]
 )
 
@@ -168,15 +173,29 @@ const handleTypeChange = (newType) => {
   setValue('recognition', newType)
   emit('update-type', newType)
 }
+
+// 跳转到对应设置区域
+const jumpToSettings = (type) => {
+  // 展开面板
+  expandedSections[type] = true
+
+  // 等待DOM更新后滚动
+  nextTick(() => {
+    const target = type === 'recognition' ? recSectionRef.value : actSectionRef.value
+    if (target && containerRef.value) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+}
 </script>
 
 <template>
-  <transition 
-    enter-active-class="transition ease-out duration-200" 
-    enter-from-class="opacity-0 translate-x-[-10px] scale-95" 
-    enter-to-class="opacity-100 translate-x-0 scale-100" 
-    leave-active-class="transition ease-in duration-150" 
-    leave-from-class="opacity-100 translate-x-0 scale-100" 
+  <transition
+    enter-active-class="transition ease-out duration-200"
+    enter-from-class="opacity-0 translate-x-[-10px] scale-95"
+    enter-to-class="opacity-100 translate-x-0 scale-100"
+    leave-active-class="transition ease-in duration-150"
+    leave-from-class="opacity-100 translate-x-0 scale-100"
     leave-to-class="opacity-0 translate-x-[-10px] scale-95"
   >
     <div
@@ -185,7 +204,6 @@ const handleTypeChange = (newType) => {
       @dblclick.stop
       @wheel.stop
     >
-      <!-- 头部 -->
       <div class="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-slate-50 to-slate-100/80 border-b border-slate-100">
         <div class="flex items-center gap-2.5">
           <div class="p-1.5 rounded-lg bg-white shadow-sm border border-slate-100">
@@ -196,21 +214,20 @@ const handleTypeChange = (newType) => {
             <div class="text-[10px] text-slate-400 font-mono">#{{ nodeId }}</div>
           </div>
         </div>
-        <button 
-          @click.stop="$emit('close')" 
+        <button
+          @click.stop="$emit('close')"
           class="p-1.5 hover:bg-slate-200 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
         >
           <X :size="16" />
         </button>
       </div>
 
-      <!-- 标签页 -->
       <div class="flex border-b border-slate-100 bg-slate-50/30">
         <button
           @click="activeTab = 'properties'"
           class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-all"
-          :class="activeTab === 'properties' 
-            ? 'text-indigo-600 bg-white border-b-2 border-indigo-500 -mb-px' 
+          :class="activeTab === 'properties'
+            ? 'text-indigo-600 bg-white border-b-2 border-indigo-500 -mb-px'
             : 'text-slate-500 hover:text-slate-700'"
         >
           <Settings :size="12" />
@@ -219,8 +236,8 @@ const handleTypeChange = (newType) => {
         <button
           @click="activeTab = 'json'; updateJsonFromForm()"
           class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-all"
-          :class="activeTab === 'json' 
-            ? 'text-indigo-600 bg-white border-b-2 border-indigo-500 -mb-px' 
+          :class="activeTab === 'json'
+            ? 'text-indigo-600 bg-white border-b-2 border-indigo-500 -mb-px'
             : 'text-slate-500 hover:text-slate-700'"
         >
           <FileJson :size="12" />
@@ -228,15 +245,12 @@ const handleTypeChange = (newType) => {
         </button>
       </div>
 
-      <!-- 内容区域 -->
-      <div class="flex-1 overflow-y-auto custom-scrollbar">
-        
-        <!-- 属性编辑 -->
+      <div ref="containerRef" class="flex-1 overflow-y-auto custom-scrollbar">
+
         <div v-show="activeTab === 'properties'" class="p-3 space-y-2.5">
-          
-          <!-- 基本属性 -->
+
           <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <button 
+            <button
               @click="toggleSection('basic')"
               class="w-full flex items-center justify-between px-3 py-2 bg-slate-50/80 hover:bg-slate-100 transition-colors"
             >
@@ -246,13 +260,12 @@ const handleTypeChange = (newType) => {
               </div>
               <component :is="expandedSections.basic ? ChevronDown : ChevronRight" :size="14" class="text-slate-400" />
             </button>
-            
+
             <div v-show="expandedSections.basic" class="p-3 space-y-3 border-t border-slate-100">
-              <!-- 节点ID -->
               <div class="space-y-1">
                 <label class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">节点 ID</label>
                 <div class="flex gap-1.5">
-                  <input 
+                  <input
                     v-model="editingId"
                     class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 transition-all font-mono"
                   />
@@ -266,45 +279,64 @@ const handleTypeChange = (newType) => {
                 </div>
               </div>
 
-              <!-- 识别算法 -->
               <div class="space-y-1">
                 <label class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">识别算法</label>
-                <div class="relative">
-                  <select 
-                    :value="currentRecognition"
-                    @change="handleTypeChange($event.target.value)"
-                    class="w-full appearance-none px-2.5 py-1.5 pr-8 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 transition-all cursor-pointer"
+                <div class="flex gap-2">
+                  <div class="relative flex-1">
+                    <select
+                      :value="currentRecognition"
+                      @change="handleTypeChange($event.target.value)"
+                      class="w-full appearance-none px-2.5 py-1.5 pr-8 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 transition-all cursor-pointer"
+                    >
+                      <option v-for="type in recognitionTypes" :key="type.value" :value="type.value">
+                        {{ type.label }} ({{ type.value }})
+                      </option>
+                    </select>
+                    <ChevronDown :size="12" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  </div>
+                  <button
+                    @click="jumpToSettings('recognition')"
+                    :disabled="currentRecognition === 'DirectHit'"
+                    :class="currentRecognition === 'DirectHit' ? 'opacity-50 cursor-not-allowed bg-slate-50 text-slate-300' : 'bg-indigo-50 text-indigo-500 hover:bg-indigo-100'"
+                    class="px-2 rounded-lg border border-slate-200 transition-colors flex items-center justify-center"
+                    title="跳转到详细设置"
                   >
-                    <option v-for="type in recognitionTypes" :key="type.value" :value="type.value">
-                      {{ type.label }} ({{ type.value }})
-                    </option>
-                  </select>
-                  <ChevronDown :size="12" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                    <Settings :size="14" />
+                  </button>
                 </div>
               </div>
 
-              <!-- 执行动作 -->
               <div class="space-y-1">
                 <label class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">执行动作</label>
-                <div class="relative">
-                  <select 
-                    :value="currentAction"
-                    @change="setValue('action', $event.target.value)"
-                    class="w-full appearance-none px-2.5 py-1.5 pr-8 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 transition-all cursor-pointer"
+                <div class="flex gap-2">
+                  <div class="relative flex-1">
+                    <select
+                      :value="currentAction"
+                      @change="setValue('action', $event.target.value)"
+                      class="w-full appearance-none px-2.5 py-1.5 pr-8 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 transition-all cursor-pointer"
+                    >
+                      <option v-for="type in actionTypes" :key="type.value" :value="type.value">
+                        {{ type.label }} ({{ type.value }})
+                      </option>
+                    </select>
+                    <ChevronDown :size="12" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  </div>
+                  <button
+                    @click="jumpToSettings('action')"
+                    :disabled="['DoNothing', 'StopTask'].includes(currentAction)"
+                    :class="['DoNothing', 'StopTask'].includes(currentAction) ? 'opacity-50 cursor-not-allowed bg-slate-50 text-slate-300' : 'bg-indigo-50 text-indigo-500 hover:bg-indigo-100'"
+                    class="px-2 rounded-lg border border-slate-200 transition-colors flex items-center justify-center"
+                    title="跳转到详细设置"
                   >
-                    <option v-for="type in actionTypes" :key="type.value" :value="type.value">
-                      {{ type.label }} ({{ type.value }})
-                    </option>
-                  </select>
-                  <ChevronDown :size="12" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                    <Settings :size="14" />
+                  </button>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- 流程控制 -->
           <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <button 
+            <button
               @click="toggleSection('flow')"
               class="w-full flex items-center justify-between px-3 py-2 bg-slate-50/80 hover:bg-slate-100 transition-colors"
             >
@@ -314,14 +346,14 @@ const handleTypeChange = (newType) => {
               </div>
               <component :is="expandedSections.flow ? ChevronDown : ChevronRight" :size="14" class="text-slate-400" />
             </button>
-            
+
             <div v-show="expandedSections.flow" class="p-3 space-y-2.5 border-t border-slate-100">
               <div class="space-y-1">
                 <label class="text-[10px] font-semibold text-blue-600 uppercase tracking-wide flex items-center gap-1">
                   <div class="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
                   后继节点 (Next)
                 </label>
-                <input 
+                <input
                   :value="getArrayValue('next')"
                   @input="setArrayValue('next', $event.target.value)"
                   class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-all"
@@ -333,7 +365,7 @@ const handleTypeChange = (newType) => {
                   <div class="w-1.5 h-1.5 rounded-full bg-amber-500"></div>
                   中断节点 (Interrupt)
                 </label>
-                <input 
+                <input
                   :value="getArrayValue('interrupt')"
                   @input="setArrayValue('interrupt', $event.target.value)"
                   class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-100 transition-all"
@@ -345,7 +377,7 @@ const handleTypeChange = (newType) => {
                   <div class="w-1.5 h-1.5 rounded-full bg-rose-500"></div>
                   错误节点 (OnError)
                 </label>
-                <input 
+                <input
                   :value="getArrayValue('on_error')"
                   @input="setArrayValue('on_error', $event.target.value)"
                   class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-rose-400 focus:ring-1 focus:ring-rose-100 transition-all"
@@ -355,9 +387,8 @@ const handleTypeChange = (newType) => {
             </div>
           </div>
 
-          <!-- 通用属性 -->
           <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <button 
+            <button
               @click="toggleSection('common')"
               class="w-full flex items-center justify-between px-3 py-2 bg-slate-50/80 hover:bg-slate-100 transition-colors"
             >
@@ -367,12 +398,12 @@ const handleTypeChange = (newType) => {
               </div>
               <component :is="expandedSections.common ? ChevronDown : ChevronRight" :size="14" class="text-slate-400" />
             </button>
-            
+
             <div v-show="expandedSections.common" class="p-3 space-y-2.5 border-t border-slate-100">
               <div class="grid grid-cols-2 gap-2">
                 <div class="space-y-1">
                   <label class="text-[10px] font-semibold text-slate-500 uppercase">识别速率 (ms)</label>
-                  <input 
+                  <input
                     type="number"
                     :value="getValue('rate_limit', 1000)"
                     @input="setValue('rate_limit', parseInt($event.target.value) || 1000)"
@@ -381,7 +412,7 @@ const handleTypeChange = (newType) => {
                 </div>
                 <div class="space-y-1">
                   <label class="text-[10px] font-semibold text-slate-500 uppercase">超时 (ms)</label>
-                  <input 
+                  <input
                     type="number"
                     :value="getValue('timeout', 20000)"
                     @input="setValue('timeout', parseInt($event.target.value) || 20000)"
@@ -389,7 +420,7 @@ const handleTypeChange = (newType) => {
                   />
                 </div>
               </div>
-              
+
               <div class="flex flex-wrap gap-3 pt-1">
                 <label class="inline-flex items-center gap-1.5 cursor-pointer group">
                   <input type="checkbox" :checked="getValue('is_sub', false)" @change="setValue('is_sub', $event.target.checked)"
@@ -415,9 +446,8 @@ const handleTypeChange = (newType) => {
             </div>
           </div>
 
-          <!-- 延迟设置 -->
           <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <button 
+            <button
               @click="toggleSection('delay')"
               class="w-full flex items-center justify-between px-3 py-2 bg-slate-50/80 hover:bg-slate-100 transition-colors"
             >
@@ -427,7 +457,7 @@ const handleTypeChange = (newType) => {
               </div>
               <component :is="expandedSections.delay ? ChevronDown : ChevronRight" :size="14" class="text-slate-400" />
             </button>
-            
+
             <div v-show="expandedSections.delay" class="p-3 border-t border-slate-100">
               <div class="grid grid-cols-2 gap-2">
                 <div class="space-y-1">
@@ -454,9 +484,12 @@ const handleTypeChange = (newType) => {
             </div>
           </div>
 
-          <!-- 识别算法特有属性 -->
-          <div v-if="currentRecognition !== 'DirectHit'" class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <button 
+          <div
+            v-if="currentRecognition !== 'DirectHit'"
+            ref="recSectionRef"
+            class="bg-white rounded-xl border border-slate-200 overflow-hidden"
+          >
+            <button
               @click="toggleSection('recognition')"
               class="w-full flex items-center justify-between px-3 py-2 bg-gradient-to-r from-indigo-50/80 to-violet-50/80 hover:from-indigo-100 hover:to-violet-100 transition-colors"
             >
@@ -466,9 +499,8 @@ const handleTypeChange = (newType) => {
               </div>
               <component :is="expandedSections.recognition ? ChevronDown : ChevronRight" :size="14" class="text-slate-400" />
             </button>
-            
+
             <div v-show="expandedSections.recognition" class="p-3 space-y-2.5 border-t border-slate-100">
-              <!-- ROI -->
               <div class="grid grid-cols-2 gap-2">
                 <div class="space-y-1">
                   <label class="text-[10px] font-semibold text-slate-500 uppercase">识别区域 (ROI)</label>
@@ -484,7 +516,6 @@ const handleTypeChange = (newType) => {
                 </div>
               </div>
 
-              <!-- TemplateMatch -->
               <template v-if="currentRecognition === 'TemplateMatch'">
                 <div class="space-y-1">
                   <label class="text-[10px] font-semibold text-slate-500 uppercase">模板图片</label>
@@ -511,7 +542,6 @@ const handleTypeChange = (newType) => {
                 </label>
               </template>
 
-              <!-- FeatureMatch -->
               <template v-if="currentRecognition === 'FeatureMatch'">
                 <div class="space-y-1">
                   <label class="text-[10px] font-semibold text-slate-500 uppercase">模板图片</label>
@@ -545,7 +575,6 @@ const handleTypeChange = (newType) => {
                 </label>
               </template>
 
-              <!-- ColorMatch -->
               <template v-if="currentRecognition === 'ColorMatch'">
                 <div class="grid grid-cols-2 gap-2">
                   <div class="space-y-1">
@@ -578,7 +607,6 @@ const handleTypeChange = (newType) => {
                 </label>
               </template>
 
-              <!-- OCR -->
               <template v-if="currentRecognition === 'OCR'">
                 <div class="space-y-1">
                   <label class="text-[10px] font-semibold text-slate-500 uppercase">期望文本</label>
@@ -612,7 +640,6 @@ const handleTypeChange = (newType) => {
                 </label>
               </template>
 
-              <!-- NeuralNetwork -->
               <template v-if="['NeuralNetworkClassify', 'NeuralNetworkDetect'].includes(currentRecognition)">
                 <div class="space-y-1">
                   <label class="text-[10px] font-semibold text-slate-500 uppercase">模型路径</label>
@@ -641,7 +668,6 @@ const handleTypeChange = (newType) => {
                 </div>
               </template>
 
-              <!-- Custom Recognition -->
               <template v-if="currentRecognition === 'Custom'">
                 <div class="space-y-1">
                   <label class="text-[10px] font-semibold text-slate-500 uppercase">自定义识别名</label>
@@ -658,9 +684,12 @@ const handleTypeChange = (newType) => {
             </div>
           </div>
 
-          <!-- 动作特有属性 -->
-          <div v-if="!['DoNothing', 'StopTask'].includes(currentAction)" class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <button 
+          <div
+            v-if="!['DoNothing', 'StopTask'].includes(currentAction)"
+            ref="actSectionRef"
+            class="bg-white rounded-xl border border-slate-200 overflow-hidden"
+          >
+            <button
               @click="toggleSection('action')"
               class="w-full flex items-center justify-between px-3 py-2 bg-gradient-to-r from-emerald-50/80 to-teal-50/80 hover:from-emerald-100 hover:to-teal-100 transition-colors"
             >
@@ -670,9 +699,8 @@ const handleTypeChange = (newType) => {
               </div>
               <component :is="expandedSections.action ? ChevronDown : ChevronRight" :size="14" class="text-slate-400" />
             </button>
-            
+
             <div v-show="expandedSections.action" class="p-3 space-y-2.5 border-t border-slate-100">
-              <!-- Click -->
               <template v-if="currentAction === 'Click'">
                 <div class="space-y-1">
                   <label class="text-[10px] font-semibold text-slate-500 uppercase">点击目标</label>
@@ -688,7 +716,6 @@ const handleTypeChange = (newType) => {
                 </div>
               </template>
 
-              <!-- Swipe -->
               <template v-if="currentAction === 'Swipe'">
                 <div class="grid grid-cols-2 gap-2">
                   <div class="space-y-1">
@@ -711,7 +738,6 @@ const handleTypeChange = (newType) => {
                 </div>
               </template>
 
-              <!-- Key -->
               <template v-if="currentAction === 'Key'">
                 <div class="space-y-1">
                   <label class="text-[10px] font-semibold text-slate-500 uppercase">按键码</label>
@@ -721,7 +747,6 @@ const handleTypeChange = (newType) => {
                 </div>
               </template>
 
-              <!-- InputText -->
               <template v-if="currentAction === 'InputText'">
                 <div class="space-y-1">
                   <label class="text-[10px] font-semibold text-slate-500 uppercase">输入文本</label>
@@ -730,7 +755,6 @@ const handleTypeChange = (newType) => {
                 </div>
               </template>
 
-              <!-- StartApp / StopApp -->
               <template v-if="['StartApp', 'StopApp'].includes(currentAction)">
                 <div class="space-y-1">
                   <label class="text-[10px] font-semibold text-slate-500 uppercase">应用包名</label>
@@ -740,7 +764,6 @@ const handleTypeChange = (newType) => {
                 </div>
               </template>
 
-              <!-- Command -->
               <template v-if="currentAction === 'Command'">
                 <div class="space-y-1">
                   <label class="text-[10px] font-semibold text-slate-500 uppercase">执行程序</label>
@@ -760,7 +783,6 @@ const handleTypeChange = (newType) => {
                 </label>
               </template>
 
-              <!-- Custom Action -->
               <template v-if="currentAction === 'Custom'">
                 <div class="space-y-1">
                   <label class="text-[10px] font-semibold text-slate-500 uppercase">自定义动作名</label>
@@ -779,7 +801,6 @@ const handleTypeChange = (newType) => {
 
         </div>
 
-        <!-- JSON 视图 -->
         <div v-show="activeTab === 'json'" class="p-3">
           <div class="bg-slate-900 rounded-xl p-3 overflow-hidden">
             <pre class="font-mono text-[10px] text-green-400 whitespace-pre-wrap break-all leading-relaxed max-h-[400px] overflow-y-auto custom-scrollbar">{{ jsonStr }}</pre>
