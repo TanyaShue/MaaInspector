@@ -19,8 +19,6 @@
             "name": "ADB Device"
         }
     ],
-    "default_resource_path": "",
-    "default_socket_id": "",
     "resource_profiles": [
         {
             "name": "Default Profile",
@@ -37,11 +35,13 @@
             ]
         }
     ],
-    "agent_socket_id": "1234",
     "current_state": {
         "device_index": 1,
         "resource_profile_index": 1,
         "resource_file": "1.json",
         "agent_socket_id": "1234"
-    }
+    },
+    "default_resource_path": "",
+    "default_socket_id": "",
+    "agent_socket_id": "1234"
 }

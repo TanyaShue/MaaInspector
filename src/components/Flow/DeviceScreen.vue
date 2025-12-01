@@ -307,11 +307,11 @@ const handleConfirm = () => {
                </div>
                <div class="flex items-start gap-2">
                   <RefreshCw :size="14" class="text-indigo-400 mt-0.5 shrink-0"/>
-                  <span>点击右上角 <strong>刷新</strong> 获取最新画面。</span>
+                  <span> <strong>刷新</strong> 获取最新画面。</span>
                </div>
                <div class="flex items-start gap-2">
                   <RotateCcw :size="14" class="text-indigo-400 mt-0.5 shrink-0"/>
-                  <span>点击右上角 <strong>重置</strong> 重置图片位置。</span>
+                  <span> <strong>重置</strong> 重置图片位置。</span>
                </div>
             </div>
           </div>

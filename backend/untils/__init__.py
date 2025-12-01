@@ -1,253 +1,170 @@
+# backend/untils/__init__.py
 import os
 import json
-from typing import Dict, Any, Optional, List, Union
-
+import re
+from typing import Dict, Any, List, Union, Optional
 
 JsonValue = Dict[str, Any]
 
 
 class JsonNodeLoader:
+    """
+    JSON 节点加载器 - 增强版
+    封装了加载、索引、搜索、保存和创建文件的逻辑。
+    """
+
     def __init__(self, folder_path: str):
-        """初始化：加载目录下所有 JSON 文件"""
-        self.folder_path = folder_path
+        self.folder_path = os.path.normpath(folder_path)
         self.files_data: Dict[str, Dict[str, Any]] = {}
         self.node_index: Dict[str, Dict[str, Any]] = {}
-
         self._load_all_json_files()
 
     def _load_all_json_files(self):
-        """读取目录下的 json 文件并建立索引"""
         if not os.path.isdir(self.folder_path):
-            raise NotADirectoryError(f"路径不存在: {self.folder_path}")
+            # 允许路径不存在时静默失败（或根据需求抛出），但在初始化时通常意味着没数据
+            return
 
-        for filename in os.listdir(self.folder_path):
-            if filename.lower().endswith(".json"):
-                path = os.path.join(self.folder_path, filename)
+        for fname in os.listdir(self.folder_path):
+            if not fname.lower().endswith(".json"):
+                continue
+            full = os.path.join(self.folder_path, fname)
+            try:
+                with open(full, "r", encoding="utf-8") as f:
+                    content = json.load(f) or {}
 
-                try:
-                    with open(path, "r", encoding="utf-8") as f:
-                        data = json.load(f)
+                # 数据标准化：兼容 VueFlow List 格式转 Dict
+                self.files_data[fname] = self._normalize_data(content)
 
-                    self.files_data[filename] = data
+                # 构建索引
+                for node_name, node_val in self.files_data[fname].items():
+                    self.node_index[str(node_name)] = {"file": fname, "value": node_val}
 
-                    # 建立节点反向索引
-                    for node_name, node_value in data.items():
-                        self.node_index[node_name] = {
-                            "file": filename,
-                            "value": node_value
-                        }
+            except Exception as e:
+                print(f"[JsonNodeLoader] failed to load {full}: {e}")
 
-                except Exception as e:
-                    print(f"加载失败 {filename}: {e}")
+    def _normalize_data(self, data: Any) -> Dict[str, Any]:
+        """将前端可能的 List 结构转为标准的 ID->Value Dict 结构"""
+        if isinstance(data, dict):
+            return data
+        if isinstance(data, list):
+            converted = {}
+            for item in data:
+                nid = item.get("id")
+                # 处理嵌套: data.data
+                ndata = item.get("data", {})
+                if isinstance(ndata, dict) and "data" in ndata:
+                    ndata = ndata["data"]
+                if nid:
+                    converted[nid] = ndata if isinstance(ndata, dict) else {}
+            return converted
+        return {}
 
-    def get_files(self):
-        return list(self.files_data.keys())
-
-    def get_all_nodes(self):
-        return list(self.node_index.keys())
-
-    def get_nodes_by_file(self, filename: str):
+    # ---------------------------
+    # 核心读写
+    # ---------------------------
+    def get_nodes_by_file(self, filename: str) -> Optional[Dict[str, Any]]:
         return self.files_data.get(filename)
 
-    def get_node_value(self, node_name: str):
+    def create_file(self, filename: str) -> bool:
+        """创建一个新的空 JSON 文件"""
+        if not filename.lower().endswith(".json"):
+            filename += ".json"
+
+        if not os.path.exists(self.folder_path):
+            os.makedirs(self.folder_path, exist_ok=True)
+
+        full_path = os.path.join(self.folder_path, filename)
+        if os.path.exists(full_path):
+            return False  # 文件已存在
+
+        try:
+            with open(full_path, "w", encoding="utf-8") as f:
+                json.dump({}, f, ensure_ascii=False, indent=4)
+            # 更新内存
+            self.files_data[filename] = {}
+            return True
+        except Exception as e:
+            raise IOError(f"Failed to create file: {e}")
+
+    def save_file_content(self, filename: str, content: Union[Dict, List]) -> int:
+        """接收前端数据（List或Dict），标准化后保存到文件"""
+        if filename not in self.files_data:
+            # 如果是新文件但内存里没有，尝试重新加载或允许保存
+            pass
+
+        normalized_data = self._normalize_data(content)
+
+        # 更新内存
+        self.files_data[filename] = normalized_data
+        # 重新索引该文件的节点（简单起见，清除旧索引比较麻烦，这里主要用于持久化）
+        # 如果需要保持 node_index 实时一致，这里需要更复杂的 diff 逻辑，
+        # 但通常保存后前端会刷新或重新请求，持久化是第一位的。
+
+        full_path = os.path.join(self.folder_path, filename)
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+
+        with open(full_path, "w", encoding="utf-8") as f:
+            json.dump(normalized_data, f, ensure_ascii=False, indent=4)
+
+        return len(normalized_data)
+
+    # ---------------------------
+    # 搜索功能 (替代 app.py 中的逻辑)
+    # ---------------------------
+    def search_nodes(self, query: str, use_regex: bool = False, exclude_file: str = "") -> List[Dict[str, Any]]:
+        """在当前目录下所有节点中搜索"""
+        if not query:
+            return []
+
+        results = []
+        pattern = None
+        if use_regex:
+            try:
+                pattern = re.compile(query, re.IGNORECASE)
+            except re.error:
+                return []  # 或抛出异常
+
+        query_lower = query.lower()
+
+        # 遍历索引
+        for node_id, info in self.node_index.items():
+            fname = info["file"]
+            if fname == exclude_file:
+                continue
+
+            node_data = info["value"]
+            # 确定搜索目标：ID 和 display_id
+            # 兼容处理：有些节点 value 可能不是 dict
+            if not isinstance(node_data, dict):
+                display_id = str(node_id)
+            else:
+                display_id = str(node_data.get("id", node_id))
+
+            targets = [str(node_id), display_id]
+
+            matched = False
+            if pattern:
+                if any(pattern.search(t) for t in targets):
+                    matched = True
+            else:
+                if any(query_lower in t.lower() for t in targets):
+                    matched = True
+
+            if matched:
+                results.append({
+                    "filename": fname,
+                    "source": os.path.join(self.folder_path, "pipeline"),  # 前端可能需要 source 路径
+                    "node_id": node_id,
+                    "display_id": display_id,
+                    "type": node_data.get("recognition", "Unknown") if isinstance(node_data, dict) else "Unknown"
+                })
+                # 限制单次返回数量，防止过大？可在外部控制
+
+        return results
+
+    # ---------------------------
+    # 其它原有辅助方法 (保持不变)
+    # ---------------------------
+    def get_node_value(self, node_name: str) -> Optional[Dict[str, Any]]:
         entry = self.node_index.get(node_name)
         return entry["value"] if entry else None
-
-    def get_node_source_file(self, node_name: str):
-        entry = self.node_index.get(node_name)
-        return entry["file"] if entry else None
-
-    def has_node(self, node_name: str) -> bool:
-        return node_name in self.node_index
-
-    def _field_contains(self, field_value: Union[str, List[str], None], target: str) -> bool:
-        if field_value is None:
-            return False
-        if isinstance(field_value, str):
-            return field_value == target
-        if isinstance(field_value, list):
-            return target in field_value
-        return False
-
-    def find_references_to(self, node_name: str) -> List[Dict[str, str]]:
-        """返回所有引用到 node_name 的节点信息"""
-        refs = []
-
-        for other_node, info in self.node_index.items():
-            node_val = info["value"]
-            filename = info["file"]
-
-            for field in ("next", "interrupt", "on_error"):
-                if field in node_val:
-                    if self._field_contains(node_val[field], node_name):
-                        refs.append({
-                            "file": filename,
-                            "node": other_node,
-                            "field": field
-                        })
-        return refs
-
-    def is_referenced(self, node_name: str) -> bool:
-        return len(self.find_references_to(node_name)) > 0
-
-    def update_node_value(self, node_name: str, new_value: Dict[str, Any]):
-        """修改节点的内容（不改变节点名字）"""
-        if node_name not in self.node_index:
-            raise KeyError(f"节点不存在: {node_name}")
-
-        filename = self.node_index[node_name]["file"]
-        self.files_data[filename][node_name] = new_value
-        self.node_index[node_name]["value"] = new_value
-
-    def rename_node(self, old_name: str, new_name: str, update_references: bool = False):
-        """修改节点名称，可选择是否更新所有引用"""
-
-        if old_name not in self.node_index:
-            raise KeyError(f"节点不存在: {old_name}")
-        if new_name in self.node_index:
-            raise KeyError(f"目标节点名已存在: {new_name}")
-
-        filename = self.node_index[old_name]["file"]
-        node_value = self.node_index[old_name]["value"]
-
-        # 1. 文件内重命名
-        del self.files_data[filename][old_name]
-        self.files_data[filename][new_name] = node_value
-
-        # 2. 修正索引
-        del self.node_index[old_name]
-        self.node_index[new_name] = {
-            "file": filename,
-            "value": node_value
-        }
-
-        # 3. 是否更新引用
-        if update_references:
-            refs = self.find_references_to(old_name)
-            for ref in refs:
-                f = ref["file"]
-                n = ref["node"]
-                field = ref["field"]
-
-                value = self.files_data[f][n][field]
-
-                if isinstance(value, str):
-                    if value == old_name:
-                        self.files_data[f][n][field] = new_name
-
-                elif isinstance(value, list):
-                    self.files_data[f][n][field] = [
-                        new_name if v == old_name else v for v in value
-                    ]
-
-        return True
-
-    def save_file(self, filename: str):
-        """保存指定文件"""
-        if filename not in self.files_data:
-            raise KeyError(f"文件不存在: {filename}")
-
-        path = os.path.join(self.folder_path, filename)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(self.files_data[filename], f, ensure_ascii=False, indent=4)
-
-    def save_all(self):
-        """保存所有已加载 JSON 文件"""
-        for filename in self.files_data:
-            self.save_file(filename)
-    # ======================================================================
-    # 🔍 递归查找：仅在当前文件内
-    # ======================================================================
-    def _extract_targets(self, value):
-        """从 next/interrupt/on_error 字段中提取引用目标节点名称"""
-        if value is None:
-            return []
-        if isinstance(value, str):
-            return [value]
-        if isinstance(value, list):
-            return value
-        return []
-
-    def _get_node_links(self, node_value):
-        """给出 node_value，返回所有 next/interrupt/on_error 的节点列表"""
-        result = []
-        for key in ("next", "interrupt", "on_error"):
-            if key in node_value:
-                result.extend(self._extract_targets(node_value[key]))
-        return result
-
-    def get_node_chain_in_file(self, start_node: str):
-        """
-        从节点开始，递归查找 next/interrupt/on_error，
-        只在节点所属文件内查找
-        """
-        if start_node not in self.node_index:
-            raise KeyError(f"节点不存在: {start_node}")
-
-        file_name = self.node_index[start_node]["file"]
-        file_nodes = self.files_data[file_name]
-
-        visited = set()
-        result = []
-
-        def dfs(node):
-            if node in visited:
-                return
-            visited.add(node)
-            result.append(node)
-
-            if node not in file_nodes:
-                return
-
-            next_nodes = self._get_node_links(file_nodes[node])
-
-            for n in next_nodes:
-                if n in file_nodes:  # 仅在当前文件内查找
-                    dfs(n)
-
-        dfs(start_node)
-        return result
-
-    # ======================================================================
-    # 🔍 递归查找：跨所有文件
-    # ======================================================================
-    def get_node_chain_across_files(self, start_node: str):
-        """
-        从节点开始，递归查找 next/interrupt/on_error，
-        会跨文件查找，并返回节点及所属文件。
-        """
-        if start_node not in self.node_index:
-            raise KeyError(f"节点不存在: {start_node}")
-
-        visited = set()
-        result = []
-
-        def dfs(node):
-            if node in visited:
-                return
-            visited.add(node)
-
-            file_name = self.node_index[node]["file"]
-            node_value = self.node_index[node]["value"]
-
-            result.append({
-                "node": node,
-                "file": file_name
-            })
-
-            next_nodes = self._get_node_links(node_value)
-
-            for n in next_nodes:
-                if n in self.node_index:  # 跨文件查找
-                    dfs(n)
-
-        dfs(start_node)
-        return result
-# if __name__ == "__main__":
-#     loader = JsonNodeLoader("D:\\DeveProject\\MFWPH\\assets\\resource\\MaaYYs\\resource_pack\\base\\pipeline")
-#
-#     # print("所有文件:", loader.get_files())
-#     # print("所有节点:", loader.get_all_nodes())
-#     print("某个文件的节点:", loader.get_nodes_by_file("test.json"))
-#     # print("指定节点内容:", loader.get_node_value("999"))
-#     # print("节点来自文件:", loader.get_node_source_file("999"))

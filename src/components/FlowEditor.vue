@@ -7,6 +7,7 @@ import ContextMenu from './Flow/ContextMenu.vue'
 import NodeEditorModal from './Flow/NodeEditorModal.vue'
 import InfoPanel from './Flow/InfoPanel.vue'
 import NodeSearch from './Flow/NodeSearch.vue'
+import SaveConfirmModal from './Flow/Modals/SaveConfirmModal.vue' // [新增]
 import { useFlowGraph } from '../utils/useFlowGraph.js'
 import { resourceApi } from '../services/api.js'
 
@@ -20,202 +21,188 @@ const {
 
 const { fitView, removeEdges, findNode, screenToFlowCoordinate } = useVueFlow()
 
-// --- 关闭所有节点详情面板的信号 ---
+// --- 信号与状态 ---
 const closeAllDetailsSignal = ref(0)
 provide('closeAllDetailsSignal', closeAllDetailsSignal)
-
-// --- 提供更新方法给子组件 (CustomNode) ---
 provide('updateNode', handleNodeUpdate)
 
-// --- 新增：设备连接状态 ---
 const isDeviceConnected = ref(false)
-
-// --- 菜单与弹窗状态 ---
 const menu = ref({ visible: false, x: 0, y: 0, type: null, data: null, flowPos: { x: 0, y: 0 } })
 const editor = ref({ visible: false, nodeId: '', nodeData: null })
 const searchVisible = ref(false)
 
-// ----------------------------------------------------------------
-// [新增逻辑] 监听浏览器关闭/刷新事件，防止未保存丢失
-// ----------------------------------------------------------------
+// InfoPanel 引用与聚焦
+const infoPanelRef = ref(null)
+const pendingFocusNodeId = ref(null)
+
+// --- [新增] 未保存确认逻辑 ---
+const showSaveModal = ref(false)
+const isSavingModal = ref(false)
+const pendingSwitchConfig = ref(null) // { filename, source, nodeId? }
+
+// 统一处理所有切换请求 (来自 InfoPanel 或 NodeSearch)
+const handleRequestSwitch = (config) => {
+  // config: { filename, source, nodeId? }
+  
+  // 1. 如果当前没有修改，直接切
+  if (!isDirty.value) {
+    executeSwitch(config)
+    return
+  }
+
+  // 2. 否则，暂存请求，显示弹窗
+  pendingSwitchConfig.value = config
+  showSaveModal.value = true
+}
+
+// 执行切换 (调用 InfoPanel 的底层方法)
+const executeSwitch = async (config) => {
+  if (!infoPanelRef.value) return
+  
+  // 如果有 nodeId，设置 pending 聚焦
+  if (config.nodeId) {
+    pendingFocusNodeId.value = config.nodeId
+    searchVisible.value = false // 既然要跳转了，关闭搜索框
+  }
+  
+  await infoPanelRef.value.executeFileSwitch(config.filename, config.source)
+}
+
+// 弹窗 Action: 不保存
+const handleDiscardChanges = () => {
+  showSaveModal.value = false
+  if (pendingSwitchConfig.value) {
+    executeSwitch(pendingSwitchConfig.value)
+    pendingSwitchConfig.value = null
+  }
+}
+
+// 弹窗 Action: 保存并切换
+const handleSaveAndSwitch = async () => {
+  if (!infoPanelRef.value) return
+  isSavingModal.value = true
+  try {
+    // 调用 InfoPanel 的保存逻辑
+    await infoPanelRef.value.handleSaveNodes()
+    // 保存成功后，继续切换
+    showSaveModal.value = false
+    if (pendingSwitchConfig.value) {
+      executeSwitch(pendingSwitchConfig.value)
+      pendingSwitchConfig.value = null
+    }
+  } catch (e) {
+    // 保存失败停留，不切换
+    console.error("Save failed in modal", e)
+  } finally {
+    isSavingModal.value = false
+  }
+}
+
+const handleCancelSwitch = () => {
+  showSaveModal.value = false
+  pendingSwitchConfig.value = null
+  // InfoPanel 的下拉框 UI 会因为 reactivity 自动恢复原状 (因为 selectedResourceFile 没变)
+}
+
+// --- 浏览器关闭保护 (原生) ---
+// 注意：浏览器限制只能显示默认文本，不能使用自定义 Modal
 const handleBeforeUnload = (e) => {
-  // 如果当前有未保存的修改
   if (isDirty.value) {
-    // 阻止默认行为，触发浏览器原生的询问弹窗
     e.preventDefault()
-    // 现代浏览器（Chrome/Edge等）要求设置 returnValue
     e.returnValue = ''
     return ''
   }
 }
 
-onMounted(() => {
-  // 组件挂载时添加监听
-  window.addEventListener('beforeunload', handleBeforeUnload)
-})
+onMounted(() => window.addEventListener('beforeunload', handleBeforeUnload))
+onBeforeUnmount(() => window.removeEventListener('beforeunload', handleBeforeUnload))
 
-onBeforeUnmount(() => {
-  // 组件销毁前移除监听，防止内存泄漏
-  window.removeEventListener('beforeunload', handleBeforeUnload)
-})
-// ----------------------------------------------------------------
-
+// --- 菜单与编辑器逻辑 (Keep unchanged) ---
 const closeMenu = () => { menu.value.visible = false }
 const getEvent = (params) => params.event || params
-
+// ... (omitting context menu handlers for brevity, paste from previous full code) ...
 const onPaneContextMenu = (params) => {
-  const event = getEvent(params)
-  event.preventDefault()
-  const flowPos = screenToFlowCoordinate({ x: event.clientX, y: event.clientY })
-  menu.value = { visible: true, x: event.clientX, y: event.clientY, type: 'pane', data: null, flowPos }
+  const event = getEvent(params); event.preventDefault();
+  menu.value = { visible: true, x: event.clientX, y: event.clientY, type: 'pane', data: null, flowPos: screenToFlowCoordinate({ x: event.clientX, y: event.clientY }) }
 }
-
 const onNodeContextMenu = (params) => {
-  const event = getEvent(params)
-  event.preventDefault()
+  const event = getEvent(params); event.preventDefault();
   menu.value = { visible: true, x: event.clientX, y: event.clientY, type: 'node', data: params.node }
 }
-
 const onEdgeContextMenu = (params) => {
-  const event = getEvent(params)
-  event.preventDefault()
+  const event = getEvent(params); event.preventDefault();
   menu.value = { visible: true, x: event.clientX, y: event.clientY, type: 'edge', data: params.edge }
 }
 
-// --- 菜单动作处理 ---
 const handleMenuAction = ({ action, type, data, payload }) => {
   closeMenu()
-
   switch (action) {
     case 'add':
       const newId = `N-${Date.now()}`
       nodes.value.push(createNodeObject(newId, { id: newId, recognition: payload || 'DirectHit' }))
-      if (menu.value.flowPos) {
-        nodes.value[nodes.value.length - 1].position = { ...menu.value.flowPos }
-      }
+      if (menu.value.flowPos) nodes.value[nodes.value.length - 1].position = { ...menu.value.flowPos }
       break
-
     case 'debug':
       if (type === 'node') {
         const node = findNode(data.id)
-        if (node) {
-          console.log(`[Debug] Running node: ${data.id}`, node.data.data)
-          node.data.status = 'running'
-          setTimeout(() => { node.data.status = 'success' }, 1500)
-        }
+        if (node) { node.data.status = 'running'; setTimeout(() => { node.data.status = 'success' }, 1500) }
       }
       break
-
     case 'edit':
-      editor.value = {
-        visible: true,
-        nodeId: data.id,
-        nodeData: JSON.parse(JSON.stringify(data.data.data || { id: data.id, recognition: 'DirectHit' }))
-      }
+      editor.value = { visible: true, nodeId: data.id, nodeData: JSON.parse(JSON.stringify(data.data.data || { id: data.id, recognition: 'DirectHit' })) }
       break
-
     case 'duplicate':
       if (data) {
-        const copyId = `N-${Date.now()}`
-        const copyData = JSON.parse(JSON.stringify(data.data.data))
-        copyData.id = copyId
-        const copyNode = createNodeObject(copyId, copyData)
-        copyNode.position = { x: data.position.x + 50, y: data.position.y + 50 }
-        nodes.value.push(copyNode)
+        const copyId = `N-${Date.now()}`; const copyData = JSON.parse(JSON.stringify(data.data.data)); copyData.id = copyId;
+        const copyNode = createNodeObject(copyId, copyData); copyNode.position = { x: data.position.x + 50, y: data.position.y + 50 }; nodes.value.push(copyNode)
       }
       break
-
     case 'delete':
-      if (type === 'node') {
-        removeEdges(edges.value.filter(e => e.source === data.id || e.target === data.id))
-        nodes.value = nodes.value.filter(n => n.id !== data.id)
-      } else if (type === 'edge') {
-        removeEdges([data.id])
-      }
+      if (type === 'node') { removeEdges(edges.value.filter(e => e.source === data.id || e.target === data.id)); nodes.value = nodes.value.filter(n => n.id !== data.id) }
+      else if (type === 'edge') removeEdges([data.id])
       break
-
-    case 'layout':
-      applyLayout(currentSpacing.value)
-      break
-
-    case 'changeSpacing':
-      if (payload) {
-        currentSpacing.value = payload
-        applyLayout(payload)
-      }
-      break
-
-    case 'changeEdgeType':
-      if (payload) {
-        currentEdgeType.value = payload
-        edges.value = edges.value.map(edge => ({ ...edge, type: payload }))
-      }
-      break
-
-    case 'reset':
-      fitView({ padding: 0.2, duration: 500 })
-      break
-
-    case 'clear':
-      nodes.value = []; edges.value = [];
-      break
-
-    case 'search':
-      searchVisible.value = true
-      break
-
-    case 'closeAllDetails':
-      closeAllDetailsSignal.value++
-      break
+    case 'layout': applyLayout(currentSpacing.value); break
+    case 'changeSpacing': if (payload) { currentSpacing.value = payload; applyLayout(payload) }; break
+    case 'changeEdgeType': if (payload) { currentEdgeType.value = payload; edges.value = edges.value.map(edge => ({ ...edge, type: payload })) }; break
+    case 'reset': fitView({ padding: 0.2, duration: 500 }); break
+    case 'clear': nodes.value = []; edges.value = []; break
+    case 'search': searchVisible.value = true; break
+    case 'closeAllDetails': closeAllDetailsSignal.value++; break
   }
 }
 
 const handleLocateNode = (nodeId) => {
-  nodes.value = nodes.value.map(n => ({
-    ...n,
-    selected: n.id === nodeId
-  }))
-  setTimeout(() => {
-    fitView({
-      nodes: [nodeId],
-      padding: 0.5,
-      maxZoom: 1.5,
-      minZoom: 0.8,
-      duration: 600
-    })
-  }, 50)
+  nodes.value = nodes.value.map(n => ({ ...n, selected: n.id === nodeId }))
+  setTimeout(() => { fitView({ nodes: [nodeId], padding: 0.5, maxZoom: 1.5, minZoom: 0.8, duration: 600 }) }, 50)
+}
+
+// 加载节点后的回调，用于处理跳转聚焦
+const handleLoadNodesWrapper = (payload) => {
+  loadNodes(payload)
+  if (pendingFocusNodeId.value) {
+    const targetId = pendingFocusNodeId.value
+    setTimeout(() => {
+      handleLocateNode(targetId)
+      pendingFocusNodeId.value = null
+    }, 300)
+  }
 }
 
 const handleEditorSave = (newBusinessData) => {
   const targetNode = findNode(editor.value.nodeId)
   if (targetNode) {
     targetNode.data.data = { ...newBusinessData }
-    if (newBusinessData.id && newBusinessData.id !== targetNode.id) {
-      targetNode.id = newBusinessData.id
-      targetNode.data.id = newBusinessData.id
-    }
-    if (newBusinessData.recognition) {
-      targetNode.data.type = newBusinessData.recognition
-    }
+    if (newBusinessData.id && newBusinessData.id !== targetNode.id) { targetNode.id = newBusinessData.id; targetNode.data.id = newBusinessData.id }
+    if (newBusinessData.recognition) targetNode.data.type = newBusinessData.recognition
     nodes.value = [...nodes.value]
   }
   editor.value.visible = false
 }
 
-// 处理图片加载
 const handleLoadImages = (imageDataMap) => {
   if (!imageDataMap) return
-
   nodes.value = nodes.value.map(node => {
-    if (imageDataMap[node.id]) {
-      return {
-        ...node,
-        data: {
-          ...node.data,
-          _images: imageDataMap[node.id]
-        }
-      }
-    }
+    if (imageDataMap[node.id]) { return { ...node, data: { ...node.data, _images: imageDataMap[node.id] } } }
     return node
   })
 }
@@ -224,14 +211,8 @@ const handleSaveNodes = async ({ source, filename }) => {
   try {
     const nodesData = getNodesData()
     const res = await resourceApi.saveFileNodes(source, filename, nodesData)
-    if (res.success) {
-      clearDirty()
-      console.log('[FlowEditor] 保存成功:', filename)
-    }
-  } catch (e) {
-    console.error('[FlowEditor] 保存失败:', e)
-    throw e
-  }
+    if (res.success) { clearDirty(); console.log('[FlowEditor] 保存成功:', filename) }
+  } catch (e) { console.error('[FlowEditor] 保存失败:', e); throw e }
 }
 </script>
 
@@ -261,14 +242,16 @@ const handleSaveNodes = async ({ source, filename }) => {
 
       <Panel position="top-right" class="m-4 pointer-events-none">
         <InfoPanel
+          ref="infoPanelRef" 
           :node-count="nodes.length"
           :edge-count="edges.length"
           :is-dirty="isDirty"
           :current-filename="currentFilename"
-          @load-nodes="loadNodes"
+          @load-nodes="handleLoadNodesWrapper"
           @load-images="handleLoadImages"
           @save-nodes="handleSaveNodes"
           @device-connected="(val) => isDeviceConnected = val"
+          @request-switch-file="handleRequestSwitch"
         />
       </Panel>
 
@@ -291,8 +274,19 @@ const handleSaveNodes = async ({ source, filename }) => {
     <NodeSearch
       :visible="searchVisible"
       :nodes="nodes"
+      :current-filename="currentFilename"
       @close="searchVisible = false"
       @locate-node="handleLocateNode"
+      @switch-file="handleRequestSwitch"
+    />
+
+    <SaveConfirmModal 
+      :visible="showSaveModal"
+      :filename="currentFilename"
+      :is-saving="isSavingModal"
+      @cancel="handleCancelSwitch"
+      @discard="handleDiscardChanges"
+      @save="handleSaveAndSwitch"
     />
   </div>
 </template>
