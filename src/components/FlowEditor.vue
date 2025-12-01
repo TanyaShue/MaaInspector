@@ -7,12 +7,14 @@ import ContextMenu from './Flow/ContextMenu.vue'
 import NodeEditorModal from './Flow/NodeEditorModal.vue'
 import InfoPanel from './Flow/InfoPanel.vue'
 import { useFlowGraph } from '../utils/useFlowGraph.js'
+import { resourceApi } from '../services/api.js'
 
 // --- 引入逻辑 Hook ---
 const {
   nodes, edges, nodeTypes, currentEdgeType, currentSpacing,
+  isDirty, currentFilename,
   onValidateConnection, handleConnect, handleEdgesChange, handleNodeUpdate,
-  loadNodes, createNodeObject, applyLayout
+  loadNodes, createNodeObject, applyLayout, getNodesData, clearDirty
 } = useFlowGraph()
 
 const { fitView, removeEdges, findNode, screenToFlowCoordinate } = useVueFlow()
@@ -22,7 +24,7 @@ provide('updateNode', handleNodeUpdate)
 
 // --- 菜单与弹窗状态 ---
 const menu = ref({ visible: false, x: 0, y: 0, type: null, data: null, flowPos: { x: 0, y: 0 } })
-const editor = ref({ visible: false, nodeId: null, nodeData: null })
+const editor = ref({ visible: false, nodeId: '', nodeData: null })
 
 const closeMenu = () => { menu.value.visible = false }
 const getEvent = (params) => params.event || params
@@ -71,7 +73,12 @@ const handleMenuAction = ({ action, type, data, payload }) => {
       break
 
     case 'edit':
-      editor.value = { visible: true, nodeId: data.id, nodeData: JSON.parse(JSON.stringify(data.data.data)) }
+      // 传递节点的业务数据 (data.data.data)，包含 id 和 recognition 等属性
+      editor.value = { 
+        visible: true, 
+        nodeId: data.id, 
+        nodeData: JSON.parse(JSON.stringify(data.data.data || { id: data.id, recognition: 'DirectHit' }))
+      }
       break
 
     case 'duplicate':
@@ -125,11 +132,36 @@ const handleMenuAction = ({ action, type, data, payload }) => {
 const handleEditorSave = (newBusinessData) => {
   const targetNode = findNode(editor.value.nodeId)
   if (targetNode) {
-    targetNode.data.data = { ...newBusinessData, id: targetNode.id }
-    if (newBusinessData.recognition) targetNode.data.type = newBusinessData.recognition
+    // 更新节点的业务数据
+    targetNode.data.data = { ...newBusinessData }
+    // 如果 ID 发生变化，更新节点 ID
+    if (newBusinessData.id && newBusinessData.id !== targetNode.id) {
+      targetNode.id = newBusinessData.id
+      targetNode.data.id = newBusinessData.id
+    }
+    // 如果识别算法发生变化，更新节点类型
+    if (newBusinessData.recognition) {
+      targetNode.data.type = newBusinessData.recognition
+    }
+    // 触发响应式更新
     nodes.value = [...nodes.value]
   }
   editor.value.visible = false
+}
+
+// 保存节点到文件
+const handleSaveNodes = async ({ source, filename }) => {
+  try {
+    const nodesData = getNodesData()
+    const res = await resourceApi.saveFileNodes(source, filename, nodesData)
+    if (res.success) {
+      clearDirty()
+      console.log('[FlowEditor] 保存成功:', filename)
+    }
+  } catch (e) {
+    console.error('[FlowEditor] 保存失败:', e)
+    throw e
+  }
 }
 </script>
 
@@ -161,7 +193,10 @@ const handleEditorSave = (newBusinessData) => {
         <InfoPanel
           :node-count="nodes.length"
           :edge-count="edges.length"
+          :is-dirty="isDirty"
+          :current-filename="currentFilename"
           @load-nodes="loadNodes"
+          @save-nodes="handleSaveNodes"
         />
       </Panel>
 
@@ -174,7 +209,13 @@ const handleEditorSave = (newBusinessData) => {
         @action="handleMenuAction"
       />
     </VueFlow>
-    <NodeEditorModal :visible="editor.visible" :nodeData="editor.nodeData" @close="editor.visible = false" @save="handleEditorSave" />
+    <NodeEditorModal 
+      :visible="editor.visible" 
+      :nodeId="editor.nodeId"
+      :nodeData="editor.nodeData" 
+      @close="editor.visible = false" 
+      @save="handleEditorSave" 
+    />
   </div>
 </template>
 

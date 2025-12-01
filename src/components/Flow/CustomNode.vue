@@ -42,6 +42,9 @@ const handleUpdateId = ({ oldId, newId }) => {
 const handleUpdateType = (newType) => {
   updateNode({ oldId: props.id, newId: props.id, newType })
 }
+const handleUpdateData = (newData) => {
+  updateNode({ oldId: props.id, newId: props.id, newType: newData.recognition || props.data.type, newData })
+}
 
 // --- Status Styling ---
 const statusConfig = computed(() => {
@@ -82,6 +85,7 @@ const headerStyle = computed(() => {
       @close="showDetails = false"
       @update-id="handleUpdateId"
       @update-type="handleUpdateType"
+      @update-data="handleUpdateData"
     />
 
     <Handle id="in" type="target" :position="Position.Top" class="!w-16 !h-3 !rounded-full !bg-slate-300 hover:!bg-slate-400 transition-colors duration-200" style="top: -6px; left: 50%; transform: translate(-50%, 0);" />
@@ -102,7 +106,12 @@ const headerStyle = computed(() => {
     </div>
 
     <div class="p-4 bg-white min-h-[80px] flex flex-col justify-center">
-       <div v-if="data._isMissing" class="text-center text-slate-400 text-xs italic bg-slate-50 p-2 rounded border border-dashed border-slate-200">节点引用缺失<br><span class="text-[10px] opacity-70">Target node not found</span></div>
+      <div v-if="data._isMissing" class="text-center text-slate-400 text-xs italic bg-slate-50 p-2 rounded border border-dashed border-slate-200">节点引用缺失<br><span class="text-[10px] opacity-70">Target node not found</span></div>
+
+      <div v-else-if="data.type === 'Unknown'" class="text-center text-slate-400 text-xs italic">
+        未知逻辑节点<br><span class="text-[10px] opacity-70">Placeholder</span>
+      </div>
+
       <div v-else-if="['TemplateMatch', 'FeatureMatch'].includes(data.type)" class="space-y-2">
         <div class="w-full h-16 bg-slate-100 rounded-lg border border-slate-200 border-dashed flex items-center justify-center text-slate-400 overflow-hidden relative group/img">
           <component :is="config.icon" :size="24" class="opacity-20 group-hover/img:scale-110 transition-transform" />
@@ -131,10 +140,45 @@ const headerStyle = computed(() => {
       </div>
     </div>
 
-    <div v-if="!data._isMissing" class="flex h-6 w-full border-t border-slate-100 divide-x divide-slate-100">
-      <div class="flex-1 relative group hover:bg-blue-50 flex justify-center items-center cursor-crosshair transition-colors"><span class="text-[10px] font-bold text-blue-500 opacity-60 group-hover:opacity-100 transition-opacity">Next</span><Handle id="source-a" type="source" :position="Position.Bottom" class="!w-full !h-full !inset-0 !translate-x-0 !rounded-none !opacity-0 group-hover:!opacity-50 !bg-blue-400 !transition-opacity" /><div class="absolute bottom-0 w-full h-1 bg-blue-200 group-hover:bg-blue-500 transition-colors rounded-bl-xl"></div></div>
-      <div class="flex-1 relative group hover:bg-amber-50 flex justify-center items-center cursor-crosshair transition-colors"><span class="text-[10px] font-bold text-amber-500 opacity-60 group-hover:opacity-100 transition-opacity">Int.</span><Handle id="source-b" type="source" :position="Position.Bottom" class="!w-full !h-full !inset-0 !translate-x-0 !rounded-none !opacity-0 group-hover:!opacity-50 !bg-amber-400 !transition-opacity" /><div class="absolute bottom-0 w-full h-1 bg-amber-200 group-hover:bg-amber-500 transition-colors"></div></div>
-      <div class="flex-1 relative group hover:bg-rose-50 flex justify-center items-center cursor-crosshair transition-colors"><span class="text-[10px] font-bold text-rose-500 opacity-60 group-hover:opacity-100 transition-opacity">Err.</span><Handle id="source-c" type="source" :position="Position.Bottom" class="!w-full !h-full !inset-0 !translate-x-0 !rounded-none !opacity-0 group-hover:!opacity-50 !bg-rose-400 !transition-opacity" /><div class="absolute bottom-0 w-full h-1 bg-rose-200 group-hover:bg-rose-500 transition-colors rounded-br-xl"></div></div>
+    <div
+      v-if="!data._isMissing && data.type !== 'Unknown'"
+      class="flex h-6 w-full border-t border-slate-100 divide-x divide-slate-100"
+    >
+      <!-- Next 输出端口 -->
+      <div class="flex-1 relative group hover:bg-blue-50 flex justify-center items-center cursor-crosshair transition-colors">
+        <span class="text-[10px] font-bold text-blue-500 opacity-60 group-hover:opacity-100 transition-opacity">Next</span>
+        <Handle
+          id="source-a"
+          type="source"
+          :position="Position.Bottom"
+          class="!w-full !h-full !inset-0 !translate-x-0 !rounded-none !opacity-0 group-hover:!opacity-50 !bg-blue-400 !transition-opacity"
+        />
+        <div class="absolute bottom-0 w-full h-1 bg-blue-200 group-hover:bg-blue-500 transition-colors rounded-bl-xl"></div>
+      </div>
+
+      <!-- Interrupt 输出端口 -->
+      <div class="flex-1 relative group hover:bg-amber-50 flex justify-center items-center cursor-crosshair transition-colors">
+        <span class="text-[10px] font-bold text-amber-500 opacity-60 group-hover:opacity-100 transition-opacity">Int.</span>
+        <Handle
+          id="source-b"
+          type="source"
+          :position="Position.Bottom"
+          class="!w-full !h-full !inset-0 !translate-x-0 !rounded-none !opacity-0 group-hover:!opacity-50 !bg-amber-400 !transition-opacity"
+        />
+        <div class="absolute bottom-0 w-full h-1 bg-amber-200 group-hover:bg-amber-500 transition-colors"></div>
+      </div>
+
+      <!-- Error 输出端口 -->
+      <div class="flex-1 relative group hover:bg-rose-50 flex justify-center items-center cursor-crosshair transition-colors">
+        <span class="text-[10px] font-bold text-rose-500 opacity-60 group-hover:opacity-100 transition-opacity">Err.</span>
+        <Handle
+          id="source-c"
+          type="source"
+          :position="Position.Bottom"
+          class="!w-full !h-full !inset-0 !translate-x-0 !rounded-none !opacity-0 group-hover:!opacity-50 !bg-rose-400 !transition-opacity"
+        />
+        <div class="absolute bottom-0 w-full h-1 bg-rose-200 group-hover:bg-rose-500 transition-colors rounded-br-xl"></div>
+      </div>
     </div>
   </div>
 </template>

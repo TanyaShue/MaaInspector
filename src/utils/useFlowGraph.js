@@ -1,5 +1,5 @@
 // src/composables/useFlowGraph.js
-import { ref, markRaw } from 'vue'
+import { ref, markRaw, computed } from 'vue'
 import { useVueFlow, MarkerType } from '@vue-flow/core'
 import { useLayout } from './useLayout.js' // 假设原来的 useLayout 在这里
 import CustomNode from '../components/Flow/CustomNode.vue' // 注意路径调整
@@ -10,6 +10,8 @@ export function useFlowGraph() {
   const edges = ref([])
   const currentEdgeType = ref('smoothstep')
   const currentSpacing = ref('normal')
+  const currentFilename = ref('') // 当前打开的文件名
+  const originalDataSnapshot = ref('') // 原始数据快照（JSON字符串）
 
   const nodeTypes = { custom: markRaw(CustomNode) }
 
@@ -32,6 +34,28 @@ export function useFlowGraph() {
 
   const { layout } = useLayout()
 
+  // --- Helper: 获取当前节点数据（用于比较和保存） ---
+  const getNodesData = () => {
+    const result = {}
+    nodes.value.forEach(node => {
+      // 跳过缺失的占位节点
+      if (node.data._isMissing) return
+      
+      const nodeData = { ...node.data.data }
+      // 移除内部使用的 id 字段（key 就是 id）
+      delete nodeData.id
+      result[node.id] = nodeData
+    })
+    return result
+  }
+
+  // --- 计算属性: 通过比较数据判断是否有修改 ---
+  const isDirty = computed(() => {
+    if (!originalDataSnapshot.value) return false
+    const currentData = JSON.stringify(getNodesData())
+    return currentData !== originalDataSnapshot.value
+  })
+
   // --- Helper: 获取连线样式 ---
   const getEdgeStyle = (handleId) => {
     const config = PORT_MAPPING[handleId] || { color: '#94a3b8' }
@@ -43,10 +67,14 @@ export function useFlowGraph() {
     }
   }
 
-  // --- Helper: 创建节点对象 ---
+// --- Helper: 创建节点对象 ---
   const createNodeObject = (id, rawContent, isMissing = false) => {
     let logicType = rawContent.recognition || 'DirectHit'
     if (isMissing) logicType = 'Unknown'
+
+    // [修改点 1] 判断是否为手动添加的未知节点
+    const isUnknown = logicType === 'Unknown'
+
     return {
       id: id,
       type: 'custom',
@@ -54,7 +82,8 @@ export function useFlowGraph() {
       data: {
         id: id,
         type: logicType,
-        data: { ...rawContent, id: id, recognition: logicType },
+        // [修改点 2] 如果是 Unknown 类型，data.data 只保留 id，丢弃其他无用属性
+        data: isUnknown ? { id: id } : { ...rawContent, id: id, recognition: logicType },
         _isMissing: isMissing,
         status: 'idle'
       }
@@ -144,8 +173,8 @@ export function useFlowGraph() {
     })
   }
 
-  // --- 核心逻辑 4: 节点 ID/Type 更新 ---
-  const handleNodeUpdate = ({ oldId, newId, newType }) => {
+  // --- 核心逻辑 4: 节点 ID/Type/Data 更新 ---
+  const handleNodeUpdate = ({ oldId, newId, newType, newData }) => {
     const node = findNode(oldId)
     if (!node) return
 
@@ -186,13 +215,21 @@ export function useFlowGraph() {
       })
     }
 
+    // 更新节点类型
     node.data.type = newType
-    node.data.data.recognition = newType
+    
+    // 如果有新数据，更新业务数据
+    if (newData) {
+      node.data.data = { ...newData, id: node.id, recognition: newType }
+    } else {
+      node.data.data.recognition = newType
+    }
+    
     nodes.value = [...nodes.value] // Trigger reactivity
   }
 
   // --- 核心逻辑 5: 加载节点 ---
-  const loadNodes = ({ nodes: rawNodesData }) => {
+  const loadNodes = ({ filename, nodes: rawNodesData }) => {
     const newNodes = []
     const newEdges = []
     const createdNodeIds = new Set()
@@ -236,7 +273,20 @@ export function useFlowGraph() {
     const layoutedNodes = layout(newNodes, newEdges, SPACING_OPTIONS[currentSpacing.value])
     nodes.value = layoutedNodes
     edges.value = newEdges
+    
+    // 记录当前文件名并保存原始数据快照
+    currentFilename.value = filename || ''
+    // 延迟一帧保存快照，确保 nodes 已更新
+    setTimeout(() => {
+      originalDataSnapshot.value = JSON.stringify(getNodesData())
+    }, 0)
+    
     setTimeout(() => fitView({ padding: 0.2, duration: 800 }), 50)
+  }
+
+  // --- 清除 dirty 状态（更新快照为当前数据） ---
+  const clearDirty = () => {
+    originalDataSnapshot.value = JSON.stringify(getNodesData())
   }
 
   // --- 暴露给组件 ---
@@ -246,6 +296,8 @@ export function useFlowGraph() {
     nodeTypes,
     currentEdgeType,
     currentSpacing,
+    isDirty,
+    currentFilename,
     SPACING_OPTIONS,
     createNodeObject,
     onValidateConnection,
@@ -253,6 +305,8 @@ export function useFlowGraph() {
     handleEdgesChange,
     handleNodeUpdate,
     loadNodes,
+    getNodesData,
+    clearDirty,
     layout, // 暴露 layout 供手动调用
     // Helper to update layout explicitly
     applyLayout: (spacingKey) => {

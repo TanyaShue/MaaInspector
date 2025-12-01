@@ -3,7 +3,7 @@ import { computed, ref, reactive, onMounted, defineComponent, h, watch } from 'v
 import {
   Server, Database, Bot, Power, Settings, RefreshCw, CheckCircle2, XCircle, Loader2, HardDrive,
   FolderInput, Link, ChevronDown, Minimize2, Maximize2, Smartphone, FileText, Circle,
-  FilePlus // [新增] 图标
+  FilePlus, Save, AlertTriangle // [新增] 图标
 } from 'lucide-vue-next'
 import { useVueFlow } from '@vue-flow/core'
 import { deviceApi, resourceApi, agentApi, systemApi } from '../../services/api'
@@ -14,10 +14,12 @@ import CreateResourceModal from './Modals/CreateResourceModal.vue' // [新增] �
 // --- Props & Emits ---
 const props = defineProps({
   nodeCount: { type: Number, default: 0 },
-  edgeCount: { type: Number, default: 0 }
+  edgeCount: { type: Number, default: 0 },
+  isDirty: { type: Boolean, default: false },
+  currentFilename: { type: String, default: '' }
 })
 
-const emit = defineEmits(['load-nodes'])
+const emit = defineEmits(['load-nodes', 'save-nodes', 'before-switch-file'])
 
 // --- 内部组件 (Keep small) ---
 const StatusIndicator = defineComponent({
@@ -50,6 +52,11 @@ const systemStatus = ref('disconnected')
 const selectedDeviceIndex = ref(0)
 const selectedProfileIndex = ref(0)
 const selectedResourceFile = ref('')
+
+// --- 保存状态 ---
+const isSaving = ref(false)
+const showUnsavedDialog = ref(false)
+const pendingFileSwitch = ref(null) // 保存待切换的文件
 
 // --- 控制器逻辑封装 (Reuse original logic) ---
 function useStatusModule(api, label) {
@@ -119,6 +126,61 @@ const fetchAndEmitNodes = async () => {
     console.error("加载节点失败", e)
     resourceCtrl.message = '节点加载失败'
   }
+}
+
+// --- 保存处理 ---
+const handleSaveNodes = async () => {
+  if (!selectedResourceFile.value || isSaving.value) return
+  
+  isSaving.value = true
+  try {
+    const fileObj = availableFiles.value.find(f => f.value === selectedResourceFile.value)
+    if (!fileObj) throw new Error('未找到当前文件')
+    
+    emit('save-nodes', { source: fileObj.source, filename: fileObj.value })
+  } catch (e) {
+    console.error('保存失败', e)
+    alert('保存失败: ' + (e.message || '未知错误'))
+  } finally {
+    isSaving.value = false
+  }
+}
+
+// 处理文件切换前的检查
+const handleFileSelectChange = (newFile) => {
+  if (props.isDirty && selectedResourceFile.value && newFile !== selectedResourceFile.value) {
+    // 有未保存的更改，显示对话框
+    pendingFileSwitch.value = newFile
+    showUnsavedDialog.value = true
+  } else {
+    // 没有更改，直接切换
+    selectedResourceFile.value = newFile
+  }
+}
+
+// 确认不保存直接切换
+const confirmSwitchWithoutSave = () => {
+  if (pendingFileSwitch.value) {
+    selectedResourceFile.value = pendingFileSwitch.value
+    pendingFileSwitch.value = null
+  }
+  showUnsavedDialog.value = false
+}
+
+// 保存后切换
+const saveAndSwitch = async () => {
+  await handleSaveNodes()
+  if (pendingFileSwitch.value) {
+    selectedResourceFile.value = pendingFileSwitch.value
+    pendingFileSwitch.value = null
+  }
+  showUnsavedDialog.value = false
+}
+
+// 取消切换
+const cancelSwitch = () => {
+  pendingFileSwitch.value = null
+  showUnsavedDialog.value = false
 }
 
 // --- 动作处理 ---
@@ -266,7 +328,7 @@ const saveResourceSettings = (data) => {
 <template>
   <div class="relative flex flex-col items-end gap-2 font-sans select-none pointer-events-auto z-50">
     <Transition name="fade-scale" mode="out-in">
-      <div v-if="isCollapsed" class="bg-white/90 backdrop-blur shadow-lg border border-slate-200 rounded-full flex items-center p-1 pl-3 pr-1 gap-3 transition-all duration-300">
+      <div v-if="isCollapsed" class="bg-white/90 backdrop-blur shadow-lg border border-slate-200 rounded-full flex items-center p-1 pl-3 pr-1 gap-3 transition-all duration-300" :class="{'!border-amber-300': props.isDirty}">
         <div class="flex items-center gap-1.5" :title="deviceCtrl.message">
            <StatusIndicator :status="deviceCtrl.status" :size="12" />
            <span class="text-xs font-bold text-slate-600 max-w-[80px] truncate">
@@ -276,8 +338,16 @@ const saveResourceSettings = (data) => {
         <div class="w-px h-4 bg-slate-200"></div>
         <div class="flex items-center gap-1.5">
            <StatusIndicator :status="resourceCtrl.status" :size="12" />
-           <div class="relative group">
-             <select v-model="selectedResourceFile" class="appearance-none bg-transparent text-xs font-mono text-slate-600 outline-none w-[100px] truncate cursor-pointer hover:text-indigo-600 transition-colors pr-3" :disabled="resourceCtrl.status !== 'connected' || availableFiles.length === 0">
+           <div class="relative group flex items-center gap-1">
+             <!-- 修改状态指示器 -->
+             <div v-if="props.isDirty" class="w-2 h-2 rounded-full bg-amber-500 animate-pulse" title="文件已修改"></div>
+             <select 
+               :value="selectedResourceFile" 
+               @change="handleFileSelectChange($event.target.value)"
+               class="appearance-none bg-transparent text-xs font-mono text-slate-600 outline-none w-[100px] truncate cursor-pointer hover:text-indigo-600 transition-colors pr-3" 
+               :class="{'!text-amber-600 font-bold': props.isDirty}"
+               :disabled="resourceCtrl.status !== 'connected' || availableFiles.length === 0"
+             >
                <option v-for="file in availableFiles" :key="file.value" :value="file.value">{{ file.label }}</option>
                <option v-if="resourceCtrl.status !== 'connected'" disabled>未加载资源</option>
              </select>
@@ -289,7 +359,17 @@ const saveResourceSettings = (data) => {
            <Bot :size="14" :class="agentCtrl.status === 'connected' ? 'text-violet-500' : 'text-slate-400'" />
            <StatusIndicator :status="agentCtrl.status" :size="10" />
         </div>
-        <button @click="isCollapsed = false" class="ml-1 p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-blue-500 transition-colors"><Maximize2 :size="14" /></button>
+        <!-- 收起状态下的保存按钮 -->
+        <button 
+          v-if="props.isDirty"
+          @click="handleSaveNodes"
+          :disabled="isSaving"
+          class="p-1.5 rounded-full bg-amber-500 hover:bg-amber-600 text-white transition-colors"
+          title="保存更改"
+        >
+          <component :is="isSaving ? Loader2 : Save" :size="12" :class="{'animate-spin': isSaving}" />
+        </button>
+        <button @click="isCollapsed = false" class="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-blue-500 transition-colors"><Maximize2 :size="14" /></button>
       </div>
 
       <div v-else class="w-80 bg-white/95 backdrop-blur-md shadow-xl border border-slate-200 rounded-xl overflow-hidden flex flex-col max-h-[90vh] origin-top-right transition-all">
@@ -371,7 +451,12 @@ const saveResourceSettings = (data) => {
               <div v-if="resourceCtrl.status === 'connected'" class="animate-in fade-in slide-in-from-top-2">
                 <div class="relative">
                   <div class="absolute left-3 top-2.5 text-emerald-600 pointer-events-none"><FileText :size="14" /></div>
-                  <select v-model="selectedResourceFile" class="input-base pl-10 border-emerald-200 focus:ring-emerald-100 appearance-none cursor-pointer">
+                  <select 
+                    :value="selectedResourceFile" 
+                    @change="handleFileSelectChange($event.target.value)"
+                    class="input-base pl-10 border-emerald-200 focus:ring-emerald-100 appearance-none cursor-pointer"
+                    :class="{'!border-amber-300 !ring-amber-100': props.isDirty}"
+                  >
                     <option v-for="file in availableFiles" :key="file.value" :value="file.value">{{ file.label }}</option>
                     <option v-if="availableFiles.length === 0" disabled>配置路径下无文件</option>
                   </select>
@@ -398,8 +483,26 @@ const saveResourceSettings = (data) => {
         </div>
 
         <div class="shrink-0 px-4 py-3 bg-slate-50/50 border-t border-slate-100 text-[10px] text-slate-400 flex justify-between items-center">
-           <div class="flex gap-2"><span>{{ props.nodeCount }} Nodes</span><span>{{ props.edgeCount }} Edges</span></div>
-           <span class="font-mono font-bold text-slate-300">{{ zoomPercentage }}</span>
+           <div class="flex gap-2 items-center">
+             <span>{{ props.nodeCount }} Nodes</span>
+             <span>{{ props.edgeCount }} Edges</span>
+             <span v-if="props.isDirty" class="flex items-center gap-1 text-amber-600 font-medium">
+               <div class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></div>
+               已修改
+             </span>
+           </div>
+           <div class="flex items-center gap-2">
+             <button 
+               v-if="props.isDirty"
+               @click="handleSaveNodes"
+               :disabled="isSaving"
+               class="flex items-center gap-1 px-2 py-1 bg-indigo-500 hover:bg-indigo-600 text-white rounded text-[10px] font-bold transition-colors disabled:opacity-50"
+             >
+               <component :is="isSaving ? Loader2 : Save" :size="10" :class="{'animate-spin': isSaving}" />
+               {{ isSaving ? '保存中...' : '保存' }}
+             </button>
+             <span class="font-mono font-bold text-slate-300">{{ zoomPercentage }}</span>
+           </div>
         </div>
       </div>
     </Transition>
@@ -426,6 +529,49 @@ const saveResourceSettings = (data) => {
       @close="showCreateFileModal = false"
       @create="handleCreateFile"
     />
+
+    <!-- 未保存更改对话框 -->
+    <div v-if="showUnsavedDialog" class="fixed inset-0 z-[200] flex items-center justify-center bg-black/30 backdrop-blur-sm">
+      <div class="bg-white rounded-xl shadow-2xl border border-slate-200 w-[380px] overflow-hidden animate-in zoom-in-95 fade-in duration-200">
+        <div class="flex items-center gap-3 px-5 py-4 bg-amber-50 border-b border-amber-100">
+          <div class="p-2 bg-amber-100 rounded-lg">
+            <AlertTriangle :size="20" class="text-amber-600" />
+          </div>
+          <div>
+            <h3 class="font-bold text-slate-800">未保存的更改</h3>
+            <p class="text-xs text-slate-500 mt-0.5">当前文件有修改尚未保存</p>
+          </div>
+        </div>
+        <div class="px-5 py-4">
+          <p class="text-sm text-slate-600">
+            您正在切换到另一个文件，当前文件 <span class="font-mono font-bold text-slate-800">{{ currentFilename }}</span> 有未保存的更改。
+          </p>
+          <p class="text-sm text-slate-500 mt-2">是否要保存更改？</p>
+        </div>
+        <div class="px-5 py-3 bg-slate-50 border-t border-slate-100 flex justify-end gap-2">
+          <button 
+            @click="cancelSwitch"
+            class="px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+          >
+            取消
+          </button>
+          <button 
+            @click="confirmSwitchWithoutSave"
+            class="px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 border border-red-200 rounded-lg transition-colors"
+          >
+            不保存
+          </button>
+          <button 
+            @click="saveAndSwitch"
+            :disabled="isSaving"
+            class="px-3 py-1.5 text-xs font-bold text-white bg-indigo-500 hover:bg-indigo-600 rounded-lg transition-colors flex items-center gap-1 disabled:opacity-50"
+          >
+            <component :is="isSaving ? Loader2 : Save" :size="12" :class="{'animate-spin': isSaving}" />
+            保存并切换
+          </button>
+        </div>
+      </div>
+    </div>
 
   </div>
 </template>

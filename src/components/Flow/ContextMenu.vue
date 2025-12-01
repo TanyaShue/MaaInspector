@@ -1,8 +1,8 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref } from 'vue' // computed 仅用于 menuItems
 import {
   Trash2, Copy, Edit, PlusCircle, RefreshCw, XCircle, ChevronRight,
-  Activity, Check, Move, Target, Image, Sparkles, Palette, ScanText, Brain, ScanEye, Code2, Bug, Scissors
+  Activity, Check, Move, Target, Image, Sparkles, Palette, ScanText, Brain, ScanEye, Code2, Bug, Scissors, HelpCircle
 } from 'lucide-vue-next'
 
 const props = defineProps({
@@ -32,7 +32,6 @@ const handleMouseLeave = () => {
   showSubmenu.value = null
 }
 
-// ... 配置保持不变 ...
 const nodeTypes = [
   { label: '通用匹配 (DirectHit)', value: 'DirectHit', icon: Target, color: 'text-blue-500' },
   { label: '模板匹配 (Template)', value: 'TemplateMatch', icon: Image, color: 'text-indigo-500' },
@@ -42,25 +41,26 @@ const nodeTypes = [
   { label: '模型 分类 (Classify)', value: 'NeuralNetworkClassify', icon: Brain, color: 'text-amber-500' },
   { label: '模型 检测 (Detect)', value: 'NeuralNetworkDetect', icon: ScanEye, color: 'text-orange-500' },
   { label: '自定义 (Custom)', value: 'Custom', icon: Code2, color: 'text-slate-500' },
+  { label: '未知节点 (Unknown)', value: 'Unknown', icon: HelpCircle, color: 'text-gray-500' },
 ]
 
-const edgeTypes = computed(() => [
+const edgeTypes = [
   { label: '直角连线 (Step)', value: 'smoothstep', icon: Activity },
   { label: '贝塞尔曲线 (Bezier)', value: 'default', icon: Activity },
-])
+]
 
-const spacingTypes = computed(() => [
+const spacingTypes = [
   { label: '紧凑 (Compact)', value: 'compact', icon: Move },
   { label: '默认 (Normal)', value: 'normal', icon: Move },
   { label: '宽松 (Loose)', value: 'loose', icon: Move },
-])
+]
 
 const menuItems = computed(() => {
   if (props.type === 'node') {
     return [
       { label: '调试该节点', action: 'debug', icon: Bug, color: 'text-amber-600' },
       { type: 'divider' },
-      { label: '编辑数据', action: 'edit', icon: Edit, color: 'text-slate-600' },
+      { label: '编辑节点样式', action: 'edit', icon: Edit, color: 'text-slate-600' },
       { label: '复制节点', action: 'duplicate', icon: Copy, color: 'text-slate-600' },
       { type: 'divider' },
       { label: '删除节点', action: 'delete', icon: Trash2, color: 'text-red-500' },
@@ -92,7 +92,7 @@ const menuItems = computed(() => {
         label: '布局间距',
         icon: Move,
         color: 'text-slate-600',
-        submenu: spacingTypes.value,
+        submenu: spacingTypes,
         submenuAction: 'changeSpacing'
       },
       {
@@ -100,7 +100,7 @@ const menuItems = computed(() => {
         label: '连线类型',
         icon: Activity,
         color: 'text-slate-600',
-        submenu: edgeTypes.value,
+        submenu: edgeTypes,
         submenuAction: 'changeEdgeType'
       },
       { type: 'divider' },
@@ -149,22 +149,7 @@ const menuItems = computed(() => {
 
           <div
             v-if="item.submenu && showSubmenu === item.key"
-            class="
-              absolute left-full top-0 ml-1 w-48
-              bg-white rounded-lg shadow-xl border border-slate-100
-              animate-in slide-in-from-left-2 duration-150
-              z-[60]
-
-              /* --- 隐形桥核心代码 --- */
-              /* before 元素作为桥梁，填充父菜单和子菜单之间的空隙 */
-              before:content-['']
-              before:absolute
-              before:-left-4      /* 向左延伸，覆盖 ml-1 的间隙并稍微重叠父菜单 */
-              before:-top-2       /* 稍微向上延伸，增加斜向移动容错 */
-              before:w-6          /* 宽度足够覆盖间隙 */
-              before:h-[110%]     /* 高度稍微增加，防止从边缘滑出 */
-              before:bg-transparent /* 透明，用户不可见 */
-            "
+            class="submenu-panel absolute left-full top-0 ml-1 w-48 bg-white rounded-lg shadow-xl border border-slate-100 animate-in slide-in-from-left-2 duration-150 z-[60]"
           >
             <ul class="py-1">
               <li
@@ -190,3 +175,20 @@ const menuItems = computed(() => {
     </ul>
   </div>
 </template>
+
+<style scoped>
+/*
+ * 隐形桥核心代码
+ * before 伪元素作为桥梁，填充父菜单和子菜单之间的空隙
+ * 防止鼠标从父菜单移动到子菜单时因经过空隙而触发 mouseleave
+ */
+.submenu-panel::before {
+  content: '';
+  position: absolute;
+  left: -1rem;       /* 向左延伸，覆盖 ml-1 的间隙并稍微重叠父菜单 */
+  top: -0.5rem;      /* 稍微向上延伸，增加斜向移动容错 */
+  width: 1.5rem;     /* 宽度足够覆盖间隙 */
+  height: 110%;      /* 高度稍微增加，防止从边缘滑出 */
+  background: transparent; /* 透明，用户不可见 */
+}
+</style>

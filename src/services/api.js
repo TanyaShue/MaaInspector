@@ -59,7 +59,21 @@ export const resourceApi = {
   createFile: (path, filename) => request('/resource/file/create', {
     method: 'POST',
     body: JSON.stringify({ path, filename })
-  })
+  }),
+
+  // 保存节点数据到文件（伪实现）
+  saveFileNodes: async (source, filename, nodes) => {
+    // 伪实现：模拟网络延迟后返回成功
+    await new Promise(resolve => setTimeout(resolve, 300))
+    console.log('[Mock API] 保存文件:', { source, filename, nodes })
+    return { success: true, message: '保存成功' }
+    
+    // 真实实现时使用：
+    // return request('/resource/file/save', {
+    //   method: 'POST',
+    //   body: JSON.stringify({ source, filename, nodes })
+    // })
+  }
 }
 export const agentApi = {
   connect: (socketId) => request('/agent/connect', { method: 'POST', body: JSON.stringify({ socket_id: socketId }) }),
