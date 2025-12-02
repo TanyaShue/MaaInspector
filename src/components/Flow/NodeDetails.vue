@@ -1,12 +1,43 @@
 <script setup>
-import { ref, computed, watch, reactive, nextTick } from 'vue'
+import {computed, nextTick, reactive, ref, watch} from 'vue'
 import {
-  X, Check, ChevronDown, ChevronRight,
-  Settings, GitBranch, Clock, Zap, FileJson,
-  Target, Image, Sparkles, Palette, ScanText, Brain, ScanEye, Code2,
-  MousePointer, ArrowRight, Keyboard, Type, Play, Square, Terminal, Wand2,
-  AlertCircle, Crop, Crosshair, MessageSquare, Hand, Move, Mouse, Layers, Fingerprint,
-  Info, Plus, Image as ImageIcon
+  AlertCircle,
+  ArrowRight,
+  Brain,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  Code2,
+  Crop,
+  Crosshair,
+  FileJson,
+  Fingerprint,
+  GitBranch,
+  Hand,
+  Image,
+  Image as ImageIcon,
+  Info,
+  Keyboard,
+  Layers,
+  MessageSquare,
+  Mouse,
+  MousePointer,
+  Move,
+  Palette,
+  Play,
+  Plus,
+  ScanEye,
+  ScanText,
+  Settings,
+  Sparkles,
+  Square,
+  Target,
+  Terminal,
+  Type,
+  Wand2,
+  X,
+  Zap
 } from 'lucide-vue-next'
 import DeviceScreen from './DeviceScreen.vue'
 
@@ -154,7 +185,7 @@ const deviceScreenConfig = reactive({
   referenceLabel: '',
   title: '区域选择',
   mode: 'coordinate',
-  imageList: {} // [新增] 用于存储从 nodeData 传入的图片列表
+  imageList: [] // [新增] 用于存储从 nodeData 传入的图片列表
 })
 
 // ========== 计算属性 (保持不变) ==========
@@ -332,10 +363,7 @@ const openDevicePicker = (field, referenceField = null, mode = 'coordinate', ref
   deviceScreenConfig.mode = mode
   deviceScreenConfig.referenceLabel = refLabel || referenceField || '参考区域'
   deviceScreenConfig.title = mode === 'ocr' ? 'OCR 区域识别' : (field.includes('offset') ? `设置偏移 (${field})` : `选取区域 (${field})`)
-
-  // 清空图片列表 (非管理模式)
-  deviceScreenConfig.imageList = {}
-
+  deviceScreenConfig.imageList = []
   if (referenceField) deviceScreenConfig.referenceRect = parseRect(getValue(referenceField))
   showDeviceScreen.value = true
 }
@@ -344,11 +372,11 @@ const openImageManager = () => {
   deviceScreenConfig.mode = 'image_manager'
   deviceScreenConfig.title = '模板图片管理'
   deviceScreenConfig.targetField = 'template'
-  deviceScreenConfig.referenceRect = null
-  // 关键：从 props.nodeData 中获取由 FlowEditor handleLoadImages 注入的 _images
-  const currentImages = props.nodeData?._images || {}
-  deviceScreenConfig.imageList = currentImages
+  deviceScreenConfig.referenceRect = parseRect(getValue('roi'))
+  deviceScreenConfig.referenceLabel = "roi"
+  deviceScreenConfig.imageList = props.nodeData?._images || []
   showDeviceScreen.value = true
+  // console.log('当前文件名是:', currentFilename.value);
 }
 
 const handleDevicePick = (result) => {
