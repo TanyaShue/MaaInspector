@@ -297,15 +297,21 @@ def get_file_templates():
 
             if node_images:
                 results[node_id] = node_images
-
+        # safe_results = {}
+        # for node_id, imgs in results.items():
+        #     safe_results[node_id] = []
+        #     for item in imgs:
+        #         # 复制字典避免修改原始数据
+        #         new_item = dict(item)
+        #         new_item["base64"] = "base64..."
+        #         safe_results[node_id].append(new_item)
+        #
+        # print(safe_results)
         return _json_response(True, "Loaded", {"base_image_path": image_base, "results": results})
     except Exception as e:
         return _json_response(False, str(e), status=500)
 
 
-# ---------------------------
-# 设备与 Agent (保持原样，仅做格式微调)
-# ---------------------------
 @app.route("/device/connect", methods=["POST"])
 def device_connect():
     info = request.get_json(force=True, silent=True) or {}

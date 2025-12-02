@@ -1,5 +1,3 @@
---- START OF FILE NodeDetails.vue ---
-
 <script setup>
 import { ref, computed, watch, reactive, nextTick } from 'vue'
 import {
@@ -8,7 +6,7 @@ import {
   Target, Image, Sparkles, Palette, ScanText, Brain, ScanEye, Code2,
   MousePointer, ArrowRight, Keyboard, Type, Play, Square, Terminal, Wand2,
   AlertCircle, Crop, Crosshair, MessageSquare, Hand, Move, Mouse, Layers, Fingerprint,
-  Info, Plus
+  Info, Plus, Image as ImageIcon
 } from 'lucide-vue-next'
 import DeviceScreen from './DeviceScreen.vue'
 
@@ -23,7 +21,6 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'update-id', 'update-type', 'update-data'])
 
-// ========== 配置定义 (保持不变) ==========
 const recognitionTypes = [
   { value: 'DirectHit', label: '直接命中', icon: Target, color: 'text-blue-500' },
   { value: 'TemplateMatch', label: '模板匹配', icon: Image, color: 'text-indigo-500' },
@@ -156,7 +153,8 @@ const deviceScreenConfig = reactive({
   referenceRect: null,
   referenceLabel: '',
   title: '区域选择',
-  mode: 'coordinate'
+  mode: 'coordinate',
+  imageList: {} // [新增] 用于存储从 nodeData 传入的图片列表
 })
 
 // ========== 计算属性 (保持不变) ==========
@@ -334,18 +332,44 @@ const openDevicePicker = (field, referenceField = null, mode = 'coordinate', ref
   deviceScreenConfig.mode = mode
   deviceScreenConfig.referenceLabel = refLabel || referenceField || '参考区域'
   deviceScreenConfig.title = mode === 'ocr' ? 'OCR 区域识别' : (field.includes('offset') ? `设置偏移 (${field})` : `选取区域 (${field})`)
+
+  // 清空图片列表 (非管理模式)
+  deviceScreenConfig.imageList = {}
+
   if (referenceField) deviceScreenConfig.referenceRect = parseRect(getValue(referenceField))
   showDeviceScreen.value = true
 }
 
+const openImageManager = () => {
+  deviceScreenConfig.mode = 'image_manager'
+  deviceScreenConfig.title = '模板图片管理'
+  deviceScreenConfig.targetField = 'template'
+  deviceScreenConfig.referenceRect = null
+  // 关键：从 props.nodeData 中获取由 FlowEditor handleLoadImages 注入的 _images
+  const currentImages = props.nodeData?._images || {}
+  deviceScreenConfig.imageList = currentImages
+  showDeviceScreen.value = true
+}
+
 const handleDevicePick = (result) => {
-  const field = deviceScreenConfig.targetField
-  const refRect = deviceScreenConfig.referenceRect
-  if (deviceScreenConfig.mode !== 'ocr' && field.includes('offset') && refRect) {
-    setValue(field, [result[0] - refRect[0], result[1] - refRect[1], result[2] - refRect[2], result[3] - refRect[3]])
+  if (deviceScreenConfig.mode === 'image_manager') {
+    // 截图保存逻辑
+    if (result.type === 'save_screenshot') {
+      emit('update-data', { _action: 'save_screenshot', rect: result.rect })
+    }
   } else {
-    setValue(field, result)
+    const field = deviceScreenConfig.targetField
+    const refRect = deviceScreenConfig.referenceRect
+    if (deviceScreenConfig.mode !== 'ocr' && field.includes('offset') && refRect) {
+      setValue(field, [result[0] - refRect[0], result[1] - refRect[1], result[2] - refRect[2], result[3] - refRect[3]])
+    } else {
+      setValue(field, result)
+    }
   }
+}
+
+const handleImageDelete = (imageName) => {
+  emit('update-data', { _action: 'delete_image', name: imageName })
 }
 
 watch(() => props.visible, (val) => {
@@ -367,7 +391,6 @@ watch(() => props.nodeData?.data, (newData) => {
 </script>
 
 <template>
-  <!-- 遮罩层：确保下拉框打开时点击外部能关闭 -->
   <div v-if="anyDropdownOpen" class="fixed inset-0 z-[60] bg-transparent" @click="closeAllDropdowns"></div>
 
   <transition
@@ -400,7 +423,6 @@ watch(() => props.nodeData?.data, (newData) => {
       </div>
 
       <div class="flex-1 min-h-0 relative">
-        <!-- 修复点：使用 v-show 替代 invisible class，确保切换 Tab 时 DOM 被隐藏，消除残留 -->
         <div v-show="activeTab === 'properties'" class="absolute inset-0 overflow-y-auto custom-scrollbar p-3 space-y-2.5">
 
           <div class="bg-white rounded-xl border border-slate-200 overflow-visible relative z-50">
@@ -411,7 +433,6 @@ watch(() => props.nodeData?.data, (newData) => {
             <div v-show="expandedSections.basic" class="p-3 space-y-3 border-t border-slate-100 rounded-b-xl">
               <div class="space-y-1">
                 <label class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">节点 ID</label>
-                <!-- 修复点：移除输入框多余的 transition-all 防止渲染滞后 -->
                 <div class="flex gap-1.5"><input v-model="editingId" class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 font-mono" /><button v-if="editingId !== nodeId" @click="confirmIdChange" class="px-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-[10px] font-bold transition-colors flex items-center gap-0.5"><Check :size="10" /> 应用</button></div>
               </div>
 
@@ -536,7 +557,18 @@ watch(() => props.nodeData?.data, (newData) => {
                 </div>
                 <div class="space-y-1"><label class="text-[10px] font-semibold text-slate-500 uppercase">结果索引</label><input type="number" :value="getValue('index', 0)" @input="setValue('index', parseInt($event.target.value) || 0)" class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400" /></div>
               </div>
-              <template v-if="['TemplateMatch', 'FeatureMatch'].includes(currentRecognition)"><div class="space-y-1"><label class="text-[10px] font-semibold text-slate-500 uppercase">模板图片</label><input :value="getValue('template', '')" @input="setValue('template', $event.target.value)" class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono" placeholder="image/..." /></div><label class="inline-flex items-center gap-1.5 cursor-pointer"><input type="checkbox" :checked="getValue('green_mask', false)" @change="setValue('green_mask', $event.target.checked)" class="w-3.5 h-3.5 rounded text-indigo-600" /><span class="text-[11px] text-slate-600">绿色掩码 (忽略绿色部分)</span></label></template>
+              <template v-if="['TemplateMatch', 'FeatureMatch'].includes(currentRecognition)">
+                <div class="space-y-1">
+                  <label class="text-[10px] font-semibold text-slate-500 uppercase">模板图片</label>
+                  <div class="flex gap-1">
+                    <input :value="getValue('template', '')" @input="setValue('template', $event.target.value)" class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono min-w-0" placeholder="image/..." />
+                    <button @click="openImageManager" class="px-2 bg-pink-50 text-pink-600 border border-pink-200 hover:bg-pink-100 rounded-lg flex items-center justify-center" title="管理/截取模板图片">
+                      <ImageIcon :size="12" />
+                    </button>
+                  </div>
+                </div>
+                <label class="inline-flex items-center gap-1.5 cursor-pointer"><input type="checkbox" :checked="getValue('green_mask', false)" @change="setValue('green_mask', $event.target.checked)" class="w-3.5 h-3.5 rounded text-indigo-600" /><span class="text-[11px] text-slate-600">绿色掩码 (忽略绿色部分)</span></label>
+              </template>
               <template v-if="currentRecognition === 'TemplateMatch'"><div class="grid grid-cols-2 gap-2"><div class="space-y-1"><label class="text-[10px] font-semibold text-slate-500 uppercase">匹配阈值</label><input :value="getJsonValue('threshold')" @input="setJsonValue('threshold', $event.target.value)" class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400" placeholder="0.7 或 [0.7, 0.8]" /></div><div class="space-y-1"><label class="text-[10px] font-semibold text-slate-500 uppercase">算法 (1/3/5)</label><input type="number" min="1" max="5" step="2" :value="getValue('method', 5)" @input="setValue('method', parseInt($event.target.value) || 5)" class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400" /></div></div></template>
 
               <template v-if="currentRecognition === 'FeatureMatch'">
@@ -580,7 +612,6 @@ watch(() => props.nodeData?.data, (newData) => {
 
         </div>
 
-        <!-- 修复点：JSON 面板也使用 v-show 互斥显示 -->
         <div v-show="activeTab === 'json'" class="absolute inset-0 z-10 w-full h-full p-3 flex flex-col bg-white overflow-hidden">
           <div class="flex-1 bg-slate-900 rounded-xl overflow-hidden border border-slate-700 flex flex-col relative">
             <textarea class="w-full h-full bg-transparent text-[10px] font-mono text-green-400 p-3 outline-none resize-none custom-scrollbar" :value="jsonStr" @input="handleJsonInput" spellcheck="false"></textarea>
@@ -601,8 +632,10 @@ watch(() => props.nodeData?.data, (newData) => {
       :reference-rect="deviceScreenConfig.referenceRect"
       :reference-label="deviceScreenConfig.referenceLabel"
       :mode="deviceScreenConfig.mode"
+      :image-list="deviceScreenConfig.imageList"
       @confirm="handleDevicePick"
       @close="showDeviceScreen = false"
+      @delete-image="handleImageDelete"
     />
   </Teleport>
 </template>

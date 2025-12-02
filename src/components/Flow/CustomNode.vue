@@ -33,7 +33,6 @@ const nodeConfig = {
   'Unknown':               { label: '未知节点', icon: HelpCircle, color: 'bg-gray-400',    text: 'text-gray-500',    border: 'border-gray-300' }
 }
 
-// === 修改部分：补全所有动作图标配置 ===
 const actionConfigMap = {
   'DoNothing':    { icon: Square,       label: '无动作',     color: 'text-slate-400', bg: 'bg-slate-50' },
   'Click':        { icon: MousePointer, label: '点击目标',   color: 'text-blue-500',  bg: 'bg-blue-50' },
@@ -102,13 +101,11 @@ const headerStyle = computed(() => {
 
 const isImageNode = computed(() => ['TemplateMatch', 'FeatureMatch'].includes(props.data.type))
 
-// 1. 截取最多 16 张图片
 const nodeImages = computed(() => {
   const images = props.data._images || []
   return images.filter(img => img.found && img.base64).slice(0, 16)
 })
 
-// 2. 扩展 Grid 逻辑到 4x4
 const gridClass = computed(() => {
   const count = nodeImages.value.length
   if (count <= 1) return 'grid-cols-1 grid-rows-1'

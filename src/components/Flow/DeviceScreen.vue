@@ -2,22 +2,23 @@
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import {
   Smartphone, RefreshCw, Crosshair, Check, X, Maximize, MousePointer2,
-  ZoomIn, Move, RotateCcw, ScanText, Loader2
+  ZoomIn, Move, RotateCcw, ScanText, Loader2, Image as ImageIcon, Trash2
 } from 'lucide-vue-next'
 import { deviceApi } from '../../services/api'
 
 const props = defineProps({
   visible: Boolean,
-  mode: { type: String, default: 'coordinate' }, // 'coordinate' | 'ocr'
+  mode: { type: String, default: 'coordinate' }, // 'coordinate' | 'ocr' | 'image_manager'
   referenceRect: { type: Array, default: null },
   referenceLabel: { type: String, default: '参考区域' },
   initialRect: { type: Array, default: null },
-  title: { type: String, default: '设备屏幕选取' }
+  title: { type: String, default: '设备屏幕选取' },
+  // 修正：默认值改为空数组，因为实际传入的是 Array
+  imageList: { type: Array, default: () => [] }
 })
 
-const emit = defineEmits(['close', 'confirm'])
+const emit = defineEmits(['close', 'confirm', 'delete-image'])
 
-// --- 状态 ---
 const isLoading = ref(false)
 const isOcrLoading = ref(false)
 const imageUrl = ref('')
@@ -84,7 +85,6 @@ const resetView = () => {
   viewState.y = 0
 }
 
-// --- 样式计算 ---
 const getRectStyle = (rect) => {
   if (!rect || rect[2] <= 0 || rect[3] <= 0) return { display: 'none' }
   return {
@@ -123,7 +123,6 @@ onUnmounted(() => {
   window.removeEventListener('keyup', handleKeyUp)
 })
 
-// --- 交互逻辑 ---
 const handleWheel = (e) => {
   e.preventDefault()
   const delta = e.deltaY > 0 ? 0.9 : 1.1
@@ -189,13 +188,10 @@ const handleGlobalMouseUp = () => {
   isPanning.value = false
 }
 
-// --- 业务逻辑 ---
-
 const handleOcr = async () => {
   if (selection.w === 0) return
   isOcrLoading.value = true
   try {
-    // 模拟 API 调用
     await new Promise(resolve => setTimeout(resolve, 800))
     ocrResult.value = "这是识别结果"
   } catch (e) {
@@ -209,17 +205,32 @@ const handleOcr = async () => {
 const handleConfirm = () => {
   if (props.mode === 'ocr') {
     emit('confirm', ocrResult.value)
+  } else if (props.mode === 'image_manager') {
+    const result = {
+      rect: [Math.round(selection.x), Math.round(selection.y), Math.round(selection.w), Math.round(selection.h)],
+      type: 'save_screenshot'
+    }
+    emit('confirm', result)
+    return
   } else {
     const result = [Math.round(selection.x), Math.round(selection.y), Math.round(selection.w), Math.round(selection.h)]
     emit('confirm', result)
   }
   emit('close')
 }
+
+// 修正：传入的是 path 而不是 name/index
+const handleDeleteImage = (path) => {
+  emit('delete-image', path)
+}
 </script>
 
 <template>
   <div v-if="visible" class="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200" @click.self="$emit('close')">
-    <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col md:flex-row max-w-[95vw] max-h-[90vh]">
+    <div
+      class="bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col md:flex-row max-h-[90vh]"
+      :class="props.mode === 'image_manager' ? 'max-w-[98vw]' : 'max-w-[95vw]'"
+    >
 
       <div
         class="relative bg-slate-900 overflow-hidden select-none group flex items-center justify-center"
@@ -282,7 +293,7 @@ const handleConfirm = () => {
         </div>
       </div>
 
-      <div class="w-64 bg-slate-50 border-l border-slate-200 flex flex-col">
+      <div class="w-64 bg-slate-50 border-l border-slate-200 flex flex-col" :class="{'border-r': props.mode === 'image_manager'}">
         <div class="px-4 py-3 border-b border-slate-200 bg-white">
           <h3 class="font-bold text-slate-700 text-sm flex items-center gap-2"><Crosshair :size="16" class="text-indigo-500" /> {{ title }}</h3>
         </div>
@@ -336,9 +347,9 @@ const handleConfirm = () => {
                   <RefreshCw :size="14" class="text-indigo-400 mt-0.5 shrink-0"/>
                   <span> <strong>刷新</strong> 获取最新画面。</span>
                </div>
-               <div class="flex items-start gap-2">
-                  <RotateCcw :size="14" class="text-indigo-400 mt-0.5 shrink-0"/>
-                  <span> <strong>重置</strong> 重置视图位置。</span>
+               <div v-if="props.mode === 'image_manager'" class="flex items-start gap-2">
+                  <Check :size="14" class="text-indigo-400 mt-0.5 shrink-0"/>
+                  <span> 点击 <strong>保存区域</strong> 截取并保存。</span>
                </div>
             </div>
           </div>
@@ -355,11 +366,41 @@ const handleConfirm = () => {
             :disabled="props.mode === 'ocr' ? (!ocrResult && !isOcrLoading) : selection.w === 0"
             class="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold shadow-md shadow-indigo-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Check :size="16" /> 确认{{ props.mode === 'ocr' ? '结果' : '选取' }}
+            <Check :size="16" /> {{ props.mode === 'image_manager' ? '保存区域' : (props.mode === 'ocr' ? '确认结果' : '确认选取') }}
           </button>
-          <button @click="$emit('close')" class="w-full py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"><X :size="16" /> 取消</button>
+          <button @click="$emit('close')" class="w-full py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"><X :size="16" /> {{ props.mode === 'image_manager' ? '关闭' : '取消' }}</button>
         </div>
       </div>
+
+      <div v-if="props.mode === 'image_manager'" class="w-64 bg-slate-50 flex flex-col">
+        <div class="px-4 py-3 border-b border-slate-200 bg-white">
+          <h3 class="font-bold text-slate-700 text-sm flex items-center gap-2"><ImageIcon :size="16" class="text-pink-500" /> 图片列表</h3>
+        </div>
+        <div class="flex-1 p-3 overflow-y-auto custom-scrollbar space-y-3">
+          <div v-if="!imageList || imageList.length === 0" class="flex flex-col items-center justify-center h-40 text-slate-400 space-y-2">
+             <ImageIcon :size="24" class="opacity-30" />
+             <span class="text-xs">暂无图片</span>
+          </div>
+
+          <div v-for="(item, index) in imageList" :key="index" class="group relative bg-white border border-slate-200 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-all">
+             <div class="aspect-video w-full bg-slate-100 relative flex items-center justify-center bg-gray-50/50">
+               <button
+                 @click.stop="handleDeleteImage(item.path)"
+                 class="absolute top-1 left-1 z-10 p-1.5 bg-white/90 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-md backdrop-blur border border-slate-200 shadow-sm opacity-0 group-hover:opacity-100 transition-all"
+                 title="删除图片"
+               >
+                 <Trash2 :size="12" />
+               </button>
+
+               <img :src="item.base64" class="w-full h-full object-contain p-1" />
+             </div>
+             <div class="px-2 py-1.5 bg-white border-t border-slate-100">
+               <div class="text-[10px] text-slate-600 font-mono truncate" :title="item.path">{{ item.path }}</div>
+             </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </template>

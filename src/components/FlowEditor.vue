@@ -40,26 +40,20 @@ const showSaveModal = ref(false)
 const isSavingModal = ref(false)
 const pendingSwitchConfig = ref(null) // { filename, source, nodeId? }
 
-// 统一处理所有切换请求 (来自 InfoPanel 或 NodeSearch)
 const handleRequestSwitch = (config) => {
-  // config: { filename, source, nodeId? }
-  
-  // 1. 如果当前没有修改，直接切
+
   if (!isDirty.value) {
     executeSwitch(config)
     return
   }
 
-  // 2. 否则，暂存请求，显示弹窗
   pendingSwitchConfig.value = config
   showSaveModal.value = true
 }
 
-// 执行切换 (调用 InfoPanel 的底层方法)
 const executeSwitch = async (config) => {
   if (!infoPanelRef.value) return
   
-  // 如果有 nodeId，设置 pending 聚焦
   if (config.nodeId) {
     pendingFocusNodeId.value = config.nodeId
     searchVisible.value = false // 既然要跳转了，关闭搜索框
@@ -104,8 +98,6 @@ const handleCancelSwitch = () => {
   // InfoPanel 的下拉框 UI 会因为 reactivity 自动恢复原状 (因为 selectedResourceFile 没变)
 }
 
-// --- 浏览器关闭保护 (原生) ---
-// 注意：浏览器限制只能显示默认文本，不能使用自定义 Modal
 const handleBeforeUnload = (e) => {
   if (isDirty.value) {
     e.preventDefault()
@@ -117,10 +109,8 @@ const handleBeforeUnload = (e) => {
 onMounted(() => window.addEventListener('beforeunload', handleBeforeUnload))
 onBeforeUnmount(() => window.removeEventListener('beforeunload', handleBeforeUnload))
 
-// --- 菜单与编辑器逻辑 (Keep unchanged) ---
 const closeMenu = () => { menu.value.visible = false }
 const getEvent = (params) => params.event || params
-// ... (omitting context menu handlers for brevity, paste from previous full code) ...
 const onPaneContextMenu = (params) => {
   const event = getEvent(params); event.preventDefault();
   menu.value = { visible: true, x: event.clientX, y: event.clientY, type: 'pane', data: null, flowPos: screenToFlowCoordinate({ x: event.clientX, y: event.clientY }) }

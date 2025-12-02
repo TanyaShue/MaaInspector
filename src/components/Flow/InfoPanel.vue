@@ -106,7 +106,6 @@ const agentCtrl = useStatusModule(agentApi, 'Agent')
 const currentDevice = computed(() => availableDevices.value[selectedDeviceIndex.value] || {})
 const currentProfile = computed(() => resourceProfiles.value[selectedProfileIndex.value] || { name: 'None', paths: [] })
 
-// --- 核心逻辑 ---
 const fetchAndEmitNodes = async () => {
   if (!selectedResourceFile.value) return
   const fileObj = availableFiles.value.find(f => f.value === selectedResourceFile.value)
