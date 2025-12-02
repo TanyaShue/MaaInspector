@@ -17,7 +17,10 @@ const props = defineProps({
   imageList: {type: Array, default: () => []}
 })
 
-const emit = defineEmits(['close', 'confirm', 'delete-image'])
+const emit = defineEmits(['close', 'confirm', 'delete-image', 'save-with-deletions'])
+
+// 待删除图片路径集合（用于图片管理模式）
+const pendingDeletePaths = ref(new Set())
 
 const isLoading = ref(false)
 const isOcrLoading = ref(false)
@@ -85,6 +88,7 @@ watch(() => props.visible, async (val) => {
     resetView()
     ocrResult.value = ''
     previewUrl.value = ''
+    pendingDeletePaths.value = new Set() // 重置待删除列表
     await fetchScreenshot()
     if (props.initialRect && props.initialRect.length === 4) {
       selection.x = props.initialRect[0]
@@ -282,11 +286,24 @@ const handleConfirm = () => {
   if (props.mode === 'ocr') {
     emit('confirm', ocrResult.value)
   } else if (props.mode === 'image_manager') {
-    const result = {
-      rect: [Math.round(selection.x), Math.round(selection.y), Math.round(selection.w), Math.round(selection.h)],
-      type: 'save_screenshot'
+    // 如果有待删除的图片，保存删除操作
+    if (pendingDeletePaths.value.size > 0) {
+      const result = {
+        type: 'delete_images',
+        deletePaths: Array.from(pendingDeletePaths.value)
+      }
+      emit('confirm', result)
+      emit('close')
+      return
     }
-    emit('confirm', result)
+    // 如果有选区，保存截图
+    if (selection.w > 0) {
+      const result = {
+        rect: [Math.round(selection.x), Math.round(selection.y), Math.round(selection.w), Math.round(selection.h)],
+        type: 'save_screenshot'
+      }
+      emit('confirm', result)
+    }
     return
   } else {
     // 普通坐标模式，如果需要也可以把偏移量传出去，这里仅传选区
@@ -296,8 +313,41 @@ const handleConfirm = () => {
   emit('close')
 }
 
-const handleDeleteImage = (path) => {
-  emit('delete-image', path)
+// 图片管理模式下的保存按钮逻辑
+const handleImageManagerSave = () => {
+  // 如果有选区，保存截图
+  if (selection.w > 0) {
+    const result = {
+      rect: [Math.round(selection.x), Math.round(selection.y), Math.round(selection.w), Math.round(selection.h)],
+      type: 'save_screenshot',
+      deletePaths: pendingDeletePaths.value.size > 0 ? Array.from(pendingDeletePaths.value) : []
+    }
+    emit('confirm', result)
+  } else if (pendingDeletePaths.value.size > 0) {
+    // 只有删除操作
+    const result = {
+      type: 'delete_images',
+      deletePaths: Array.from(pendingDeletePaths.value)
+    }
+    emit('confirm', result)
+  }
+  emit('close')
+}
+
+// 切换图片的待删除状态
+const toggleDeleteImage = (path) => {
+  if (pendingDeletePaths.value.has(path)) {
+    pendingDeletePaths.value.delete(path)
+  } else {
+    pendingDeletePaths.value.add(path)
+  }
+  // 强制更新 Set
+  pendingDeletePaths.value = new Set(pendingDeletePaths.value)
+}
+
+// 检查图片是否标记为待删除
+const isMarkedForDeletion = (path) => {
+  return pendingDeletePaths.value.has(path)
 }
 </script>
 
@@ -553,22 +603,32 @@ const handleDeleteImage = (path) => {
 
           <div class="grid grid-cols-3 gap-1">
             <div v-for="(item, index) in imageList" :key="index"
-                 class="group relative bg-white border border-slate-200 rounded-md overflow-hidden shadow-sm hover:shadow-md transition-all aspect-square">
+                 class="group relative rounded-md overflow-hidden shadow-sm hover:shadow-md transition-all aspect-square"
+                 :class="isMarkedForDeletion(item.path) ? 'ring-2 ring-red-500 bg-red-100' : 'bg-white border border-slate-200'">
 
               <button
-                  @click.stop="handleDeleteImage(item.path)"
-                  class="absolute top-0.5 right-0.5 z-20 p-1 bg-black/50 hover:bg-red-500 text-white rounded-md backdrop-blur opacity-0 group-hover:opacity-100 transition-all"
-                  title="删除图片"
+                  @click.stop="toggleDeleteImage(item.path)"
+                  class="absolute top-0.5 right-0.5 z-20 p-1 text-white rounded-md backdrop-blur transition-all"
+                  :class="isMarkedForDeletion(item.path) ? 'bg-red-500 opacity-100' : 'bg-black/50 hover:bg-red-500 opacity-0 group-hover:opacity-100'"
+                  :title="isMarkedForDeletion(item.path) ? '取消删除' : '标记删除'"
               >
                 <Trash2 :size="12"/>
               </button>
 
-              <div class="w-full h-full bg-slate-100 flex items-center justify-center relative">
+              <!-- 待删除标记覆盖层 -->
+              <div v-if="isMarkedForDeletion(item.path)" 
+                   class="absolute inset-0 bg-red-500/30 z-15 pointer-events-none flex items-center justify-center">
+                <X :size="32" class="text-red-600 opacity-70"/>
+              </div>
+
+              <div class="w-full h-full bg-slate-100 flex items-center justify-center relative"
+                   :class="isMarkedForDeletion(item.path) ? 'opacity-50' : ''">
                 <div
                     class="absolute inset-0 opacity-10 bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:6px_6px]"></div>
                 <img :src="item.base64" class="w-full h-full object-contain relative z-10"/>
 
-                <div class="absolute bottom-0 left-0 right-0 bg-black/60 backdrop-blur-[1px] py-1 px-1 z-20 truncate">
+                <div class="absolute bottom-0 left-0 right-0 backdrop-blur-[1px] py-1 px-1 z-20 truncate"
+                     :class="isMarkedForDeletion(item.path) ? 'bg-red-600/80' : 'bg-black/60'">
                   <div class="text-[9px] text-white/90 font-mono text-center truncate select-none" :title="item.path">
                     {{ item.path }}
                   </div>
@@ -579,13 +639,20 @@ const handleDeleteImage = (path) => {
         </div>
 
         <div class="p-3 border-t border-slate-200 bg-white space-y-2">
+          <!-- 待删除图片提示 -->
+          <div v-if="pendingDeletePaths.size > 0" 
+               class="px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600 flex items-center gap-2">
+            <Trash2 :size="14"/>
+            <span>已标记 <strong>{{ pendingDeletePaths.size }}</strong> 张图片待删除</span>
+          </div>
           <button
-              @click="handleConfirm"
-              :disabled="selection.w === 0"
-              class="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold shadow-md shadow-indigo-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              @click="handleImageManagerSave"
+              :disabled="selection.w === 0 && pendingDeletePaths.size === 0"
+              class="w-full py-2 text-white rounded-lg text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              :class="pendingDeletePaths.size > 0 ? 'bg-red-500 hover:bg-red-600 shadow-red-200' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'"
           >
             <Check :size="16"/>
-            保存区域
+            {{ pendingDeletePaths.size > 0 ? '确认删除并保存' : '保存区域' }}
           </button>
           <button @click="$emit('close')"
                   class="w-full py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2">

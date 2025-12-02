@@ -166,9 +166,32 @@ const headerStyle = computed(() => {
 
 const isImageNode = computed(() => ['TemplateMatch', 'FeatureMatch'].includes(props.data.type))
 
+// 获取节点业务数据中的 template 路径列表
+const templatePaths = computed(() => {
+  const template = businessData.value.template
+  if (!template) return []
+  if (Array.isArray(template)) return template
+  if (typeof template === 'string') return [template]
+  return []
+})
+
+// 计算应该展示的图片：仅展示 template 中存在且在 _images 或 _temp_images 中的图片
 const nodeImages = computed(() => {
-  const images = props.data._images || []
-  return images.filter(img => img.found && img.base64).slice(0, 16)
+  const paths = templatePaths.value
+  if (paths.length === 0) return []
+
+  // 合并 _images 和 _temp_images
+  const allImages = [
+    ...(props.data._images || []),
+    ...(props.data._temp_images || [])
+  ]
+
+  // 过滤出 template 中存在的路径对应的图片
+  const validImages = allImages.filter(img => {
+    return img.found && img.base64 && paths.includes(img.path)
+  })
+
+  return validImages.slice(0, 16)
 })
 
 const gridClass = computed(() => {

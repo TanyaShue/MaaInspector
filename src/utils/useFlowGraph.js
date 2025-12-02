@@ -179,6 +179,13 @@ export function useFlowGraph() {
     const node = findNode(oldId)
     if (!node) return
 
+    // 处理特殊的 _action 操作
+    if (newData && newData._action) {
+      handleSpecialAction(node, newData)
+      nodes.value = [...nodes.value] // Trigger reactivity
+      return
+    }
+
     if (oldId !== newId) {
       if (findNode(newId)) { alert(`ID "${newId}" already exists!`); return }
 
@@ -227,6 +234,57 @@ export function useFlowGraph() {
     }
     
     nodes.value = [...nodes.value] // Trigger reactivity
+  }
+
+  // --- 处理特殊操作 (删除图片等) ---
+  const handleSpecialAction = (node, actionData) => {
+    const action = actionData._action
+
+    if (action === 'delete_images' || (action === 'save_screenshot' && actionData.deletePaths?.length > 0)) {
+      const deletePaths = actionData.deletePaths || []
+      if (deletePaths.length === 0) return
+
+      // 获取当前 _images 数组
+      const currentImages = node.data._images || []
+      
+      // 初始化 _del_images（如果不存在）
+      if (!node.data._del_images) {
+        node.data._del_images = []
+      }
+
+      // 找出要删除的图片并移动到 _del_images
+      const imagesToDelete = currentImages.filter(img => deletePaths.includes(img.path))
+      const remainingImages = currentImages.filter(img => !deletePaths.includes(img.path))
+
+      // 更新节点的 _images 和 _del_images
+      node.data._images = remainingImages
+      node.data._del_images = [...node.data._del_images, ...imagesToDelete]
+
+      // 从业务数据的 template 属性中移除对应路径
+      if (node.data.data && node.data.data.template) {
+        const currentTemplate = node.data.data.template
+        if (Array.isArray(currentTemplate)) {
+          node.data.data.template = currentTemplate.filter(path => !deletePaths.includes(path))
+        } else if (typeof currentTemplate === 'string') {
+          if (deletePaths.includes(currentTemplate)) {
+            node.data.data.template = []
+          }
+        }
+      }
+
+      console.log('[useFlowGraph] 图片删除操作完成:', {
+        nodeId: node.id,
+        deletedPaths: deletePaths,
+        remainingImages: remainingImages.length,
+        deletedImagesTotal: node.data._del_images.length
+      })
+    }
+
+    // 处理保存截图操作（如果有）
+    if (action === 'save_screenshot' && actionData.rect) {
+      // 这里可以处理保存截图的逻辑
+      console.log('[useFlowGraph] 保存截图:', actionData.rect)
+    }
   }
 
   // --- 核心逻辑 5: 加载节点 ---

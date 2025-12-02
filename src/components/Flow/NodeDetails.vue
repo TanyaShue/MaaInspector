@@ -141,8 +141,19 @@ const openImageManager = () => {
 const handleDevicePick = (result) => {
   if (deviceScreenConfig.mode === 'image_manager') {
     if (result.type === 'save_screenshot') {
-      emit('update-data', {_action: 'save_screenshot', rect: result.rect})
+      emit('update-data', {
+        _action: 'save_screenshot', 
+        rect: result.rect,
+        deletePaths: result.deletePaths || []
+      })
+    } else if (result.type === 'delete_images') {
+      // 处理图片删除：将图片从 _images 移动到 _del_images，并从 template 中移除路径
+      emit('update-data', {
+        _action: 'delete_images',
+        deletePaths: result.deletePaths
+      })
     }
+    showDeviceScreen.value = false
   } else {
     const field = deviceScreenConfig.targetField
     const refRect = deviceScreenConfig.referenceRect
