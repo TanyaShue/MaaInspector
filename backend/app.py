@@ -312,6 +312,154 @@ def get_file_templates():
         return _json_response(False, str(e), status=500)
 
 
+@app.route("/resource/images/check-unused", methods=["POST"])
+def check_unused_images():
+    """
+    检查待删除图片是否被其他节点引用
+    请求体: {
+        "source": "pipeline文件夹路径",
+        "current_filename": "当前文件名",
+        "del_images": [{"path": "图片路径", ...}, ...]
+    }
+    返回: {
+        "unused_images": ["未被引用的图片路径列表"],
+        "used_images": [{"path": "被引用的图片路径", "used_by": ["引用的节点ID"]}]
+    }
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    source = _norm_path(data.get("source"))
+    current_filename = data.get("current_filename", "")
+    del_images = data.get("del_images", [])
+
+    if not source or not del_images:
+        return _json_response(True, "No images to check", {"unused_images": [], "used_images": []})
+
+    try:
+        # 获取所有待检查的图片路径
+        paths_to_check = [img.get("path") for img in del_images if img.get("path")]
+        if not paths_to_check:
+            return _json_response(True, "No valid paths", {"unused_images": [], "used_images": []})
+
+        # 遍历所有 JSON 文件，检查 template 属性
+        used_map = {}  # path -> [nodeId, ...]
+        for filename in os.listdir(source):
+            if not filename.lower().endswith(".json"):
+                continue
+            # 跳过当前文件（当前文件的引用由前端处理）
+            if filename == current_filename:
+                continue
+
+            filepath = os.path.join(source, filename)
+            try:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    file_content = json.load(f)
+
+                for node_id, node_data in file_content.items():
+                    if not isinstance(node_data, dict):
+                        continue
+                    template = node_data.get("template")
+                    if not template:
+                        continue
+                    if isinstance(template, str):
+                        template = [template]
+
+                    for path in paths_to_check:
+                        if path in template:
+                            if path not in used_map:
+                                used_map[path] = []
+                            used_map[path].append(f"{filename}:{node_id}")
+            except Exception as e:
+                print(f"Error reading {filepath}: {e}")
+                continue
+
+        # 分类结果
+        unused_images = [p for p in paths_to_check if p not in used_map]
+        used_images = [{"path": p, "used_by": nodes} for p, nodes in used_map.items()]
+
+        return _json_response(True, "Checked", {
+            "unused_images": unused_images,
+            "used_images": used_images
+        })
+    except Exception as e:
+        return _json_response(False, str(e), status=500)
+
+
+@app.route("/resource/images/process", methods=["POST"])
+def process_images():
+    """
+    处理图片：删除指定图片并保存临时图片
+    请求体: {
+        "source": "pipeline文件夹路径",
+        "delete_paths": ["要删除的图片路径列表"],
+        "save_images": [{"path": "保存路径", "base64": "base64数据"}, ...]
+    }
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    source = _norm_path(data.get("source"))
+    delete_paths = data.get("delete_paths", [])
+    save_images = data.get("save_images", [])
+
+    if not source:
+        return _json_response(False, "Missing source path", status=400)
+
+    # 计算 image 文件夹路径（pipeline 的同级目录）
+    profile_path = os.path.dirname(source)
+    image_base = os.path.join(profile_path, "image")
+
+    results = {
+        "deleted": [],
+        "delete_failed": [],
+        "saved": [],
+        "save_failed": []
+    }
+
+    # 删除图片
+    for path in delete_paths:
+        if not path:
+            continue
+        full_path = os.path.join(image_base, path)
+        try:
+            if os.path.exists(full_path):
+                os.remove(full_path)
+                results["deleted"].append(path)
+                # 尝试删除空的父目录
+                parent_dir = os.path.dirname(full_path)
+                if parent_dir != image_base and os.path.isdir(parent_dir) and not os.listdir(parent_dir):
+                    os.rmdir(parent_dir)
+            else:
+                results["delete_failed"].append({"path": path, "reason": "File not found"})
+        except Exception as e:
+            results["delete_failed"].append({"path": path, "reason": str(e)})
+
+    # 保存临时图片
+    for img in save_images:
+        path = img.get("path")
+        base64_data = img.get("base64")
+        if not path or not base64_data:
+            continue
+
+        full_path = os.path.join(image_base, path)
+        try:
+            # 创建目录（如果不存在）
+            parent_dir = os.path.dirname(full_path)
+            if not os.path.exists(parent_dir):
+                os.makedirs(parent_dir)
+
+            # 解码并保存图片
+            # base64 格式: "data:image/png;base64,xxxx"
+            if ";base64," in base64_data:
+                base64_data = base64_data.split(";base64,")[1]
+
+            with open(full_path, "wb") as f:
+                f.write(base64.b64decode(base64_data))
+
+            results["saved"].append(path)
+        except Exception as e:
+            results["save_failed"].append({"path": path, "reason": str(e)})
+
+    return _json_response(True, "Processed", results)
+
+
 @app.route("/device/connect", methods=["POST"])
 def device_connect():
     info = request.get_json(force=True, silent=True) or {}

@@ -285,6 +285,116 @@ export function useFlowGraph() {
       // 这里可以处理保存截图的逻辑
       console.log('[useFlowGraph] 保存截图:', actionData.rect)
     }
+
+    // 处理添加临时图片操作
+    if (action === 'add_temp_image') {
+      const { imagePath, imageBase64 } = actionData
+      if (!imagePath || !imageBase64) return
+
+      // 初始化 _temp_images（如果不存在）
+      if (!node.data._temp_images) {
+        node.data._temp_images = []
+      }
+
+      // 添加新图片到 _temp_images
+      node.data._temp_images.push({
+        path: imagePath,
+        base64: imageBase64,
+        found: true
+      })
+
+      // 将路径添加到 template 属性
+      if (!node.data.data) {
+        node.data.data = {}
+      }
+      if (!node.data.data.template) {
+        node.data.data.template = []
+      }
+      if (Array.isArray(node.data.data.template)) {
+        if (!node.data.data.template.includes(imagePath)) {
+          node.data.data.template.push(imagePath)
+        }
+      } else if (typeof node.data.data.template === 'string') {
+        // 如果是字符串，转换为数组
+        const oldTemplate = node.data.data.template
+        node.data.data.template = oldTemplate ? [oldTemplate, imagePath] : [imagePath]
+      }
+
+      console.log('[useFlowGraph] 添加临时图片:', {
+        nodeId: node.id,
+        imagePath,
+        tempImagesCount: node.data._temp_images.length,
+        templatePaths: node.data.data.template
+      })
+    }
+
+    // 处理恢复已删除图片操作
+    if (action === 'restore_image') {
+      const { imagePath } = actionData
+      if (!imagePath) return
+
+      // 从 _del_images 中找到要恢复的图片
+      const delImages = node.data._del_images || []
+      const imageToRestore = delImages.find(img => img.path === imagePath)
+      
+      if (imageToRestore) {
+        // 从 _del_images 中移除
+        node.data._del_images = delImages.filter(img => img.path !== imagePath)
+
+        // 添加回 _images
+        if (!node.data._images) {
+          node.data._images = []
+        }
+        node.data._images.push(imageToRestore)
+
+        // 将路径添加回 template 属性
+        if (!node.data.data) {
+          node.data.data = {}
+        }
+        if (!node.data.data.template) {
+          node.data.data.template = []
+        }
+        if (Array.isArray(node.data.data.template)) {
+          if (!node.data.data.template.includes(imagePath)) {
+            node.data.data.template.push(imagePath)
+          }
+        } else if (typeof node.data.data.template === 'string') {
+          const oldTemplate = node.data.data.template
+          node.data.data.template = oldTemplate ? [oldTemplate, imagePath] : [imagePath]
+        }
+
+        console.log('[useFlowGraph] 恢复已删除图片:', {
+          nodeId: node.id,
+          restoredPath: imagePath,
+          imagesCount: node.data._images.length,
+          delImagesCount: node.data._del_images.length
+        })
+      }
+    }
+
+    // 处理保存图片变更操作（统一保存）
+    if (action === 'save_image_changes') {
+      const { validPaths, images, tempImages, deletedImages } = actionData
+
+      // 直接替换三个图片列表
+      node.data._images = images || []
+      node.data._temp_images = tempImages || []
+      node.data._del_images = deletedImages || []
+
+      // 更新 template 属性为有效路径
+      if (!node.data.data) {
+        node.data.data = {}
+      }
+      node.data.data.template = validPaths && validPaths.length > 0 ? [...validPaths] : []
+
+      console.log('[useFlowGraph] 保存图片变更:', {
+        nodeId: node.id,
+        validPaths,
+        imagesCount: node.data._images?.length || 0,
+        tempImagesCount: node.data._temp_images?.length || 0,
+        delImagesCount: node.data._del_images?.length || 0
+      })
+    }
   }
 
   // --- 核心逻辑 5: 加载节点 ---
@@ -348,6 +458,64 @@ export function useFlowGraph() {
     originalDataSnapshot.value = JSON.stringify(getNodesData())
   }
 
+  // --- Helper: 获取所有节点的图片数据（用于保存时处理） ---
+  const getImageData = () => {
+    const delImages = []  // 待删除的图片
+    const tempImages = [] // 待保存的临时图片
+
+    nodes.value.forEach(node => {
+      // 跳过缺失的占位节点
+      if (node.data._isMissing) return
+
+      // 收集待删除的图片
+      if (node.data._del_images && node.data._del_images.length > 0) {
+        node.data._del_images.forEach(img => {
+          if (img.path) {
+            delImages.push({
+              path: img.path,
+              nodeId: node.id
+            })
+          }
+        })
+      }
+
+      // 收集待保存的临时图片
+      if (node.data._temp_images && node.data._temp_images.length > 0) {
+        node.data._temp_images.forEach(img => {
+          if (img.path && img.base64) {
+            tempImages.push({
+              path: img.path,
+              base64: img.base64,
+              nodeId: node.id
+            })
+          }
+        })
+      }
+    })
+
+    return { delImages, tempImages }
+  }
+
+  // --- Helper: 清理节点的临时图片数据（保存成功后调用） ---
+  const clearTempImageData = () => {
+    nodes.value.forEach(node => {
+      if (node.data._isMissing) return
+      
+      // 将 _temp_images 合并到 _images
+      if (node.data._temp_images && node.data._temp_images.length > 0) {
+        if (!node.data._images) node.data._images = []
+        node.data._images.push(...node.data._temp_images)
+        node.data._temp_images = []
+      }
+      
+      // 清空 _del_images
+      if (node.data._del_images) {
+        node.data._del_images = []
+      }
+    })
+    nodes.value = [...nodes.value] // 触发响应式更新
+  }
+
   // --- 暴露给组件 ---
   return {
     nodes,
@@ -365,6 +533,8 @@ export function useFlowGraph() {
     handleNodeUpdate,
     loadNodes,
     getNodesData,
+    getImageData,
+    clearTempImageData,
     clearDirty,
     layout, // 暴露 layout 供手动调用
     // Helper to update layout explicitly

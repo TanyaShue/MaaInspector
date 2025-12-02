@@ -9,6 +9,7 @@ import NodeEditorModal from './Flow/NodeEditorModal.vue'
 import InfoPanel from './Flow/InfoPanel.vue'
 import NodeSearch from './Flow/NodeSearch.vue'
 import SaveConfirmModal from './Flow/Modals/SaveConfirmModal.vue'
+import DeleteImagesConfirmModal from './Flow/Modals/DeleteImagesConfirmModal.vue'
 import {useFlowGraph} from '../utils/useFlowGraph.js'
 import {resourceApi} from '../services/api.js'
 
@@ -16,7 +17,7 @@ const {
   nodes, edges, nodeTypes, currentEdgeType, currentSpacing,
   isDirty, currentFilename,
   onValidateConnection, handleConnect, handleEdgesChange, handleNodeUpdate,
-  loadNodes, createNodeObject, applyLayout, getNodesData, clearDirty
+  loadNodes, createNodeObject, applyLayout, getNodesData, getImageData, clearTempImageData, clearDirty
 } = useFlowGraph()
 
 const {fitView, removeEdges, findNode, screenToFlowCoordinate} = useVueFlow()
@@ -27,6 +28,7 @@ const isFileLoaded = computed(() => !!currentFilename.value)
 const closeAllDetailsSignal = ref(0)
 provide('closeAllDetailsSignal', closeAllDetailsSignal)
 provide('updateNode', handleNodeUpdate)
+provide('currentFilename', currentFilename)
 
 const isDeviceConnected = ref(false)
 const menu = ref({visible: false, x: 0, y: 0, type: null, data: null, flowPos: {x: 0, y: 0}})
@@ -41,6 +43,13 @@ const pendingFocusNodeId = ref(null)
 const showSaveModal = ref(false)
 const isSavingModal = ref(false)
 const pendingSwitchConfig = ref(null)
+
+// --- 图片删除确认逻辑 ---
+const showDeleteImagesModal = ref(false)
+const isProcessingImages = ref(false)
+const unusedImages = ref([])
+const usedImages = ref([])
+const pendingSaveConfig = ref(null) // 待保存的配置 {source, filename}
 
 const handleRequestSwitch = (config) => {
   if (!isDirty.value) {
@@ -250,16 +259,122 @@ const handleLoadImages = (imageDataMap) => {
 
 const handleSaveNodes = async ({source, filename}) => {
   try {
-    const nodesData = getNodesData()
-    const res = await resourceApi.saveFileNodes(source, filename, nodesData)
-    if (res.success) {
-      clearDirty();
-      console.log('[FlowEditor] 保存成功:', filename)
+    // 获取图片数据
+    const { delImages, tempImages } = getImageData()
+    
+    // 如果有待删除或待保存的图片，需要先检查和处理
+    if (delImages.length > 0 || tempImages.length > 0) {
+      pendingSaveConfig.value = { source, filename }
+      
+      // 检查待删除图片是否被其他文件引用
+      if (delImages.length > 0) {
+        const checkRes = await resourceApi.checkUnusedImages(source, filename, delImages)
+        unusedImages.value = checkRes.unused_images || []
+        usedImages.value = checkRes.used_images || []
+        
+        // 如果有未被引用的图片，显示确认弹窗
+        if (unusedImages.value.length > 0) {
+          showDeleteImagesModal.value = true
+          return // 等待用户确认
+        }
+      }
+      
+      // 没有需要确认删除的图片，直接处理临时图片并保存
+      await processImagesAndSave(source, filename, [], tempImages)
+    } else {
+      // 没有图片需要处理，直接保存节点数据
+      await saveNodesOnly(source, filename)
     }
   } catch (e) {
     console.error('[FlowEditor] 保存失败:', e);
     throw e
   }
+}
+
+// 处理图片并保存节点
+const processImagesAndSave = async (source, filename, deletePaths, tempImages) => {
+  try {
+    // 处理图片（删除和保存）
+    if (deletePaths.length > 0 || tempImages.length > 0) {
+      const processRes = await resourceApi.processImages(source, deletePaths, tempImages)
+      console.log('[FlowEditor] 图片处理结果:', processRes)
+    }
+    
+    // 清理节点的临时图片数据
+    clearTempImageData()
+    
+    // 保存节点数据
+    await saveNodesOnly(source, filename)
+  } catch (e) {
+    console.error('[FlowEditor] 图片处理失败:', e)
+    throw e
+  }
+}
+
+// 仅保存节点数据
+const saveNodesOnly = async (source, filename) => {
+  const nodesData = getNodesData()
+  const res = await resourceApi.saveFileNodes(source, filename, nodesData)
+  if (res.success) {
+    clearDirty()
+    console.log('[FlowEditor] 保存成功:', filename)
+  }
+}
+
+// 用户确认删除图片
+const handleConfirmDeleteImages = async () => {
+  if (!pendingSaveConfig.value) return
+  isProcessingImages.value = true
+  
+  try {
+    const { source, filename } = pendingSaveConfig.value
+    const { tempImages } = getImageData()
+    
+    // 删除未被引用的图片，保存临时图片
+    await processImagesAndSave(source, filename, unusedImages.value, tempImages)
+    
+    showDeleteImagesModal.value = false
+    pendingSaveConfig.value = null
+    unusedImages.value = []
+    usedImages.value = []
+  } catch (e) {
+    console.error('[FlowEditor] 处理失败:', e)
+    alert('保存失败: ' + (e.message || '未知错误'))
+  } finally {
+    isProcessingImages.value = false
+  }
+}
+
+// 用户选择跳过删除（保留所有图片）
+const handleSkipDeleteImages = async () => {
+  if (!pendingSaveConfig.value) return
+  isProcessingImages.value = true
+  
+  try {
+    const { source, filename } = pendingSaveConfig.value
+    const { tempImages } = getImageData()
+    
+    // 不删除任何图片，只保存临时图片
+    await processImagesAndSave(source, filename, [], tempImages)
+    
+    showDeleteImagesModal.value = false
+    pendingSaveConfig.value = null
+    unusedImages.value = []
+    usedImages.value = []
+  } catch (e) {
+    console.error('[FlowEditor] 处理失败:', e)
+    alert('保存失败: ' + (e.message || '未知错误'))
+  } finally {
+    isProcessingImages.value = false
+  }
+}
+
+// 用户取消删除确认
+const handleCancelDeleteImages = () => {
+  showDeleteImagesModal.value = false
+  pendingSaveConfig.value = null
+  unusedImages.value = []
+  usedImages.value = []
 }
 </script>
 
@@ -352,6 +467,16 @@ const handleSaveNodes = async ({source, filename}) => {
         @cancel="handleCancelSwitch"
         @discard="handleDiscardChanges"
         @save="handleSaveAndSwitch"
+    />
+
+    <DeleteImagesConfirmModal
+        :visible="showDeleteImagesModal"
+        :unused-images="unusedImages"
+        :used-images="usedImages"
+        :is-processing="isProcessingImages"
+        @cancel="handleCancelDeleteImages"
+        @confirm="handleConfirmDeleteImages"
+        @skip="handleSkipDeleteImages"
     />
   </div>
 </template>

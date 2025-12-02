@@ -18,6 +18,7 @@ const props = defineProps({
 
 const updateNode = inject('updateNode', () => console.warn('updateNode not provided'))
 const closeAllDetailsSignal = inject('closeAllDetailsSignal', ref(0))
+const currentFilename = inject('currentFilename', ref(''))
 
 const nodeConfig = {
   'DirectHit': {
@@ -240,6 +241,7 @@ const contentHeightClass = computed(() => {
         :nodeType="data.type"
         :availableTypes="availableTypes"
         :typeConfig="nodeConfig"
+        :currentFilename="currentFilename"
         @close="showDetails = false"
         @update-id="handleUpdateId"
         @update-type="handleUpdateType"

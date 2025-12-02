@@ -3,7 +3,7 @@ import {ref, reactive, computed, watch, onMounted, onUnmounted, nextTick} from '
 import {
   Smartphone, RefreshCw, Crosshair, Check, X, MousePointer2,
   ZoomIn, RotateCcw, ScanText, Loader2, Image as ImageIcon, Trash2, Mouse,
-  Maximize, ArrowLeftRight, Copy
+  Maximize, ArrowLeftRight, Copy, RotateCw
 } from 'lucide-vue-next'
 import {deviceApi} from '../../services/api'
 
@@ -14,13 +14,28 @@ const props = defineProps({
   referenceLabel: {type: String, default: '参考区域'},
   initialRect: {type: Array, default: null},
   title: {type: String, default: '设备屏幕选取'},
-  imageList: {type: Array, default: () => []}
+  imageList: {type: Array, default: () => []},
+  tempImageList: {type: Array, default: () => []}, // 临时图片列表 (_temp_images)
+  deletedImageList: {type: Array, default: () => []}, // 已删除的图片列表
+  filename: {type: String, default: ''}, // 当前文件名
+  nodeId: {type: String, default: ''} // 当前节点ID
 })
 
 const emit = defineEmits(['close', 'confirm', 'delete-image', 'save-with-deletions'])
 
-// 待删除图片路径集合（用于图片管理模式）
-const pendingDeletePaths = ref(new Set())
+// 保存图片的路径名
+const saveImagePath = ref('')
+
+// 生成图片计数器（用于生成唯一文件名）
+const imageCounter = ref(1)
+
+// 本地图片列表（实时操作）
+const localImages = ref([]) // 当前图片 (_images)
+const localTempImages = ref([]) // 新增图片 (_temp_images)
+const localDeletedImages = ref([]) // 已删除图片 (_del_images)，带来源标记
+
+// 原始 template 路径（用于判断是否有变化）
+const originalTemplatePaths = ref([])
 
 const isLoading = ref(false)
 const isOcrLoading = ref(false)
@@ -82,13 +97,55 @@ const guideList = computed(() => {
   }
 })
 
+// --- 计算默认保存路径 ---
+const generateDefaultSavePath = () => {
+  // 移除文件名的扩展名（如 .json）
+  const baseFilename = props.filename ? props.filename.replace(/\.[^/.]+$/, '') : 'default'
+  const nodeId = props.nodeId || 'node'
+  // 计算当前已有图片数量 + 1 作为序号
+  const existingCount = (props.imageList?.length || 0) + imageCounter.value
+  return `${baseFilename}\\${nodeId}_${existingCount}.png`
+}
+
+// --- 计算当前有效的 template 路径 ---
+const currentTemplatePaths = computed(() => {
+  const paths = []
+  localImages.value.forEach(img => paths.push(img.path))
+  localTempImages.value.forEach(img => paths.push(img.path))
+  return paths.sort()
+})
+
+// --- 判断 template 是否有变化 ---
+const hasTemplateChanged = computed(() => {
+  const current = [...currentTemplatePaths.value].sort().join(',')
+  const original = [...originalTemplatePaths.value].sort().join(',')
+  return current !== original
+})
+
 // --- 初始化与监听 ---
 watch(() => props.visible, async (val) => {
   if (val) {
     resetView()
     ocrResult.value = ''
     previewUrl.value = ''
-    pendingDeletePaths.value = new Set() // 重置待删除列表
+    imageCounter.value = 1 // 重置计数器
+    saveImagePath.value = generateDefaultSavePath() // 生成默认保存路径
+    
+    // 初始化本地图片列表（深拷贝）
+    localImages.value = (props.imageList || []).map(img => ({...img}))
+    localTempImages.value = (props.tempImageList || []).map(img => ({...img}))
+    // 已删除图片保留来源标记（如果有的话，没有则默认为 images）
+    localDeletedImages.value = (props.deletedImageList || []).map(img => ({
+      ...img,
+      _source: img._source || 'images' // 保留已有的来源标记，默认为 images
+    }))
+    
+    // 记录原始 template 路径
+    originalTemplatePaths.value = [
+      ...(props.imageList || []).map(img => img.path),
+      ...(props.tempImageList || []).map(img => img.path)
+    ]
+    
     await fetchScreenshot()
     if (props.initialRect && props.initialRect.length === 4) {
       selection.x = props.initialRect[0]
@@ -315,39 +372,83 @@ const handleConfirm = () => {
 
 // 图片管理模式下的保存按钮逻辑
 const handleImageManagerSave = () => {
-  // 如果有选区，保存截图
-  if (selection.w > 0) {
-    const result = {
-      rect: [Math.round(selection.x), Math.round(selection.y), Math.round(selection.w), Math.round(selection.h)],
-      type: 'save_screenshot',
-      deletePaths: pendingDeletePaths.value.size > 0 ? Array.from(pendingDeletePaths.value) : []
-    }
-    emit('confirm', result)
-  } else if (pendingDeletePaths.value.size > 0) {
-    // 只有删除操作
-    const result = {
-      type: 'delete_images',
-      deletePaths: Array.from(pendingDeletePaths.value)
-    }
-    emit('confirm', result)
+  // 收集当前有效图片路径
+  const validPaths = currentTemplatePaths.value
+  
+  // 收集所有当前状态的图片数据
+  // 保留 _source 标记，以便下次恢复时能恢复到正确位置
+  const result = {
+    type: 'save_image_changes',
+    validPaths, // 更新到 template 的路径
+    images: localImages.value, // 当前 _images
+    tempImages: localTempImages.value, // 当前 _temp_images
+    deletedImages: localDeletedImages.value // 当前 _del_images（保留 _source 标记）
   }
+  
+  emit('confirm', result)
   emit('close')
 }
 
-// 切换图片的待删除状态
-const toggleDeleteImage = (path) => {
-  if (pendingDeletePaths.value.has(path)) {
-    pendingDeletePaths.value.delete(path)
-  } else {
-    pendingDeletePaths.value.add(path)
+// 从当前图片删除（实时移动到已删除区域）
+const deleteFromImages = (path) => {
+  const index = localImages.value.findIndex(img => img.path === path)
+  if (index !== -1) {
+    const [deletedImg] = localImages.value.splice(index, 1)
+    // 标记来源为 images，以便恢复时回到正确位置
+    localDeletedImages.value.push({ ...deletedImg, _source: 'images' })
   }
-  // 强制更新 Set
-  pendingDeletePaths.value = new Set(pendingDeletePaths.value)
 }
 
-// 检查图片是否标记为待删除
-const isMarkedForDeletion = (path) => {
-  return pendingDeletePaths.value.has(path)
+// 从新增图片删除（实时移动到已删除区域）
+const deleteFromTempImages = (path) => {
+  const index = localTempImages.value.findIndex(img => img.path === path)
+  if (index !== -1) {
+    const [deletedImg] = localTempImages.value.splice(index, 1)
+    // 标记来源为 temp，以便恢复时回到正确位置
+    localDeletedImages.value.push({ ...deletedImg, _source: 'temp' })
+  }
+}
+
+// 恢复已删除的图片（根据来源恢复到正确位置）
+const restoreImage = (path) => {
+  const index = localDeletedImages.value.findIndex(img => img.path === path)
+  if (index !== -1) {
+    const [restoredImg] = localDeletedImages.value.splice(index, 1)
+    const { _source, ...imgData } = restoredImg
+    
+    // 根据来源恢复到正确的列表
+    if (_source === 'temp') {
+      localTempImages.value.push(imgData)
+    } else {
+      localImages.value.push(imgData)
+    }
+  }
+}
+
+// 保存截图到 _temp_images（仅本地添加，保存时才提交）
+const handleSaveTempImage = () => {
+  if (!previewUrl.value || !saveImagePath.value.trim()) return
+  
+  const imagePath = saveImagePath.value.trim()
+  const imageBase64 = previewUrl.value
+  
+  // 添加到本地临时图片列表
+  localTempImages.value.push({
+    path: imagePath,
+    base64: imageBase64,
+    found: true
+  })
+  
+  // 更新计数器并生成新的默认路径
+  imageCounter.value++
+  saveImagePath.value = generateDefaultSavePath()
+  
+  // 清空选区和预览
+  selection.x = 0
+  selection.y = 0
+  selection.w = 0
+  selection.h = 0
+  previewUrl.value = ''
 }
 </script>
 
@@ -469,14 +570,14 @@ const isMarkedForDeletion = (path) => {
             </div>
           </div>
 
-          <div v-else-if="props.mode === 'image_manager'" class="space-y-2">
+          <div v-else-if="props.mode === 'image_manager'" class="space-y-3">
             <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
               <ImageIcon :size="12"/>
               选区截图预览
             </div>
 
             <div
-                class="bg-slate-100 border border-slate-200 rounded-lg overflow-hidden shadow-inner flex items-center justify-center min-h-[140px] h-[140px] relative p-2">
+                class="bg-slate-100 border border-slate-200 rounded-lg overflow-hidden shadow-inner flex items-center justify-center min-h-[120px] h-[120px] relative p-2">
               <div
                   class="absolute inset-0 opacity-10 bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:8px_8px]"></div>
 
@@ -490,6 +591,27 @@ const isMarkedForDeletion = (path) => {
               <div v-else class="text-[10px] text-slate-400 relative z-10 flex flex-col items-center gap-1">
                 <MousePointer2 :size="16" class="opacity-50"/>
                 <span>请左键框选区域</span>
+              </div>
+            </div>
+
+            <!-- 保存路径输入框和保存按钮 -->
+            <div class="space-y-1.5">
+              <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">保存路径</label>
+              <div class="flex gap-1">
+                <input 
+                    v-model="saveImagePath"
+                    type="text"
+                    class="flex-1 px-2 py-1.5 bg-white border border-slate-200 rounded text-[11px] text-slate-700 font-mono outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-100"
+                    placeholder="文件名\\节点名.png"
+                />
+                <button
+                    @click="handleSaveTempImage"
+                    :disabled="!previewUrl || !saveImagePath.trim()"
+                    class="px-2.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded text-[11px] font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="保存截图到临时图片"
+                >
+                  保存
+                </button>
               </div>
             </div>
 
@@ -595,42 +717,106 @@ const isMarkedForDeletion = (path) => {
         </div>
 
         <div class="flex-1 p-2 overflow-y-auto custom-scrollbar">
-          <div v-if="!imageList || imageList.length === 0"
+          <div v-if="localImages.length === 0 && localTempImages.length === 0 && localDeletedImages.length === 0"
                class="flex flex-col items-center justify-center h-40 text-slate-400 space-y-2">
             <ImageIcon :size="24" class="opacity-30"/>
             <span class="text-xs">暂无图片</span>
           </div>
 
-          <div class="grid grid-cols-3 gap-1">
-            <div v-for="(item, index) in imageList" :key="index"
-                 class="group relative rounded-md overflow-hidden shadow-sm hover:shadow-md transition-all aspect-square"
-                 :class="isMarkedForDeletion(item.path) ? 'ring-2 ring-red-500 bg-red-100' : 'bg-white border border-slate-200'">
+          <!-- 当前图片列表 -->
+          <div v-if="localImages.length > 0" class="space-y-2">
+            <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-1">
+              当前图片 ({{ localImages.length }})
+            </div>
+            <div class="grid grid-cols-3 gap-1">
+              <div v-for="(item, index) in localImages" :key="'current-' + index"
+                   class="group relative rounded-md overflow-hidden shadow-sm hover:shadow-md transition-all aspect-square bg-white border border-slate-200">
 
-              <button
-                  @click.stop="toggleDeleteImage(item.path)"
-                  class="absolute top-0.5 right-0.5 z-20 p-1 text-white rounded-md backdrop-blur transition-all"
-                  :class="isMarkedForDeletion(item.path) ? 'bg-red-500 opacity-100' : 'bg-black/50 hover:bg-red-500 opacity-0 group-hover:opacity-100'"
-                  :title="isMarkedForDeletion(item.path) ? '取消删除' : '标记删除'"
-              >
-                <Trash2 :size="12"/>
-              </button>
+                <button
+                    @click.stop="deleteFromImages(item.path)"
+                    class="absolute top-0.5 right-0.5 z-20 p-1 text-white rounded-md backdrop-blur transition-all bg-black/50 hover:bg-red-500 opacity-0 group-hover:opacity-100"
+                    title="删除图片"
+                >
+                  <Trash2 :size="12"/>
+                </button>
 
-              <!-- 待删除标记覆盖层 -->
-              <div v-if="isMarkedForDeletion(item.path)" 
-                   class="absolute inset-0 bg-red-500/30 z-15 pointer-events-none flex items-center justify-center">
-                <X :size="32" class="text-red-600 opacity-70"/>
+                <div class="w-full h-full bg-slate-100 flex items-center justify-center relative">
+                  <div
+                      class="absolute inset-0 opacity-10 bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:6px_6px]"></div>
+                  <img :src="item.base64" class="w-full h-full object-contain relative z-10"/>
+
+                  <div class="absolute bottom-0 left-0 right-0 backdrop-blur-[1px] py-1 px-1 z-20 truncate bg-black/60">
+                    <div class="text-[9px] text-white/90 font-mono text-center truncate select-none" :title="item.path">
+                      {{ item.path }}
+                    </div>
+                  </div>
+                </div>
               </div>
+            </div>
+          </div>
 
-              <div class="w-full h-full bg-slate-100 flex items-center justify-center relative"
-                   :class="isMarkedForDeletion(item.path) ? 'opacity-50' : ''">
-                <div
-                    class="absolute inset-0 opacity-10 bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:6px_6px]"></div>
-                <img :src="item.base64" class="w-full h-full object-contain relative z-10"/>
+          <!-- 临时图片列表（新添加的截图，绿色边框） -->
+          <div v-if="localTempImages.length > 0" class="space-y-2 mt-3">
+            <div class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider px-1 flex items-center gap-1">
+              <ImageIcon :size="10"/>
+              新增图片 ({{ localTempImages.length }})
+            </div>
+            <div class="grid grid-cols-3 gap-1">
+              <div v-for="(item, index) in localTempImages" :key="'temp-' + index"
+                   class="group relative rounded-md overflow-hidden shadow-sm hover:shadow-md transition-all aspect-square bg-white border-2 border-emerald-400">
 
-                <div class="absolute bottom-0 left-0 right-0 backdrop-blur-[1px] py-1 px-1 z-20 truncate"
-                     :class="isMarkedForDeletion(item.path) ? 'bg-red-600/80' : 'bg-black/60'">
-                  <div class="text-[9px] text-white/90 font-mono text-center truncate select-none" :title="item.path">
-                    {{ item.path }}
+                <!-- 删除按钮 -->
+                <button
+                    @click.stop="deleteFromTempImages(item.path)"
+                    class="absolute top-0.5 right-0.5 z-20 p-1 text-white rounded-md backdrop-blur transition-all bg-black/50 hover:bg-red-500 opacity-0 group-hover:opacity-100"
+                    title="删除图片"
+                >
+                  <Trash2 :size="12"/>
+                </button>
+
+                <div class="w-full h-full flex items-center justify-center relative bg-emerald-50">
+                  <div
+                      class="absolute inset-0 opacity-10 bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:6px_6px]"></div>
+                  <img :src="item.base64" class="w-full h-full object-contain relative z-10"/>
+
+                  <div class="absolute bottom-0 left-0 right-0 backdrop-blur-[1px] py-1 px-1 z-20 truncate bg-emerald-600/80">
+                    <div class="text-[9px] text-white/90 font-mono text-center truncate select-none" :title="item.path">
+                      {{ item.path }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 已删除图片列表（灰色显示） -->
+          <div v-if="localDeletedImages.length > 0" class="space-y-2 mt-3">
+            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1 flex items-center gap-1">
+              <Trash2 :size="10" class="opacity-50"/>
+              已删除图片 ({{ localDeletedImages.length }})
+            </div>
+            <div class="grid grid-cols-3 gap-1">
+              <div v-for="(item, index) in localDeletedImages" :key="'deleted-' + index"
+                   class="group relative rounded-md overflow-hidden shadow-sm transition-all aspect-square bg-slate-200 border border-slate-300">
+
+                <!-- 恢复按钮 -->
+                <button
+                    @click.stop="restoreImage(item.path)"
+                    class="absolute top-0.5 right-0.5 z-20 p-1 text-white rounded-md backdrop-blur transition-all bg-slate-500/70 hover:bg-emerald-500 opacity-0 group-hover:opacity-100"
+                    title="恢复图片"
+                >
+                  <RotateCw :size="12"/>
+                </button>
+
+                <div class="w-full h-full bg-slate-200 flex items-center justify-center relative opacity-50 grayscale">
+                  <div
+                      class="absolute inset-0 opacity-10 bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:6px_6px]"></div>
+                  <img :src="item.base64" class="w-full h-full object-contain relative z-10"/>
+
+                  <div class="absolute bottom-0 left-0 right-0 bg-slate-500/80 backdrop-blur-[1px] py-1 px-1 z-20 truncate">
+                    <div class="text-[9px] text-white/70 font-mono text-center truncate select-none" :title="item.path">
+                      {{ item.path }}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -639,20 +825,14 @@ const isMarkedForDeletion = (path) => {
         </div>
 
         <div class="p-3 border-t border-slate-200 bg-white space-y-2">
-          <!-- 待删除图片提示 -->
-          <div v-if="pendingDeletePaths.size > 0" 
-               class="px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600 flex items-center gap-2">
-            <Trash2 :size="14"/>
-            <span>已标记 <strong>{{ pendingDeletePaths.size }}</strong> 张图片待删除</span>
-          </div>
+          <!-- 保存按钮 - 根据是否有变化决定是否可点击 -->
           <button
               @click="handleImageManagerSave"
-              :disabled="selection.w === 0 && pendingDeletePaths.size === 0"
-              class="w-full py-2 text-white rounded-lg text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              :class="pendingDeletePaths.size > 0 ? 'bg-red-500 hover:bg-red-600 shadow-red-200' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'"
+              :disabled="!hasTemplateChanged"
+              class="w-full py-2 text-white rounded-lg text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200"
           >
             <Check :size="16"/>
-            {{ pendingDeletePaths.size > 0 ? '确认删除并保存' : '保存区域' }}
+            保存
           </button>
           <button @click="$emit('close')"
                   class="w-full py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2">

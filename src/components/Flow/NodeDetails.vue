@@ -1,5 +1,5 @@
 <script setup>
-import {computed, nextTick, reactive, ref, watch} from 'vue'
+import {computed, nextTick, reactive, ref, watch, inject} from 'vue'
 import {
   AlertCircle, Check, ChevronDown, ChevronRight, Clock,
   FileJson, GitBranch, Info, MessageSquare, Plus,
@@ -16,7 +16,8 @@ const props = defineProps({
   nodeData: Object,
   nodeType: String,
   availableTypes: Array,
-  typeConfig: Object
+  typeConfig: Object,
+  currentFilename: String // 当前打开的文件名
 })
 const emit = defineEmits(['close', 'update-id', 'update-type', 'update-data'])
 
@@ -65,7 +66,11 @@ const deviceScreenConfig = reactive({
   referenceLabel: '',
   title: '区域选择',
   mode: 'coordinate',
-  imageList: []
+  imageList: [],
+  tempImageList: [],
+  deletedImageList: [],
+  filename: '',
+  nodeId: ''
 })
 
 const currentRecognition = computed(() => formData.value.recognition || 'DirectHit')
@@ -135,25 +140,43 @@ const openImageManager = () => {
   deviceScreenConfig.referenceRect = parseRect(getValue('roi'))
   deviceScreenConfig.referenceLabel = "roi"
   deviceScreenConfig.imageList = props.nodeData?._images || []
+  deviceScreenConfig.tempImageList = props.nodeData?._temp_images || []
+  deviceScreenConfig.deletedImageList = props.nodeData?._del_images || []
+  // 传递文件名和节点ID用于生成默认保存路径
+  deviceScreenConfig.filename = props.currentFilename || ''
+  deviceScreenConfig.nodeId = props.nodeId || ''
   showDeviceScreen.value = true
 }
 
 const handleDevicePick = (result) => {
   if (deviceScreenConfig.mode === 'image_manager') {
-    if (result.type === 'save_screenshot') {
+    if (result.type === 'save_image_changes') {
+      // 保存图片变更：更新 template、处理删除和新增
       emit('update-data', {
-        _action: 'save_screenshot', 
-        rect: result.rect,
-        deletePaths: result.deletePaths || []
+        _action: 'save_image_changes',
+        validPaths: result.validPaths, // 更新到 template 的路径
+        images: result.images, // 当前 _images
+        tempImages: result.tempImages, // 当前 _temp_images
+        deletedImages: result.deletedImages // 当前 _del_images
       })
-    } else if (result.type === 'delete_images') {
-      // 处理图片删除：将图片从 _images 移动到 _del_images，并从 template 中移除路径
+    } else if (result.type === 'add_temp_image') {
+      // 添加临时图片到 _temp_images 并添加路径到 template
       emit('update-data', {
-        _action: 'delete_images',
-        deletePaths: result.deletePaths
+        _action: 'add_temp_image',
+        imagePath: result.imagePath,
+        imageBase64: result.imageBase64
+      })
+    } else if (result.type === 'restore_image') {
+      // 恢复已删除的图片
+      emit('update-data', {
+        _action: 'restore_image',
+        imagePath: result.imagePath
       })
     }
-    showDeviceScreen.value = false
+    // 只有在明确需要关闭时才关闭
+    if (result.closeModal !== false) {
+      showDeviceScreen.value = false
+    }
   } else {
     const field = deviceScreenConfig.targetField
     const refRect = deviceScreenConfig.referenceRect
@@ -545,6 +568,10 @@ watch(() => props.visible, (val) => {
         :reference-label="deviceScreenConfig.referenceLabel"
         :mode="deviceScreenConfig.mode"
         :image-list="deviceScreenConfig.imageList"
+        :temp-image-list="deviceScreenConfig.tempImageList"
+        :deleted-image-list="deviceScreenConfig.deletedImageList"
+        :filename="deviceScreenConfig.filename"
+        :node-id="deviceScreenConfig.nodeId"
         @confirm="handleDevicePick"
         @close="showDeviceScreen = false"
         @delete-image="handleImageDelete"
