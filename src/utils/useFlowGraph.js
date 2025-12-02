@@ -37,10 +37,11 @@ export function useFlowGraph() {
   // --- Helper: 获取当前节点数据（用于比较和保存） ---
   const getNodesData = () => {
     const result = {}
+
     nodes.value.forEach(node => {
       // 跳过缺失的占位节点
       if (node.data._isMissing) return
-      
+      console.log(node.data)
       const nodeData = { ...node.data.data }
       // 移除内部使用的 id 字段（key 就是 id）
       delete nodeData.id

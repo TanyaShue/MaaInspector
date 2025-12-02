@@ -1,13 +1,14 @@
 <script setup>
-import {ref, provide, onMounted, onBeforeUnmount} from 'vue'
+import {ref, provide, onMounted, onBeforeUnmount, computed} from 'vue'
 import {VueFlow, useVueFlow, Panel} from '@vue-flow/core'
 import {Background} from '@vue-flow/background'
 import {Controls} from '@vue-flow/controls'
+import {FolderSearch} from 'lucide-vue-next'
 import ContextMenu from './Flow/ContextMenu.vue'
 import NodeEditorModal from './Flow/NodeEditorModal.vue'
 import InfoPanel from './Flow/InfoPanel.vue'
 import NodeSearch from './Flow/NodeSearch.vue'
-import SaveConfirmModal from './Flow/Modals/SaveConfirmModal.vue' // [新增]
+import SaveConfirmModal from './Flow/Modals/SaveConfirmModal.vue'
 import {useFlowGraph} from '../utils/useFlowGraph.js'
 import {resourceApi} from '../services/api.js'
 
@@ -20,6 +21,9 @@ const {
 
 const {fitView, removeEdges, findNode, screenToFlowCoordinate} = useVueFlow()
 
+// 计算属性：判断文件是否已加载
+const isFileLoaded = computed(() => !!currentFilename.value)
+
 const closeAllDetailsSignal = ref(0)
 provide('closeAllDetailsSignal', closeAllDetailsSignal)
 provide('updateNode', handleNodeUpdate)
@@ -29,38 +33,33 @@ const menu = ref({visible: false, x: 0, y: 0, type: null, data: null, flowPos: {
 const editor = ref({visible: false, nodeId: '', nodeData: null})
 const searchVisible = ref(false)
 
-// InfoPanel 引用与聚焦
+// InfoPanel 引用
 const infoPanelRef = ref(null)
 const pendingFocusNodeId = ref(null)
 
-// --- [新增] 未保存确认逻辑 ---
+// --- 未保存确认逻辑 ---
 const showSaveModal = ref(false)
 const isSavingModal = ref(false)
-const pendingSwitchConfig = ref(null) // { filename, source, nodeId? }
+const pendingSwitchConfig = ref(null)
 
 const handleRequestSwitch = (config) => {
-
   if (!isDirty.value) {
     executeSwitch(config)
     return
   }
-
   pendingSwitchConfig.value = config
   showSaveModal.value = true
 }
 
 const executeSwitch = async (config) => {
   if (!infoPanelRef.value) return
-
   if (config.nodeId) {
     pendingFocusNodeId.value = config.nodeId
-    searchVisible.value = false // 既然要跳转了，关闭搜索框
+    searchVisible.value = false
   }
-
   await infoPanelRef.value.executeFileSwitch(config.filename, config.source)
 }
 
-// 弹窗 Action: 不保存
 const handleDiscardChanges = () => {
   showSaveModal.value = false
   if (pendingSwitchConfig.value) {
@@ -69,21 +68,17 @@ const handleDiscardChanges = () => {
   }
 }
 
-// 弹窗 Action: 保存并切换
 const handleSaveAndSwitch = async () => {
   if (!infoPanelRef.value) return
   isSavingModal.value = true
   try {
-    // 调用 InfoPanel 的保存逻辑
     await infoPanelRef.value.handleSaveNodes()
-    // 保存成功后，继续切换
     showSaveModal.value = false
     if (pendingSwitchConfig.value) {
       executeSwitch(pendingSwitchConfig.value)
       pendingSwitchConfig.value = null
     }
   } catch (e) {
-    // 保存失败停留，不切换
     console.error("Save failed in modal", e)
   } finally {
     isSavingModal.value = false
@@ -93,7 +88,6 @@ const handleSaveAndSwitch = async () => {
 const handleCancelSwitch = () => {
   showSaveModal.value = false
   pendingSwitchConfig.value = null
-  // InfoPanel 的下拉框 UI 会因为 reactivity 自动恢复原状 (因为 selectedResourceFile 没变)
 }
 
 const handleBeforeUnload = (e) => {
@@ -112,6 +106,9 @@ const closeMenu = () => {
 }
 const getEvent = (params) => params.event || params
 const onPaneContextMenu = (params) => {
+  // 依然保持右键菜单拦截，防止未加载文件时添加节点
+  if (!isFileLoaded.value) return
+
   const event = getEvent(params);
   event.preventDefault();
   menu.value = {
@@ -216,7 +213,6 @@ const handleLocateNode = (nodeId) => {
   }, 50)
 }
 
-// 加载节点后的回调，用于处理跳转聚焦
 const handleLoadNodesWrapper = (payload) => {
   loadNodes(payload)
   if (pendingFocusNodeId.value) {
@@ -278,6 +274,9 @@ const handleSaveNodes = async ({source, filename}) => {
         :max-zoom="4"
         fit-view-on-init
         :is-valid-connection="onValidateConnection"
+        :nodes-draggable="isFileLoaded"
+        :nodes-connectable="isFileLoaded"
+        :elements-selectable="isFileLoaded"
         @connect="handleConnect"
         @edges-change="handleEdgesChange"
         @pane-context-menu="onPaneContextMenu"
@@ -291,7 +290,7 @@ const handleSaveNodes = async ({source, filename}) => {
       <Background pattern-color="#cbd5e1" :gap="20"/>
       <Controls/>
 
-      <Panel position="top-right" class="m-4 pointer-events-none">
+      <Panel position="top-right" class="m-4 pointer-events-none !z-20">
         <InfoPanel
             ref="infoPanelRef"
             :node-count="nodes.length"
@@ -305,6 +304,21 @@ const handleSaveNodes = async ({source, filename}) => {
             @request-switch-file="handleRequestSwitch"
         />
       </Panel>
+
+      <div
+        v-if="!isFileLoaded"
+        class="absolute inset-0 z-10 bg-slate-100/60 backdrop-blur-[2px] flex items-center justify-center pointer-events-none transition-all"
+      >
+        <div class="flex flex-col items-center gap-4 p-8 bg-white/80 border border-slate-200 rounded-2xl shadow-xl">
+          <div class="p-4 bg-indigo-50 rounded-full">
+            <FolderSearch class="w-12 h-12 text-indigo-400" />
+          </div>
+          <div class="text-center space-y-1">
+            <h3 class="text-lg font-bold text-slate-700">未加载资源文件</h3>
+            <p class="text-sm text-slate-500">请在右上角控制台选择并加载资源文件以开始编辑</p>
+          </div>
+        </div>
+      </div>
 
       <ContextMenu
           v-if="menu.visible"

@@ -1,5 +1,3 @@
---- START OF FILE CustomNode.vue ---
-
 <script setup>
 import {computed, ref, inject, watch} from 'vue'
 import {Handle, Position} from '@vue-flow/core'

@@ -38,7 +38,7 @@
     "current_state": {
         "device_index": 1,
         "resource_profile_index": 1,
-        "resource_file": "领取奖励.json",
+        "resource_file": "寮30.json",
         "agent_socket_id": "1234"
     },
     "default_resource_path": "",

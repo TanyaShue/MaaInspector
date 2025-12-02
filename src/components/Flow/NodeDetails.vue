@@ -1,45 +1,14 @@
 <script setup>
 import {computed, nextTick, reactive, ref, watch} from 'vue'
 import {
-  AlertCircle,
-  ArrowRight,
-  Brain,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Clock,
-  Code2,
-  Crop,
-  Crosshair,
-  FileJson,
-  Fingerprint,
-  GitBranch,
-  Hand,
-  Image,
-  Image as ImageIcon,
-  Info,
-  Keyboard,
-  Layers,
-  MessageSquare,
-  Mouse,
-  MousePointer,
-  Move,
-  Palette,
-  Play,
-  Plus,
-  ScanEye,
-  ScanText,
-  Settings,
-  Sparkles,
-  Square,
-  Target,
-  Terminal,
-  Type,
-  Wand2,
-  X,
-  Zap
+  AlertCircle, Check, ChevronDown, ChevronRight, Clock,
+  FileJson, GitBranch, Info, MessageSquare, Plus,
+  Settings, X, Zap
 } from 'lucide-vue-next'
 import DeviceScreen from './DeviceScreen.vue'
+import NodeRecognition from './NodeDetailsModals/NodeRecognition.vue'
+import NodeAction from './NodeDetailsModals/NodeAction.vue'
+import { useNodeForm, recognitionTypes, actionTypes } from '../../utils/nodeLogic.js'
 
 const props = defineProps({
   visible: Boolean,
@@ -49,134 +18,45 @@ const props = defineProps({
   availableTypes: Array,
   typeConfig: Object
 })
-
 const emit = defineEmits(['close', 'update-id', 'update-type', 'update-data'])
 
-const recognitionTypes = [
-  {value: 'DirectHit', label: '直接命中', icon: Target, color: 'text-blue-500'},
-  {value: 'TemplateMatch', label: '模板匹配', icon: Image, color: 'text-indigo-500'},
-  {value: 'FeatureMatch', label: '特征匹配', icon: Sparkles, color: 'text-violet-500'},
-  {value: 'ColorMatch', label: '颜色识别', icon: Palette, color: 'text-pink-500'},
-  {value: 'OCR', label: 'OCR识别', icon: ScanText, color: 'text-emerald-500'},
-  {value: 'NeuralNetworkClassify', label: '模型分类', icon: Brain, color: 'text-amber-500'},
-  {value: 'NeuralNetworkDetect', label: '模型检测', icon: ScanEye, color: 'text-orange-500'},
-  {value: 'Custom', label: '自定义', icon: Code2, color: 'text-slate-500'}
-]
+const formMethods = useNodeForm(props, emit)
+const {
+  formData, jsonStr, jsonError, getValue, setValue,
+  getArrayValue, setArrayValue, updateJsonFromForm, handleJsonInput,
+  focusData, availableFocusEvents, addFocusParam, removeFocusParam, updateFocusParam
+} = formMethods
 
-const actionTypes = [
-  {value: 'DoNothing', label: '无动作', icon: Square, color: 'text-slate-400'},
-  {value: 'Click', label: '点击', icon: MousePointer, color: 'text-blue-500'},
-  {value: 'LongPress', label: '长按', icon: Hand, color: 'text-blue-600'},
-  {value: 'Swipe', label: '滑动', icon: ArrowRight, color: 'text-indigo-500'},
-  {value: 'MultiSwipe', label: '多指滑动', icon: Layers, color: 'text-indigo-600'},
-  {value: 'TouchDown', label: '按下', icon: Fingerprint, color: 'text-violet-500'},
-  {value: 'TouchMove', label: '移动', icon: Move, color: 'text-violet-500'},
-  {value: 'TouchUp', label: '抬起', icon: Hand, color: 'text-violet-500'},
-  {value: 'Scroll', label: '滚轮', icon: Mouse, color: 'text-cyan-500'},
-  {value: 'ClickKey', label: '按键', icon: Keyboard, color: 'text-emerald-500'},
-  {value: 'LongPressKey', label: '长按键', icon: Keyboard, color: 'text-emerald-600'},
-  {value: 'KeyDown', label: '键按下', icon: Keyboard, color: 'text-teal-500'},
-  {value: 'KeyUp', label: '键抬起', icon: Keyboard, color: 'text-teal-500'},
-  {value: 'InputText', label: '输入文本', icon: Type, color: 'text-green-500'},
-  {value: 'StartApp', label: '启动应用', icon: Play, color: 'text-sky-500'},
-  {value: 'StopApp', label: '停止应用', icon: Square, color: 'text-red-500'},
-  {value: 'StopTask', label: '停止任务', icon: Square, color: 'text-rose-500'},
-  {value: 'Command', label: '执行命令', icon: Terminal, color: 'text-amber-500'},
-  {value: 'Custom', label: '自定义', icon: Wand2, color: 'text-slate-500'}
-]
-
-const orderByOptions = [
-  {value: 'Horizontal', label: '水平 (Horizontal)'},
-  {value: 'Vertical', label: '垂直 (Vertical)'},
-  {value: 'Score', label: '分数 (Score)'},
-  {value: 'Area', label: '面积 (Area)'},
-  {value: 'Length', label: '长度 (Length)'},
-  {value: 'Random', label: '随机 (Random)'},
-  {value: 'Expected', label: '期望 (Expected)'},
-]
-
-const detectorOptions = ['SIFT', 'KAZE', 'AKAZE', 'BRISK', 'ORB']
-
-const focusEventTypes = [
-  'Node.Recognition.Starting',
-  'Node.Recognition.Succeeded',
-  'Node.Recognition.Failed',
-  'Node.Action.Starting',
-  'Node.Action.Succeeded',
-  'Node.Action.Failed'
-]
-
-const DEFAULTS = {
-  recognition: 'DirectHit',
-  action: 'DoNothing',
-  next: [],
-  interrupt: [],
-  on_error: [],
-  is_sub: false,
-  rate_limit: 1000,
-  timeout: 20000,
-  inverse: false,
-  enabled: true,
-  pre_delay: 200,
-  post_delay: 200,
-  pre_wait_freezes: 0,
-  post_wait_freezes: 0,
-  roi: [0, 0, 0, 0],
-  roi_offset: [0, 0, 0, 0],
-  index: 0,
-  order_by: 'Horizontal',
-  threshold: 0.7,
-  method: 5,
-  count: 4,
-  detector: 'SIFT',
-  ratio: 0.6,
-  connected: false,
-  only_rec: false,
-  green_mask: false,
-  target: true,
-  duration: 200,
-  contact: 0
-}
-
-// ========== 状态管理 ==========
+// UI 状态
 const activeTab = ref('properties')
 const expandedSections = reactive({
   basic: true, flow: false, common: false, recognition: true, action: true, focus: false
 })
 const editingId = ref('')
-const formData = ref({})
-const jsonStr = ref('')
-const jsonError = ref('')
 const recSectionRef = ref(null)
 const actSectionRef = ref(null)
 
 const isRecognitionDropdownOpen = ref(false)
 const isActionDropdownOpen = ref(false)
-const isOrderByDropdownOpen = ref(false)
-const isDetectorDropdownOpen = ref(false)
 const isFocusDropdownOpen = ref(false)
 
 const anyDropdownOpen = computed(() =>
     isRecognitionDropdownOpen.value ||
     isActionDropdownOpen.value ||
-    isOrderByDropdownOpen.value ||
-    isDetectorDropdownOpen.value ||
     isFocusDropdownOpen.value
 )
 
 const closeAllDropdowns = () => {
   isRecognitionDropdownOpen.value = false
   isActionDropdownOpen.value = false
-  isOrderByDropdownOpen.value = false
-  isDetectorDropdownOpen.value = false
   isFocusDropdownOpen.value = false
 }
 
-// 关键修复：切换 Tab 时强制关闭，并依赖 v-show 彻底移除 DOM
 watch(activeTab, () => {
   closeAllDropdowns()
 })
 
+// Device Screen 状态
 const showDeviceScreen = ref(false)
 const deviceScreenConfig = reactive({
   targetField: '',
@@ -188,99 +68,13 @@ const deviceScreenConfig = reactive({
   imageList: []
 })
 
-// ========== 计算属性 (保持不变) ==========
-const currentRecognition = computed(() => formData.value.recognition || DEFAULTS.recognition)
-const currentAction = computed(() => formData.value.action || DEFAULTS.action)
+const currentRecognition = computed(() => formData.value.recognition || 'DirectHit')
+const currentAction = computed(() => formData.value.action || 'DoNothing')
 const recognitionConfig = computed(() => recognitionTypes.find(r => r.value === currentRecognition.value) || recognitionTypes[0])
 const actionConfig = computed(() => actionTypes.find(a => a.value === currentAction.value) || actionTypes[0])
 
-const focusData = computed(() => {
-  if (typeof formData.value.focus === 'object' && formData.value.focus !== null) return formData.value.focus
-  return {}
-})
-
-const availableFocusEvents = computed(() => {
-  const currentKeys = Object.keys(focusData.value)
-  return focusEventTypes.filter(type => !currentKeys.includes(type))
-})
-
-// ========== 方法定义 (保持不变) ==========
-const updateJsonFromForm = () => {
-  try {
-    jsonStr.value = JSON.stringify(formData.value, null, 2)
-    jsonError.value = ''
-  } catch (e) {
-  }
-}
-
-const emitUpdateData = () => {
-  if (activeTab.value !== 'json') updateJsonFromForm()
-  emit('update-data', {...formData.value})
-}
-
-const getValue = (key, defaultVal) => formData.value[key] !== undefined ? formData.value[key] : (defaultVal ?? DEFAULTS[key])
-
-const setValue = (key, value) => {
-  if (key === 'target' && value === true) {
-    delete formData.value[key]
-    emitUpdateData()
-    return
-  }
-  if (value === DEFAULTS[key] || value === '' || value === null) {
-    delete formData.value[key]
-  } else {
-    formData.value[key] = value
-  }
-  emitUpdateData()
-}
-
-const getArrayValue = (key) => {
-  const val = formData.value[key]
-  return Array.isArray(val) ? val.join(', ') : (val || '')
-}
-
-const setArrayValue = (key, value) => {
-  if (!value || value.trim() === '') delete formData.value[key]
-  else formData.value[key] = value.split(',').map(s => s.trim()).filter(Boolean)
-  emitUpdateData()
-}
-
-const addFocusParam = (type) => {
-  if (!formData.value.focus || typeof formData.value.focus !== 'object') formData.value.focus = {}
-  formData.value.focus[type] = ''
-  emitUpdateData()
-  isFocusDropdownOpen.value = false
-}
-
-const removeFocusParam = (key) => {
-  if (formData.value.focus) {
-    delete formData.value.focus[key]
-    if (Object.keys(formData.value.focus).length === 0) delete formData.value.focus
-    emitUpdateData()
-  }
-}
-
-const updateFocusParam = (key, value) => {
-  if (!formData.value.focus) formData.value.focus = {}
-  formData.value.focus[key] = value
-  emitUpdateData()
-}
-
 const toggleSection = (key) => {
   expandedSections[key] = !expandedSections[key]
-}
-
-const handleJsonInput = (event) => {
-  const newVal = event.target.value
-  jsonStr.value = newVal
-  try {
-    const parsed = JSON.parse(newVal)
-    jsonError.value = ''
-    formData.value = parsed
-    emitUpdateData()
-  } catch (e) {
-    jsonError.value = e.message
-  }
 }
 
 const confirmIdChange = () => {
@@ -300,64 +94,12 @@ const selectActionType = (newAction) => {
   isActionDropdownOpen.value = false
 }
 
-const selectOrderBy = (val) => {
-  setValue('order_by', val)
-  isOrderByDropdownOpen.value = false
-}
-
-const selectDetector = (val) => {
-  setValue('detector', val)
-  isDetectorDropdownOpen.value = false
-}
-
 const jumpToSettings = (type) => {
   expandedSections[type] = true
   nextTick(() => {
     const target = type === 'recognition' ? recSectionRef.value : actSectionRef.value
     if (target) target.scrollIntoView({behavior: 'smooth', block: 'start'})
   })
-}
-
-const getJsonValue = (key) => {
-  const val = getValue(key, null)
-  return (val === null || val === undefined) ? '' : (typeof val === 'object' ? JSON.stringify(val) : val)
-}
-
-const setJsonValue = (key, rawVal) => {
-  if (!rawVal.trim()) {
-    setValue(key, null);
-    return
-  }
-  try {
-    if (rawVal.startsWith('[') || rawVal.startsWith('{')) setValue(key, JSON.parse(rawVal))
-    else {
-      const num = Number(rawVal);
-      setValue(key, isNaN(num) ? rawVal : num)
-    }
-  } catch (e) {
-    setValue(key, rawVal)
-  }
-}
-
-const getTargetValue = (key) => {
-  const val = formData.value[key]
-  return (val === true || val === undefined) ? '' : (Array.isArray(val) ? JSON.stringify(val) : val)
-}
-
-const setTargetValue = (key, rawVal) => {
-  if (rawVal === '' || rawVal.toLowerCase() === 'true') {
-    setValue(key, true);
-    return
-  }
-  try {
-    const parsed = JSON.parse(rawVal)
-    if (Array.isArray(parsed)) {
-      setValue(key, parsed);
-      return
-    }
-  } catch (e) {
-  }
-  setValue(key, rawVal)
 }
 
 const parseRect = (val) => {
@@ -398,7 +140,6 @@ const openImageManager = () => {
 
 const handleDevicePick = (result) => {
   if (deviceScreenConfig.mode === 'image_manager') {
-    // 截图保存逻辑
     if (result.type === 'save_screenshot') {
       emit('update-data', {_action: 'save_screenshot', rect: result.rect})
     }
@@ -420,19 +161,9 @@ const handleImageDelete = (imageName) => {
 watch(() => props.visible, (val) => {
   if (val) {
     editingId.value = props.nodeId
-    formData.value = JSON.parse(JSON.stringify(props.nodeData?.data || {}))
-    updateJsonFromForm()
-    jsonError.value = ''
     closeAllDropdowns()
   }
 }, {immediate: true})
-
-watch(() => props.nodeData?.data, (newData) => {
-  if (props.visible && newData && (activeTab.value !== 'json' || !jsonError.value)) {
-    formData.value = JSON.parse(JSON.stringify(newData))
-    updateJsonFromForm()
-  }
-}, {deep: true})
 </script>
 
 <template>
@@ -747,237 +478,13 @@ watch(() => props.nodeData?.data, (newData) => {
               <component :is="expandedSections.recognition ? ChevronDown : ChevronRight" :size="14"
                          class="text-slate-400"/>
             </button>
-            <div v-show="expandedSections.recognition" class="p-3 space-y-2.5 border-t border-slate-100 rounded-b-xl">
-              <div class="grid grid-cols-2 gap-2">
-                <div class="space-y-1"><label class="text-[10px] font-semibold text-slate-500 uppercase">识别区域
-                  (ROI)</label>
-                  <div class="flex gap-1"><input :value="getJsonValue('roi')"
-                                                 @input="setJsonValue('roi', $event.target.value)"
-                                                 class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono min-w-0"
-                                                 placeholder="[x,y,w,h]"/>
-                    <button @click="openDevicePicker('roi', null, 'coordinate', 'ROI')"
-                            class="px-2 bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 rounded-lg flex items-center justify-center">
-                      <Crop :size="12"/>
-                    </button>
-                  </div>
-                </div>
-                <div class="space-y-1"><label
-                    class="text-[10px] font-semibold text-slate-500 uppercase">区域偏移</label>
-                  <div class="flex gap-1"><input :value="getJsonValue('roi_offset')"
-                                                 @input="setJsonValue('roi_offset', $event.target.value)"
-                                                 class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono min-w-0"
-                                                 placeholder="[x,y,w,h]"/>
-                    <button @click="openDevicePicker('roi_offset', 'roi', 'coordinate', 'ROI区域')"
-                            class="px-2 bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 rounded-lg flex items-center justify-center">
-                      <Crosshair :size="12"/>
-                    </button>
-                  </div>
-                </div>
-
-                <div class="space-y-1 relative">
-                  <label class="text-[10px] font-semibold text-slate-500 uppercase">排序方式</label>
-                  <button @click="isOrderByDropdownOpen = !isOrderByDropdownOpen"
-                          class="w-full flex items-center justify-between px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 text-left">
-                    <span class="truncate">{{
-                        orderByOptions.find(o => o.value === getValue('order_by', 'Horizontal'))?.label || getValue('order_by')
-                      }}</span>
-                    <ChevronDown :size="12" class="text-slate-400" :class="{ 'rotate-180': isOrderByDropdownOpen }"/>
-                  </button>
-                  <div v-if="isOrderByDropdownOpen"
-                       class="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-[160px] overflow-y-auto custom-scrollbar z-50 flex flex-col py-1">
-                    <button v-for="opt in orderByOptions" :key="opt.value" @click="selectOrderBy(opt.value)"
-                            class="px-3 py-1.5 text-xs text-left hover:bg-slate-50 transition-colors"
-                            :class="getValue('order_by', 'Horizontal') === opt.value ? 'text-indigo-600 bg-indigo-50/50' : 'text-slate-700'">
-                      {{ opt.label }}
-                    </button>
-                  </div>
-                </div>
-                <div class="space-y-1"><label
-                    class="text-[10px] font-semibold text-slate-500 uppercase">结果索引</label><input type="number"
-                                                                                                      :value="getValue('index', 0)"
-                                                                                                      @input="setValue('index', parseInt($event.target.value) || 0)"
-                                                                                                      class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400"/>
-                </div>
-              </div>
-              <template v-if="['TemplateMatch', 'FeatureMatch'].includes(currentRecognition)">
-                <div class="space-y-1">
-                  <label class="text-[10px] font-semibold text-slate-500 uppercase">模板图片</label>
-                  <div class="flex gap-1">
-                    <input :value="getValue('template', '')" @input="setValue('template', $event.target.value)"
-                           class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono min-w-0"
-                           placeholder="image/..."/>
-                    <button @click="openImageManager"
-                            class="px-2 bg-pink-50 text-pink-600 border border-pink-200 hover:bg-pink-100 rounded-lg flex items-center justify-center"
-                            title="管理/截取模板图片">
-                      <ImageIcon :size="12"/>
-                    </button>
-                  </div>
-                </div>
-                <label class="inline-flex items-center gap-1.5 cursor-pointer"><input type="checkbox"
-                                                                                      :checked="getValue('green_mask', false)"
-                                                                                      @change="setValue('green_mask', $event.target.checked)"
-                                                                                      class="w-3.5 h-3.5 rounded text-indigo-600"/><span
-                    class="text-[11px] text-slate-600">绿色掩码 (忽略绿色部分)</span></label>
-              </template>
-              <template v-if="currentRecognition === 'TemplateMatch'">
-                <div class="grid grid-cols-2 gap-2">
-                  <div class="space-y-1"><label
-                      class="text-[10px] font-semibold text-slate-500 uppercase">匹配阈值</label><input
-                      :value="getJsonValue('threshold')" @input="setJsonValue('threshold', $event.target.value)"
-                      class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
-                      placeholder="0.7 或 [0.7, 0.8]"/></div>
-                  <div class="space-y-1"><label class="text-[10px] font-semibold text-slate-500 uppercase">算法
-                    (1/3/5)</label><input type="number" min="1" max="5" step="2" :value="getValue('method', 5)"
-                                          @input="setValue('method', parseInt($event.target.value) || 5)"
-                                          class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"/>
-                  </div>
-                </div>
-              </template>
-
-              <template v-if="currentRecognition === 'FeatureMatch'">
-                <div class="grid grid-cols-3 gap-2">
-                  <div class="space-y-1"><label
-                      class="text-[10px] font-semibold text-slate-500 uppercase">特征点数</label><input type="number"
-                                                                                                        min="1"
-                                                                                                        :value="getValue('count', 4)"
-                                                                                                        @input="setValue('count', parseInt($event.target.value) || 4)"
-                                                                                                        class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"/>
-                  </div>
-                  <div class="space-y-1 relative">
-                    <label class="text-[10px] font-semibold text-slate-500 uppercase">检测器</label>
-                    <button @click="isDetectorDropdownOpen = !isDetectorDropdownOpen"
-                            class="w-full flex items-center justify-between px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 text-left">
-                      <span class="truncate">{{ getValue('detector', 'SIFT') }}</span>
-                      <ChevronDown :size="12" class="text-slate-400" :class="{ 'rotate-180': isDetectorDropdownOpen }"/>
-                    </button>
-                    <div v-if="isDetectorDropdownOpen"
-                         class="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-[160px] overflow-y-auto custom-scrollbar z-50 flex flex-col py-1">
-                      <button v-for="opt in detectorOptions" :key="opt" @click="selectDetector(opt)"
-                              class="px-3 py-1.5 text-xs text-left hover:bg-slate-50 transition-colors"
-                              :class="getValue('detector', 'SIFT') === opt ? 'text-indigo-600 bg-indigo-50/50' : 'text-slate-700'">
-                        {{ opt }}
-                      </button>
-                    </div>
-                  </div>
-                  <div class="space-y-1"><label
-                      class="text-[10px] font-semibold text-slate-500 uppercase">距离比</label><input type="number"
-                                                                                                      step="0.1" min="0"
-                                                                                                      max="1"
-                                                                                                      :value="getValue('ratio', 0.6)"
-                                                                                                      @input="setValue('ratio', parseFloat($event.target.value) || 0.6)"
-                                                                                                      class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"/>
-                  </div>
-                </div>
-              </template>
-
-              <template v-if="currentRecognition === 'ColorMatch'">
-                <div class="grid grid-cols-2 gap-2">
-                  <div class="space-y-1"><label
-                      class="text-[10px] font-semibold text-slate-500 uppercase">颜色下限</label><input
-                      :value="getJsonValue('lower')" @input="setJsonValue('lower', $event.target.value)"
-                      class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono"
-                      placeholder="[R,G,B]"/></div>
-                  <div class="space-y-1"><label
-                      class="text-[10px] font-semibold text-slate-500 uppercase">颜色上限</label><input
-                      :value="getJsonValue('upper')" @input="setJsonValue('upper', $event.target.value)"
-                      class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono"
-                      placeholder="[R,G,B]"/></div>
-                  <div class="space-y-1"><label class="text-[10px] font-semibold text-slate-500 uppercase">算法
-                    (4=RGB)</label><input type="number" :value="getValue('method', 4)"
-                                          @input="setValue('method', parseInt($event.target.value) || 4)"
-                                          class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"/>
-                  </div>
-                  <div class="space-y-1"><label
-                      class="text-[10px] font-semibold text-slate-500 uppercase">特征点数</label><input type="number"
-                                                                                                        min="1"
-                                                                                                        :value="getValue('count', 1)"
-                                                                                                        @input="setValue('count', parseInt($event.target.value) || 1)"
-                                                                                                        class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"/>
-                  </div>
-                </div>
-                <label class="inline-flex items-center gap-1.5 cursor-pointer"><input type="checkbox"
-                                                                                      :checked="getValue('connected', false)"
-                                                                                      @change="setValue('connected', $event.target.checked)"
-                                                                                      class="w-3.5 h-3.5 rounded text-indigo-600"/><span
-                    class="text-[11px] text-slate-600">要求像素相连</span></label></template>
-              <template v-if="currentRecognition === 'OCR'">
-                <div class="space-y-1"><label
-                    class="text-[10px] font-semibold text-slate-500 uppercase">期望文本</label>
-                  <div class="flex gap-1"><input :value="getJsonValue('expected')"
-                                                 @input="setJsonValue('expected', $event.target.value)"
-                                                 class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
-                                                 placeholder="期望文本或正则"/>
-                    <button @click="openDevicePicker('expected', 'roi', 'ocr', 'ROI区域')"
-                            class="px-2 bg-purple-50 text-purple-600 border border-purple-200 hover:bg-purple-100 rounded-lg flex items-center justify-center"
-                            title="OCR 识别取词">
-                      <ScanText :size="12"/>
-                    </button>
-                  </div>
-                </div>
-                <div class="grid grid-cols-2 gap-2">
-                  <div class="space-y-1"><label
-                      class="text-[10px] font-semibold text-slate-500 uppercase">匹配阈值</label><input type="number"
-                                                                                                        step="0.1"
-                                                                                                        min="0" max="1"
-                                                                                                        :value="getValue('threshold', 0.3)"
-                                                                                                        @input="setValue('threshold', parseFloat($event.target.value) || 0.3)"
-                                                                                                        class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"/>
-                  </div>
-                  <div class="space-y-1"><label
-                      class="text-[10px] font-semibold text-slate-500 uppercase">模型路径</label><input
-                      :value="getValue('model', '')" @input="setValue('model', $event.target.value)"
-                      class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono"
-                      placeholder="model/ocr/"/></div>
-                </div>
-                <div class="space-y-1"><label
-                    class="text-[10px] font-semibold text-slate-500 uppercase">文本替换</label><input
-                    :value="getJsonValue('replace')" @input="setJsonValue('replace', $event.target.value)"
-                    class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono"
-                    placeholder='[["原","替"]]'/></div>
-                <label class="inline-flex items-center gap-1.5 cursor-pointer"><input type="checkbox"
-                                                                                      :checked="getValue('only_rec', false)"
-                                                                                      @change="setValue('only_rec', $event.target.checked)"
-                                                                                      class="w-3.5 h-3.5 rounded text-indigo-600"/><span
-                    class="text-[11px] text-slate-600">仅识别</span></label></template>
-              <template v-if="['NeuralNetworkClassify', 'NeuralNetworkDetect'].includes(currentRecognition)">
-                <div class="space-y-1"><label
-                    class="text-[10px] font-semibold text-slate-500 uppercase">模型路径</label><input
-                    :value="getValue('model', '')" @input="setValue('model', $event.target.value)"
-                    class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono"
-                    :placeholder="currentRecognition === 'NeuralNetworkClassify' ? 'model/classify/' : 'model/detect/'"/>
-                </div>
-                <div class="grid grid-cols-2 gap-2">
-                  <div class="space-y-1"><label class="text-[10px] font-semibold text-slate-500 uppercase">期望标签
-                    ID</label><input :value="getJsonValue('expected')"
-                                     @input="setJsonValue('expected', $event.target.value)"
-                                     class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono"
-                                     placeholder="0 或 [0,1,2]"/></div>
-                  <div v-if="currentRecognition === 'NeuralNetworkDetect'" class="space-y-1"><label
-                      class="text-[10px] font-semibold text-slate-500 uppercase">匹配阈值</label><input
-                      :value="getJsonValue('threshold')" @input="setJsonValue('threshold', $event.target.value)"
-                      class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
-                      placeholder="0.3 或 [0.5, 0.6]"/></div>
-                </div>
-                <div class="space-y-1"><label class="text-[10px] font-semibold text-slate-500 uppercase">标签列表
-                  (Labels)</label><input :value="getJsonValue('labels')"
-                                         @input="setJsonValue('labels', $event.target.value)"
-                                         class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono"
-                                         placeholder='["Cat","Dog"]'/></div>
-              </template>
-              <template v-if="currentRecognition === 'Custom'">
-                <div class="space-y-1"><label
-                    class="text-[10px] font-semibold text-slate-500 uppercase">自定义识别名</label><input
-                    :value="getValue('custom_recognition', '')"
-                    @input="setValue('custom_recognition', $event.target.value)"
-                    class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"/>
-                </div>
-                <div class="space-y-1"><label
-                    class="text-[10px] font-semibold text-slate-500 uppercase">自定义参数</label><textarea
-                    :value="getJsonValue('custom_recognition_param')"
-                    @input="setJsonValue('custom_recognition_param', $event.target.value)"
-                    class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono h-14 resize-none"
-                    placeholder="JSON"></textarea></div>
-              </template>
+            <div v-show="expandedSections.recognition">
+              <NodeRecognition
+                  :currentType="currentRecognition"
+                  :form="formMethods"
+                  @open-picker="openDevicePicker"
+                  @open-image-manager="openImageManager"
+              />
             </div>
           </div>
 
@@ -990,184 +497,12 @@ watch(() => props.nodeData?.data, (newData) => {
                 <span class="font-semibold text-slate-700 text-xs">{{ actionConfig.label }} 属性</span></div>
               <component :is="expandedSections.action ? ChevronDown : ChevronRight" :size="14" class="text-slate-400"/>
             </button>
-            <div v-show="expandedSections.action" class="p-3 space-y-2.5 border-t border-slate-100">
-              <template
-                  v-if="['Click', 'LongPress', 'TouchDown', 'TouchMove', 'TouchUp', 'Custom'].includes(currentAction)">
-                <div class="space-y-1"><label class="text-[10px] font-semibold text-slate-500 uppercase">目标位置
-                  (Target)</label>
-                  <div class="flex gap-1"><input :value="getTargetValue('target')"
-                                                 @input="setTargetValue('target', $event.target.value)"
-                                                 class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono min-w-0"
-                                                 placeholder="留空默认自身, 或输入节点名/[x,y,w,h]"/>
-                    <button @click="openDevicePicker('target', null, 'coordinate', 'Target')"
-                            class="px-2 bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 rounded-lg flex items-center justify-center">
-                      <Crop :size="12"/>
-                    </button>
-                  </div>
-                </div>
-                <div class="space-y-1"><label class="text-[10px] font-semibold text-slate-500 uppercase">目标偏移
-                  (Offset)</label>
-                  <div class="flex gap-1"><input :value="getJsonValue('target_offset')"
-                                                 @input="setJsonValue('target_offset', $event.target.value)"
-                                                 class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono min-w-0"
-                                                 placeholder="[x,y,w,h]"/>
-                    <button @click="openDevicePicker('target_offset', 'target', 'coordinate', '目标区域')"
-                            class="px-2 bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 rounded-lg flex items-center justify-center">
-                      <Crosshair :size="12"/>
-                    </button>
-                  </div>
-                </div>
-                <div v-if="['Click', 'LongPress', 'TouchDown', 'TouchMove', 'TouchUp'].includes(currentAction)"
-                     class="grid grid-cols-2 gap-2">
-                  <div class="space-y-1"><label
-                      class="text-[10px] font-semibold text-slate-500 uppercase">触点编号</label><input type="number"
-                                                                                                        :value="getValue('contact', 0)"
-                                                                                                        @input="setValue('contact', parseInt($event.target.value) || 0)"
-                                                                                                        class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"/>
-                  </div>
-                  <div v-if="currentAction.startsWith('Touch')" class="space-y-1"><label
-                      class="text-[10px] font-semibold text-slate-500 uppercase">压力值</label><input type="number"
-                                                                                                      :value="getValue('pressure', 0)"
-                                                                                                      @input="setValue('pressure', parseInt($event.target.value) || 0)"
-                                                                                                      class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"/>
-                  </div>
-                </div>
-              </template>
-              <template v-if="['Swipe', 'MultiSwipe'].includes(currentAction)">
-                <div v-if="currentAction === 'MultiSwipe'"
-                     class="p-2 bg-amber-50 rounded text-[10px] text-amber-700 mb-2">MultiSwipe 请直接在 JSON 模式编辑
-                  `swipes` 数组。下方仅为单个 Swipe 属性参考。
-                </div>
-                <div class="grid grid-cols-2 gap-2">
-                  <div class="space-y-1"><label class="text-[10px] font-semibold text-slate-500 uppercase">起点</label>
-                    <div class="flex gap-1"><input :value="getTargetValue('begin')"
-                                                   @input="setTargetValue('begin', $event.target.value)"
-                                                   class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0"/>
-                      <button @click="openDevicePicker('begin', null, 'coordinate', '起点')"
-                              class="px-2 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg">
-                        <Crop :size="12"/>
-                      </button>
-                    </div>
-                  </div>
-                  <div class="space-y-1"><label
-                      class="text-[10px] font-semibold text-slate-500 uppercase">起点偏移</label>
-                    <div class="flex gap-1"><input :value="getJsonValue('begin_offset')"
-                                                   @input="setJsonValue('begin_offset', $event.target.value)"
-                                                   class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0"/>
-                      <button @click="openDevicePicker('begin_offset', 'begin', 'coordinate', '起点')"
-                              class="px-2 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg">
-                        <Crosshair :size="12"/>
-                      </button>
-                    </div>
-                  </div>
-                  <div class="space-y-1"><label class="text-[10px] font-semibold text-slate-500 uppercase">终点</label>
-                    <div class="flex gap-1"><input :value="getTargetValue('end')"
-                                                   @input="setTargetValue('end', $event.target.value)"
-                                                   class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0"/>
-                      <button @click="openDevicePicker('end', 'begin', 'coordinate', '起点')"
-                              class="px-2 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg">
-                        <Crop :size="12"/>
-                      </button>
-                    </div>
-                  </div>
-                  <div class="space-y-1"><label
-                      class="text-[10px] font-semibold text-slate-500 uppercase">终点偏移</label>
-                    <div class="flex gap-1"><input :value="getJsonValue('end_offset')"
-                                                   @input="setJsonValue('end_offset', $event.target.value)"
-                                                   class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0"/>
-                      <button @click="openDevicePicker('end_offset', 'end', 'coordinate', '终点')"
-                              class="px-2 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg">
-                        <Crosshair :size="12"/>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                <div class="grid grid-cols-2 gap-2 mt-2">
-                  <div class="space-y-1"><label class="text-[10px] font-semibold text-slate-500 uppercase">持续
-                    (ms)</label><input :value="getJsonValue('duration')"
-                                       @input="setJsonValue('duration', $event.target.value)"
-                                       class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"/>
-                  </div>
-                  <div class="space-y-1"><label class="text-[10px] font-semibold text-slate-500 uppercase">保持
-                    (ms)</label><input :value="getJsonValue('end_hold')"
-                                       @input="setJsonValue('end_hold', $event.target.value)"
-                                       class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"/>
-                  </div>
-                </div>
-                <div class="mt-2 flex gap-3"><label class="inline-flex items-center gap-1.5 cursor-pointer"><input
-                    type="checkbox" :checked="getValue('only_hover', false)"
-                    @change="setValue('only_hover', $event.target.checked)"
-                    class="w-3.5 h-3.5 rounded text-indigo-600"/><span class="text-[11px] text-slate-600">仅悬停 (Only Hover)</span></label>
-                </div>
-              </template>
-              <template v-if="['ClickKey', 'LongPressKey', 'KeyDown', 'KeyUp'].includes(currentAction)">
-                <div class="space-y-1"><label class="text-[10px] font-semibold text-slate-500 uppercase">按键码
-                  (Key)</label><input :value="getJsonValue('key')" @input="setJsonValue('key', $event.target.value)"
-                                      class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono"
-                                      placeholder="25 或 [25, 26]"/></div>
-              </template>
-              <template v-if="currentAction === 'Scroll'">
-                <div class="grid grid-cols-2 gap-2">
-                  <div class="space-y-1"><label class="text-[10px] font-semibold text-slate-500 uppercase">水平滚动
-                    (DX)</label><input type="number" :value="getValue('dx', 0)"
-                                       @input="setValue('dx', parseInt($event.target.value) || 0)"
-                                       class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"/>
-                  </div>
-                  <div class="space-y-1"><label class="text-[10px] font-semibold text-slate-500 uppercase">垂直滚动
-                    (DY)</label><input type="number" :value="getValue('dy', 0)"
-                                       @input="setValue('dy', parseInt($event.target.value) || 0)"
-                                       class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"/>
-                  </div>
-                </div>
-              </template>
-              <template v-if="currentAction === 'InputText'">
-                <div class="space-y-1"><label
-                    class="text-[10px] font-semibold text-slate-500 uppercase">输入文本</label><input
-                    :value="getValue('input_text', '')" @input="setValue('input_text', $event.target.value)"
-                    class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"/></div>
-              </template>
-              <template v-if="['StartApp', 'StopApp'].includes(currentAction)">
-                <div class="space-y-1"><label
-                    class="text-[10px] font-semibold text-slate-500 uppercase">应用包名</label><input
-                    :value="getValue('package', '')" @input="setValue('package', $event.target.value)"
-                    class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono"
-                    placeholder="com.example.app"/></div>
-              </template>
-              <template v-if="['LongPress', 'LongPressKey'].includes(currentAction)">
-                <div class="space-y-1"><label class="text-[10px] font-semibold text-slate-500 uppercase">持续时间
-                  (ms)</label><input type="number" :value="getValue('duration', 1000)"
-                                     @input="setValue('duration', parseInt($event.target.value) || 1000)"
-                                     class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"/>
-                </div>
-              </template>
-              <template v-if="currentAction === 'Command'">
-                <div class="space-y-1"><label
-                    class="text-[10px] font-semibold text-slate-500 uppercase">执行程序</label><input
-                    :value="getValue('exec', '')" @input="setValue('exec', $event.target.value)"
-                    class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono"/>
-                </div>
-                <div class="space-y-1"><label
-                    class="text-[10px] font-semibold text-slate-500 uppercase">参数</label><input
-                    :value="getJsonValue('args')" @input="setJsonValue('args', $event.target.value)"
-                    class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono"
-                    placeholder='["arg1"]'/></div>
-                <label class="inline-flex items-center gap-1.5 cursor-pointer"><input type="checkbox"
-                                                                                      :checked="getValue('detach', false)"
-                                                                                      @change="setValue('detach', $event.target.checked)"
-                                                                                      class="w-3.5 h-3.5 rounded text-indigo-600"/><span
-                    class="text-[11px] text-slate-600">分离进程</span></label></template>
-              <template v-if="currentAction === 'Custom'">
-                <div class="space-y-1"><label
-                    class="text-[10px] font-semibold text-slate-500 uppercase">自定义动作名</label><input
-                    :value="getValue('custom_action', '')" @input="setValue('custom_action', $event.target.value)"
-                    class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"/></div>
-                <div class="space-y-1"><label
-                    class="text-[10px] font-semibold text-slate-500 uppercase">自定义参数</label><textarea
-                    :value="getJsonValue('custom_action_param')"
-                    @input="setJsonValue('custom_action_param', $event.target.value)"
-                    class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono h-14 resize-none"
-                    placeholder="JSON"></textarea></div>
-              </template>
+            <div v-show="expandedSections.action">
+              <NodeAction
+                  :currentType="currentAction"
+                  :form="formMethods"
+                  @open-picker="openDevicePicker"
+              />
             </div>
           </div>
 
@@ -1207,16 +542,7 @@ watch(() => props.nodeData?.data, (newData) => {
 </template>
 
 <style scoped>
-.custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: #475569;
-  border-radius: 4px;
-}
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background-color: #475569; border-radius: 4px; }
 </style>
