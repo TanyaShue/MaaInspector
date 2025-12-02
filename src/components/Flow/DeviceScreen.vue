@@ -26,9 +26,6 @@ const emit = defineEmits(['close', 'confirm', 'delete-image', 'save-with-deletio
 // 保存图片的路径名
 const saveImagePath = ref('')
 
-// 生成图片计数器（用于生成唯一文件名）
-const imageCounter = ref(1)
-
 // 本地图片列表（实时操作）
 const localImages = ref([]) // 当前图片 (_images)
 const localTempImages = ref([]) // 新增图片 (_temp_images)
@@ -97,14 +94,45 @@ const guideList = computed(() => {
   }
 })
 
-// --- 计算默认保存路径 ---
+// --- 计算默认保存路径 (修改版：检查所有列表防止重名) ---
 const generateDefaultSavePath = () => {
   // 移除文件名的扩展名（如 .json）
   const baseFilename = props.filename ? props.filename.replace(/\.[^/.]+$/, '') : 'default'
   const nodeId = props.nodeId || 'node'
-  // 计算当前已有图片数量 + 1 作为序号
-  const existingCount = (props.imageList?.length || 0) + imageCounter.value
-  return `${baseFilename}\\${nodeId}_${existingCount}.png`
+
+  // 收集所有已经被占用的路径 (Set去重)
+  const usedPaths = new Set()
+
+  const collectPaths = (list) => {
+    if (!list) return
+    list.forEach(img => {
+      if (img && img.path) usedPaths.add(img.path)
+    })
+  }
+
+  // 检查 props 中的原始数据
+  collectPaths(props.imageList)
+  collectPaths(props.tempImageList)
+  collectPaths(props.deletedImageList)
+
+  // 检查本地实时数据 (因为用户可能刚刚添加或删除了图片)
+  collectPaths(localImages.value)
+  collectPaths(localTempImages.value)
+  collectPaths(localDeletedImages.value)
+
+  // 从 1 开始寻找可用的序号
+  let index = 1
+  let candidatePath = ''
+
+  while (true) {
+    candidatePath = `${baseFilename}\\${nodeId}_${index}.png`
+    if (!usedPaths.has(candidatePath)) {
+      break // 找到未被使用的路径
+    }
+    index++
+  }
+
+  return candidatePath
 }
 
 // --- 计算当前有效的 template 路径 ---
@@ -128,9 +156,7 @@ watch(() => props.visible, async (val) => {
     resetView()
     ocrResult.value = ''
     previewUrl.value = ''
-    imageCounter.value = 1 // 重置计数器
-    saveImagePath.value = generateDefaultSavePath() // 生成默认保存路径
-    
+
     // 初始化本地图片列表（深拷贝）
     localImages.value = (props.imageList || []).map(img => ({...img}))
     localTempImages.value = (props.tempImageList || []).map(img => ({...img}))
@@ -139,13 +165,16 @@ watch(() => props.visible, async (val) => {
       ...img,
       _source: img._source || 'images' // 保留已有的来源标记，默认为 images
     }))
-    
+
+    // 初始化完成后生成路径，确保考虑到刚刚载入的所有图片
+    saveImagePath.value = generateDefaultSavePath()
+
     // 记录原始 template 路径
     originalTemplatePaths.value = [
       ...(props.imageList || []).map(img => img.path),
       ...(props.tempImageList || []).map(img => img.path)
     ]
-    
+
     await fetchScreenshot()
     if (props.initialRect && props.initialRect.length === 4) {
       selection.x = props.initialRect[0]
@@ -374,7 +403,7 @@ const handleConfirm = () => {
 const handleImageManagerSave = () => {
   // 收集当前有效图片路径
   const validPaths = currentTemplatePaths.value
-  
+
   // 收集所有当前状态的图片数据
   // 保留 _source 标记，以便下次恢复时能恢复到正确位置
   const result = {
@@ -384,7 +413,7 @@ const handleImageManagerSave = () => {
     tempImages: localTempImages.value, // 当前 _temp_images
     deletedImages: localDeletedImages.value // 当前 _del_images（保留 _source 标记）
   }
-  
+
   emit('confirm', result)
   emit('close')
 }
@@ -415,7 +444,7 @@ const restoreImage = (path) => {
   if (index !== -1) {
     const [restoredImg] = localDeletedImages.value.splice(index, 1)
     const { _source, ...imgData } = restoredImg
-    
+
     // 根据来源恢复到正确的列表
     if (_source === 'temp') {
       localTempImages.value.push(imgData)
@@ -428,21 +457,20 @@ const restoreImage = (path) => {
 // 保存截图到 _temp_images（仅本地添加，保存时才提交）
 const handleSaveTempImage = () => {
   if (!previewUrl.value || !saveImagePath.value.trim()) return
-  
+
   const imagePath = saveImagePath.value.trim()
   const imageBase64 = previewUrl.value
-  
+
   // 添加到本地临时图片列表
   localTempImages.value.push({
     path: imagePath,
     base64: imageBase64,
     found: true
   })
-  
-  // 更新计数器并生成新的默认路径
-  imageCounter.value++
+
+  // 生成新的默认路径 (会检测刚刚加入的图片)
   saveImagePath.value = generateDefaultSavePath()
-  
+
   // 清空选区和预览
   selection.x = 0
   selection.y = 0
@@ -460,7 +488,6 @@ const handleSaveTempImage = () => {
         class="bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col md:flex-row max-h-[90vh]"
         :class="props.mode === 'image_manager' ? 'max-w-[98vw]' : 'max-w-[95vw]'"
     >
-
       <div
           class="relative bg-slate-900 overflow-hidden select-none group flex items-center justify-center"
           style="width: 80vh; aspect-ratio: 16/9;"
@@ -594,11 +621,10 @@ const handleSaveTempImage = () => {
               </div>
             </div>
 
-            <!-- 保存路径输入框和保存按钮 -->
             <div class="space-y-1.5">
-              <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">保存路径</label>
+              <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">保存路径</label>
               <div class="flex gap-1">
-                <input 
+                <input
                     v-model="saveImagePath"
                     type="text"
                     class="flex-1 px-2 py-1.5 bg-white border border-slate-200 rounded text-[11px] text-slate-700 font-mono outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-100"
@@ -708,8 +734,8 @@ const handleSaveTempImage = () => {
         </div>
       </div>
 
-      <div v-if="props.mode === 'image_manager'" class="w-80 bg-slate-50 flex flex-col">
-        <div class="px-4 py-3 border-b border-slate-200 bg-white">
+      <div v-if="props.mode === 'image_manager'" class="w-80 bg-slate-50 flex flex-col h-full overflow-hidden">
+        <div class="px-4 py-3 border-b border-slate-200 bg-white shrink-0">
           <h3 class="font-bold text-slate-700 text-sm flex items-center gap-2">
             <ImageIcon :size="16" class="text-pink-500"/>
             图片列表
@@ -723,7 +749,6 @@ const handleSaveTempImage = () => {
             <span class="text-xs">暂无图片</span>
           </div>
 
-          <!-- 当前图片列表 -->
           <div v-if="localImages.length > 0" class="space-y-2">
             <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-1">
               当前图片 ({{ localImages.length }})
@@ -755,7 +780,6 @@ const handleSaveTempImage = () => {
             </div>
           </div>
 
-          <!-- 临时图片列表（新添加的截图，绿色边框） -->
           <div v-if="localTempImages.length > 0" class="space-y-2 mt-3">
             <div class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider px-1 flex items-center gap-1">
               <ImageIcon :size="10"/>
@@ -765,7 +789,6 @@ const handleSaveTempImage = () => {
               <div v-for="(item, index) in localTempImages" :key="'temp-' + index"
                    class="group relative rounded-md overflow-hidden shadow-sm hover:shadow-md transition-all aspect-square bg-white border-2 border-emerald-400">
 
-                <!-- 删除按钮 -->
                 <button
                     @click.stop="deleteFromTempImages(item.path)"
                     class="absolute top-0.5 right-0.5 z-20 p-1 text-white rounded-md backdrop-blur transition-all bg-black/50 hover:bg-red-500 opacity-0 group-hover:opacity-100"
@@ -789,7 +812,6 @@ const handleSaveTempImage = () => {
             </div>
           </div>
 
-          <!-- 已删除图片列表（灰色显示） -->
           <div v-if="localDeletedImages.length > 0" class="space-y-2 mt-3">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1 flex items-center gap-1">
               <Trash2 :size="10" class="opacity-50"/>
@@ -799,7 +821,6 @@ const handleSaveTempImage = () => {
               <div v-for="(item, index) in localDeletedImages" :key="'deleted-' + index"
                    class="group relative rounded-md overflow-hidden shadow-sm transition-all aspect-square bg-slate-200 border border-slate-300">
 
-                <!-- 恢复按钮 -->
                 <button
                     @click.stop="restoreImage(item.path)"
                     class="absolute top-0.5 right-0.5 z-20 p-1 text-white rounded-md backdrop-blur transition-all bg-slate-500/70 hover:bg-emerald-500 opacity-0 group-hover:opacity-100"
@@ -824,8 +845,7 @@ const handleSaveTempImage = () => {
           </div>
         </div>
 
-        <div class="p-3 border-t border-slate-200 bg-white space-y-2">
-          <!-- 保存按钮 - 根据是否有变化决定是否可点击 -->
+        <div class="p-3 border-t border-slate-200 bg-white space-y-2 shrink-0">
           <button
               @click="handleImageManagerSave"
               :disabled="!hasTemplateChanged"
