@@ -16,11 +16,13 @@ const props = defineProps({
   nodeCount: {type: Number, default: 0},
   edgeCount: {type: Number, default: 0},
   isDirty: {type: Boolean, default: false},
-  currentFilename: {type: String, default: ''}
+  currentFilename: {type: String, default: ''},
+  edgeType: {type: String, default: 'smoothstep'},  // 连线类型
+  spacing: {type: String, default: 'normal'}         // 布局间隔
 })
 
-// [核心] 增加 request-switch-file 事件
-const emit = defineEmits(['load-nodes', 'load-images', 'save-nodes', 'device-connected', 'request-switch-file'])
+// [核心] 增加 request-switch-file 和 update-canvas-config 事件
+const emit = defineEmits(['load-nodes', 'load-images', 'save-nodes', 'device-connected', 'request-switch-file', 'update-canvas-config'])
 
 // --- 内部组件 ---
 const StatusIndicator = defineComponent({
@@ -256,12 +258,11 @@ const handleCreateFile = async ({path, filename}) => {
     showCreateFileModal.value = false
     await handleResourceLoad()
     const simpleName = filename.endsWith('.json') ? filename : filename + '.json'
-    // 查找新创建的文件：通过文件名匹配，并检查 source 路径中是否包含原始 path
-    // 使用 includes 来处理路径分隔符差异（Windows vs Unix）
+    // 查找新创建的文件：source 现在是资源根目录，与 path 相同（规范化比较）
     const normalizedPath = path.replace(/\\/g, '/').toLowerCase()
     const newFileObj = availableFiles.value.find(f => 
       f.value === simpleName && 
-      f.source.replace(/\\/g, '/').toLowerCase().includes(normalizedPath)
+      f.source.replace(/\\/g, '/').toLowerCase() === normalizedPath
     )
     if (newFileObj) {
       await executeFileSwitch(newFileObj.value, newFileObj.source)
@@ -278,6 +279,7 @@ const handleAgentConnect = () => agentCtrl.connect({socket_id: currentAgentSocke
 
 // --- 初始化 ---
 let isInit = true
+
 const fetchSystemState = async () => {
   systemStatus.value = 'loading'
   isInit = true
@@ -297,6 +299,15 @@ const fetchSystemState = async () => {
     }
     if (state.agent_socket_id) currentAgentSocket.value = state.agent_socket_id
     else if (data.agent_socket_id) currentAgentSocket.value = data.agent_socket_id
+    
+    // 加载画布配置（连线类型和布局间隔）
+    if (state.edge_type || state.spacing) {
+      emit('update-canvas-config', {
+        edgeType: state.edge_type || 'smoothstep',
+        spacing: state.spacing || 'normal'
+      })
+    }
+    
     systemStatus.value = 'connected'
   } catch (e) {
     console.error("Init failed", e)
@@ -323,8 +334,10 @@ const saveAllConfig = async () => {
         device_index: selectedDeviceIndex.value,
         resource_profile_index: selectedProfileIndex.value,
         resource_file: currentFilename,
-        resource_source: currentSource,  // 新增: 保存文件所在的 source 路径
-        agent_socket_id: currentAgentSocket.value
+        resource_source: currentSource,
+        agent_socket_id: currentAgentSocket.value,
+        edge_type: props.edgeType,    // 保存连线类型
+        spacing: props.spacing         // 保存布局间隔
       }
     }
     await systemApi.saveDeviceConfig(payload)
@@ -333,6 +346,9 @@ const saveAllConfig = async () => {
   }
 }
 watch([selectedDeviceIndex, selectedProfileIndex, selectedResourceFile, currentAgentSocket], () => saveAllConfig(), {deep: false})
+
+// 监听画布配置变化
+watch(() => [props.edgeType, props.spacing], () => saveAllConfig(), {deep: false})
 
 const saveDeviceSettings = (data) => {
   availableDevices.value = data.devices

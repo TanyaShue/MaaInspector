@@ -10,7 +10,8 @@ import {resourceApi} from '../../services/api'
 const props = defineProps({
   visible: {type: Boolean, default: false},
   nodes: {type: Array, default: () => []},
-  currentFilename: {type: String, default: ''} // [新增] 需要知道当前文件名以排除
+  currentFilename: {type: String, default: ''}, // 当前文件名（用于排除）
+  currentSource: {type: String, default: ''}    // 当前资源路径（用于排除）
 })
 
 // [修改] 增加 switch-file 事件
@@ -32,30 +33,41 @@ const dragOffset = ref({x: 0, y: 0})
 
 // --- 1. 本地搜索逻辑 ---
 const localResults = computed(() => {
-  if (!searchQuery.value.trim()) return props.nodes.slice(0, 10)
+  let filtered = props.nodes
+  
+  if (searchQuery.value.trim()) {
+    const query = searchQuery.value
+    let regex = null
 
-  const query = searchQuery.value
-  let regex = null
-
-  if (useRegex.value) {
-    try {
-      regex = new RegExp(query, 'i')
-    } catch (e) {
-      return []
+    if (useRegex.value) {
+      try {
+        regex = new RegExp(query, 'i')
+      } catch (e) {
+        return []
+      }
     }
+
+    filtered = props.nodes.filter(node => {
+      const displayId = node.data?.data?.id || node.id
+      const rawId = node.id
+
+      if (regex) {
+        return regex.test(displayId) || regex.test(rawId)
+      } else {
+        return displayId.toLowerCase().includes(query.toLowerCase()) ||
+            rawId.toLowerCase().includes(query.toLowerCase())
+      }
+    })
   }
-
-  return props.nodes.filter(node => {
-    const displayId = node.data?.data?.id || node.id
-    const rawId = node.id
-
-    if (regex) {
-      return regex.test(displayId) || regex.test(rawId)
-    } else {
-      return displayId.toLowerCase().includes(query.toLowerCase()) ||
-          rawId.toLowerCase().includes(query.toLowerCase())
-    }
-  }).slice(0, 10)
+  
+  // 按节点名称排序
+  return [...filtered]
+    .sort((a, b) => {
+      const aId = (a.data?.data?.id || a.id).toLowerCase()
+      const bId = (b.data?.data?.id || b.id).toLowerCase()
+      return aId.localeCompare(bId)
+    })
+    .slice(0, 15)
 })
 
 // --- 2. 远程搜索逻辑 (防抖) ---
@@ -72,7 +84,8 @@ const performRemoteSearch = async () => {
     const res = await resourceApi.searchGlobalNodes(
         searchQuery.value,
         useRegex.value,
-        props.currentFilename
+        props.currentFilename,
+        props.currentSource
     )
     otherFileResults.value = res.results || []
   } catch (e) {
@@ -112,6 +125,26 @@ const getNodeTypeLabel = (type) => {
     'Unknown': '未知'
   }
   return typeMap[type] || type || '未知'
+}
+
+// 简化路径显示：保留首尾部分，中间用 ... 省略
+const shortenPath = (fullPath, maxLen = 35) => {
+  if (!fullPath) return ''
+  // 统一路径分隔符
+  const normalized = fullPath.replace(/\\/g, '/')
+  const parts = normalized.split('/').filter(Boolean)
+  
+  if (parts.length <= 2) return parts.join('/')
+  
+  // 取最后两级目录
+  const lastTwo = parts.slice(-2).join('/')
+  
+  // 如果整体长度不超过限制，直接返回
+  if (normalized.length <= maxLen) return normalized
+  
+  // 否则省略中间部分
+  const firstPart = parts[0]
+  return `${firstPart}/.../${lastTwo}`
 }
 
 // --- 交互 ---
@@ -225,8 +258,8 @@ onUnmounted(() => {
         <div v-if="localResults.length > 0" class="py-2">
           <div
               class="px-4 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
-            <span>Current File</span>
-            <span class="bg-slate-200 text-slate-600 px-1.5 rounded-full">{{ localResults.length }}</span>
+            <span>当前文件</span>
+            <span class="bg-emerald-100 text-emerald-600 px-1.5 rounded-full">{{ localResults.length }}</span>
           </div>
           <div
               v-for="node in localResults"
@@ -241,7 +274,7 @@ onUnmounted(() => {
                 {{ getNodeTypeLabel(node.data?.type) }}
               </div>
             </div>
-            <MapPin :size="14" class="text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity"/>
+            <MapPin :size="14" class="text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"/>
           </div>
         </div>
 
@@ -251,7 +284,7 @@ onUnmounted(() => {
         <div v-if="searchQuery.trim()" class="py-2">
           <div
               class="px-4 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
-            <span>Other Files</span>
+            <span>全局搜索</span>
             <span v-if="!isSearchingRemote"
                   class="bg-slate-200 text-slate-600 px-1.5 rounded-full">{{ otherFileResults.length }}</span>
             <Loader2 v-else :size="12" class="animate-spin text-blue-500"/>
@@ -259,7 +292,7 @@ onUnmounted(() => {
 
           <div v-if="otherFileResults.length === 0 && !isSearchingRemote && searchQuery"
                class="px-4 py-2 text-xs text-slate-400 italic">
-            无其他文件匹配
+            其他资源目录中无匹配节点
           </div>
 
           <div
@@ -269,15 +302,15 @@ onUnmounted(() => {
               @click="switchToRemoteNode(res)"
           >
             <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-2 mb-0.5">
-                <FileJson :size="10" class="text-slate-400"/>
-                <span class="text-[10px] text-slate-500 truncate max-w-[150px]" :title="res.filename">{{
-                    res.filename
-                  }}</span>
-              </div>
               <div class="font-mono text-sm text-slate-700 font-medium truncate">{{ res.display_id }}</div>
+              <div class="flex items-center gap-1.5 mt-0.5">
+                <FileJson :size="10" class="text-slate-400 shrink-0"/>
+                <span class="text-[10px] text-slate-500 truncate" :title="res.filename">{{ res.filename }}</span>
+                <span class="text-[10px] text-slate-300">·</span>
+                <span class="text-[10px] text-slate-400 truncate" :title="res.source">{{ shortenPath(res.source) }}</span>
+              </div>
             </div>
-            <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
               <span class="text-[10px] text-blue-600 font-bold">Go</span>
               <ArrowRightCircle :size="14" class="text-blue-500"/>
             </div>

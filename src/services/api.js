@@ -43,7 +43,7 @@ export const resourceApi = {
   getTemplateImages: (source, filename) => request('/resource/file/templates', { method: 'POST', body: JSON.stringify({ source, filename }) }),
   createFile: (path, filename) => request('/resource/file/create', { method: 'POST', body: JSON.stringify({ path, filename }) }),
   saveFileNodes: (source, filename, nodes) => request('/resource/file/save', { method: 'POST', body: JSON.stringify({ source, filename, nodes }) }),
-  searchGlobalNodes: (query, useRegex, currentFilename) => request('/resource/search/nodes', { method: 'POST', body: JSON.stringify({ query, use_regex: useRegex, current_filename: currentFilename }) }),
+  searchGlobalNodes: (query, useRegex, currentFilename, currentSource) => request('/resource/search/nodes', { method: 'POST', body: JSON.stringify({ query, use_regex: useRegex, current_filename: currentFilename, current_source: currentSource }) }),
   // 检查待删除图片是否被其他节点引用
   checkUnusedImages: (source, currentFilename, delImages) => request('/resource/images/check-unused', { method: 'POST', body: JSON.stringify({ source, current_filename: currentFilename, del_images: delImages }) }),
   // 处理图片：删除和保存

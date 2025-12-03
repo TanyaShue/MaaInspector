@@ -38,9 +38,11 @@
     "current_state": {
         "device_index": 1,
         "resource_profile_index": 1,
-        "resource_file": "123.json",
-        "resource_source": "D:\\DeveProject\\study\\MaaInspector\\MaaInspector\\test\\bilibili\\pipeline",
-        "agent_socket_id": "1234"
+        "resource_file": "1.json",
+        "resource_source": "D:\\DeveProject\\study\\MaaInspector\\MaaInspector\\test\\base",
+        "agent_socket_id": "1234",
+        "edge_type": "default",
+        "spacing": "normal"
     },
     "default_resource_path": "",
     "default_socket_id": "",

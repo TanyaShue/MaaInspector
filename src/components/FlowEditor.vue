@@ -15,7 +15,7 @@ import {resourceApi} from '../services/api.js'
 
 const {
   nodes, edges, nodeTypes, currentEdgeType, currentSpacing,
-  isDirty, currentFilename,
+  isDirty, currentFilename, currentSource,
   onValidateConnection, handleConnect, handleEdgesChange, handleNodeUpdate,
   loadNodes, createNodeObject, applyLayout, getNodesData, getImageData, clearTempImageData, clearDirty
 } = useFlowGraph()
@@ -257,6 +257,18 @@ const handleLoadImages = (imageDataMap) => {
   })
 }
 
+// 处理画布配置更新（从配置文件加载）
+const handleUpdateCanvasConfig = ({edgeType, spacing}) => {
+  if (edgeType && edgeType !== currentEdgeType.value) {
+    currentEdgeType.value = edgeType
+    // 更新现有连线类型
+    edges.value = edges.value.map(edge => ({...edge, type: edgeType}))
+  }
+  if (spacing && spacing !== currentSpacing.value) {
+    currentSpacing.value = spacing
+  }
+}
+
 const handleSaveNodes = async ({source, filename}) => {
   try {
     // 获取图片数据
@@ -412,11 +424,14 @@ const handleCancelDeleteImages = () => {
             :edge-count="edges.length"
             :is-dirty="isDirty"
             :current-filename="currentFilename"
+            :edge-type="currentEdgeType"
+            :spacing="currentSpacing"
             @load-nodes="handleLoadNodesWrapper"
             @load-images="handleLoadImages"
             @save-nodes="handleSaveNodes"
             @device-connected="(val) => isDeviceConnected = val"
             @request-switch-file="handleRequestSwitch"
+            @update-canvas-config="handleUpdateCanvasConfig"
         />
       </Panel>
 
@@ -455,6 +470,7 @@ const handleCancelDeleteImages = () => {
         :visible="searchVisible"
         :nodes="nodes"
         :current-filename="currentFilename"
+        :current-source="currentSource"
         @close="searchVisible = false"
         @locate-node="handleLocateNode"
         @switch-file="handleRequestSwitch"
