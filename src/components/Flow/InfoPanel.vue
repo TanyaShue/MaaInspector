@@ -58,8 +58,18 @@ const systemStatus = ref('disconnected')
 // --- 选中状态 ---
 const selectedDeviceIndex = ref(0)
 const selectedProfileIndex = ref(0)
-const selectedResourceFile = ref('')
+const selectedResourceFile = ref('')  // 存储唯一ID: source|filename
 const availableFiles = ref([])
+
+// --- 工具函数：生成和解析唯一ID ---
+const makeFileId = (source, filename) => `${source}|${filename}`
+const parseFileId = (id) => {
+  if (!id) return { source: '', filename: '' }
+  const sepIndex = id.lastIndexOf('|')
+  if (sepIndex === -1) return { source: '', filename: id }
+  return { source: id.slice(0, sepIndex), filename: id.slice(sepIndex + 1) }
+}
+const getFileObjById = (id) => availableFiles.value.find(f => makeFileId(f.source, f.value) === id)
 
 // --- 保存状态 ---
 const isSaving = ref(false)
@@ -119,7 +129,7 @@ const currentProfile = computed(() => resourceProfiles.value[selectedProfileInde
 
 const fetchAndEmitNodes = async () => {
   if (!selectedResourceFile.value) return
-  const fileObj = availableFiles.value.find(f => f.value === selectedResourceFile.value)
+  const fileObj = getFileObjById(selectedResourceFile.value)
   if (!fileObj) return
 
   try {
@@ -127,7 +137,8 @@ const fetchAndEmitNodes = async () => {
     const res = await resourceApi.getFileNodes(fileObj.source, fileObj.value)
     const nodes = res.nodes || {}
 
-    emit('load-nodes', {filename: fileObj.value, nodes: nodes})
+    // 传递 source 到 load-nodes 事件
+    emit('load-nodes', {filename: fileObj.value, source: fileObj.source, nodes: nodes})
     resourceCtrl.message = `已加载: ${Object.keys(nodes).length} 节点`
 
     try {
@@ -147,7 +158,7 @@ const handleSaveNodes = async () => {
   if (!selectedResourceFile.value || isSaving.value) return
   isSaving.value = true
   try {
-    const fileObj = availableFiles.value.find(f => f.value === selectedResourceFile.value)
+    const fileObj = getFileObjById(selectedResourceFile.value)
     if (!fileObj) throw new Error('未找到当前文件')
     emit('save-nodes', {source: fileObj.source, filename: fileObj.value})
   } catch (e) {
@@ -161,14 +172,17 @@ const handleSaveNodes = async () => {
 
 // [核心逻辑] 真正的切换执行者
 const executeFileSwitch = async (filename, source) => {
-  let target = availableFiles.value.find(f => f.value === filename)
+  // 使用 source 和 filename 生成唯一 ID 进行查找
+  const targetId = source ? makeFileId(source, filename) : null
+  let target = targetId ? getFileObjById(targetId) : availableFiles.value.find(f => f.value === filename)
+  
   if (!target && source) {
     target = {label: `${filename} (Search)`, value: filename, source: source, filename: filename}
     availableFiles.value.push(target)
   }
 
   if (target) {
-    selectedResourceFile.value = filename
+    selectedResourceFile.value = makeFileId(target.source, target.value)
     await fetchAndEmitNodes()
   } else {
     alert(`无法切换: 未找到文件 ${filename}`)
@@ -178,14 +192,15 @@ const executeFileSwitch = async (filename, source) => {
 // [核心逻辑] 暴露给父组件调用
 defineExpose({executeFileSwitch, handleSaveNodes})
 
-// [交互] 下拉框变化 -> 通知父组件处理
-const handleFileSelectChange = (newFile) => {
-  const fileObj = availableFiles.value.find(f => f.value === newFile)
-  if (newFile === selectedResourceFile.value) return
+// [交互] 下拉框变化 -> 通知父组件处理 (newFileId 是唯一ID: source|filename)
+const handleFileSelectChange = (newFileId) => {
+  if (newFileId === selectedResourceFile.value) return
+  const fileObj = getFileObjById(newFileId)
+  if (!fileObj) return
 
   emit('request-switch-file', {
-    filename: newFile,
-    source: fileObj?.source
+    filename: fileObj.value,
+    source: fileObj.source
   })
 }
 
@@ -207,10 +222,22 @@ const handleResourceLoad = async () => {
     const res = await resourceCtrl.connect(currentProfile.value)
     if (res.list) {
       availableFiles.value = res.list
-      const fileStillExists = availableFiles.value.find(f => f.value === selectedResourceFile.value)
+      // 使用唯一 ID 检查文件是否仍然存在
+      let fileStillExists = selectedResourceFile.value ? getFileObjById(selectedResourceFile.value) : null
+      
+      // 兼容旧配置：如果没有找到，尝试仅通过文件名匹配（适用于从旧配置恢复的情况）
+      if (!fileStillExists && selectedResourceFile.value && !selectedResourceFile.value.includes('|')) {
+        const matchByName = availableFiles.value.find(f => f.value === selectedResourceFile.value)
+        if (matchByName) {
+          selectedResourceFile.value = makeFileId(matchByName.source, matchByName.value)
+          fileStillExists = matchByName
+        }
+      }
+      
       if (!selectedResourceFile.value || !fileStillExists) {
         if (availableFiles.value.length > 0) {
-          await executeFileSwitch(availableFiles.value[0].value)
+          const firstFile = availableFiles.value[0]
+          await executeFileSwitch(firstFile.value, firstFile.source)
         } else {
           selectedResourceFile.value = ''
         }
@@ -229,9 +256,15 @@ const handleCreateFile = async ({path, filename}) => {
     showCreateFileModal.value = false
     await handleResourceLoad()
     const simpleName = filename.endsWith('.json') ? filename : filename + '.json'
-    const newFileObj = availableFiles.value.find(f => f.value === simpleName)
+    // 查找新创建的文件：通过文件名匹配，并检查 source 路径中是否包含原始 path
+    // 使用 includes 来处理路径分隔符差异（Windows vs Unix）
+    const normalizedPath = path.replace(/\\/g, '/').toLowerCase()
+    const newFileObj = availableFiles.value.find(f => 
+      f.value === simpleName && 
+      f.source.replace(/\\/g, '/').toLowerCase().includes(normalizedPath)
+    )
     if (newFileObj) {
-      await executeFileSwitch(newFileObj.value)
+      await executeFileSwitch(newFileObj.value, newFileObj.source)
       resourceCtrl.message = '新建成功并已加载'
     }
   } catch (e) {
@@ -255,7 +288,13 @@ const fetchSystemState = async () => {
     const state = data.current_state || {}
     if (availableDevices.value[state.device_index]) selectedDeviceIndex.value = state.device_index
     if (resourceProfiles.value[state.resource_profile_index]) selectedProfileIndex.value = state.resource_profile_index
-    if (state.resource_file) selectedResourceFile.value = state.resource_file
+    // 使用 source 和 filename 生成唯一 ID
+    if (state.resource_file && state.resource_source) {
+      selectedResourceFile.value = makeFileId(state.resource_source, state.resource_file)
+    } else if (state.resource_file) {
+      // 兼容旧配置：没有 resource_source 时，仅使用文件名（后续加载时会尝试匹配）
+      selectedResourceFile.value = state.resource_file
+    }
     if (state.agent_socket_id) currentAgentSocket.value = state.agent_socket_id
     else if (data.agent_socket_id) currentAgentSocket.value = data.agent_socket_id
     systemStatus.value = 'connected'
@@ -274,6 +313,8 @@ const saveAllConfig = async () => {
   if (isInit) return
   if (systemStatus.value !== 'connected') return
   try {
+    // 解析当前选中文件的 source 和 filename
+    const { source: currentSource, filename: currentFilename } = parseFileId(selectedResourceFile.value)
     const payload = {
       devices: availableDevices.value,
       resource_profiles: resourceProfiles.value,
@@ -281,7 +322,8 @@ const saveAllConfig = async () => {
       current_state: {
         device_index: selectedDeviceIndex.value,
         resource_profile_index: selectedProfileIndex.value,
-        resource_file: selectedResourceFile.value,
+        resource_file: currentFilename,
+        resource_source: currentSource,  // 新增: 保存文件所在的 source 路径
         agent_socket_id: currentAgentSocket.value
       }
     }
@@ -332,7 +374,7 @@ const saveResourceSettings = (data) => {
                 :class="{'!text-amber-600 font-bold': props.isDirty}"
                 :disabled="resourceCtrl.status !== 'connected' || availableFiles.length === 0"
             >
-              <option v-for="file in availableFiles" :key="file.value" :value="file.value">{{ file.label }}</option>
+              <option v-for="file in availableFiles" :key="makeFileId(file.source, file.value)" :value="makeFileId(file.source, file.value)">{{ file.label }}</option>
               <option v-if="resourceCtrl.status !== 'connected'" disabled>未加载资源</option>
             </select>
             <ChevronDown v-if="resourceCtrl.status === 'connected'" :size="10"
@@ -477,7 +519,7 @@ const saveResourceSettings = (data) => {
                   <select :value="selectedResourceFile" @change="handleFileSelectChange($event.target.value)"
                           class="input-base pl-10 border-emerald-200 focus:ring-emerald-100 appearance-none cursor-pointer"
                           :class="{'!border-amber-300 !ring-amber-100': props.isDirty}">
-                    <option v-for="file in availableFiles" :key="file.value" :value="file.value">{{
+                    <option v-for="file in availableFiles" :key="makeFileId(file.source, file.value)" :value="makeFileId(file.source, file.value)">{{
                         file.label
                       }}
                     </option>

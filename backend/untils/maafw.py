@@ -25,8 +25,6 @@ class MaaFW:
         self.controller = None
         self.tasker = None
         self.agent = None
-
-        self.screenshotter = Screenshotter(self.screencap)
         self.notification_handler = None
 
     @staticmethod
@@ -158,25 +156,6 @@ class MaaFW:
 
         return self.tasker.clear_cache()
 
-
-# class Screenshotter(threading.Thread):
-class Screenshotter:
-    def __init__(self, screencap_func: Callable):
-        super().__init__()
-        self.source = None
-        self.screencap_func = screencap_func
-        # self.active = False
-
-    def __del__(self):
-        self.source = None
-        # self.active = False
-
-    async def refresh(self, capture: bool = True):
-        im = await self.screencap_func(capture)
-        if not im:
-            return
-
-        self.source = im
 
 def cvmat_to_image(cvmat: ndarray) -> Image.Image:
     pil = Image.fromarray(cvmat)

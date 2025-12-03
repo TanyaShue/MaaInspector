@@ -11,6 +11,7 @@ export function useFlowGraph() {
   const currentEdgeType = ref('smoothstep')
   const currentSpacing = ref('normal')
   const currentFilename = ref('') // 当前打开的文件名
+  const currentSource = ref('')   // 当前文件所在的资源路径（pipeline目录）
   const originalDataSnapshot = ref('') // 原始数据快照（JSON字符串）
 
   const nodeTypes = { custom: markRaw(CustomNode) }
@@ -398,7 +399,7 @@ export function useFlowGraph() {
   }
 
   // --- 核心逻辑 5: 加载节点 ---
-  const loadNodes = ({ filename, nodes: rawNodesData }) => {
+  const loadNodes = ({ filename, source, nodes: rawNodesData }) => {
     const newNodes = []
     const newEdges = []
     const createdNodeIds = new Set()
@@ -443,8 +444,9 @@ export function useFlowGraph() {
     nodes.value = layoutedNodes
     edges.value = newEdges
     
-    // 记录当前文件名并保存原始数据快照
+    // 记录当前文件名和 source 路径，并保存原始数据快照
     currentFilename.value = filename || ''
+    currentSource.value = source || ''
     // 延迟一帧保存快照，确保 nodes 已更新
     setTimeout(() => {
       originalDataSnapshot.value = JSON.stringify(getNodesData())
@@ -525,6 +527,7 @@ export function useFlowGraph() {
     currentSpacing,
     isDirty,
     currentFilename,
+    currentSource,  // 暴露当前文件所在的 source 路径
     SPACING_OPTIONS,
     createNodeObject,
     onValidateConnection,

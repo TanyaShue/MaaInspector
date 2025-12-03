@@ -261,24 +261,24 @@ const handleSaveNodes = async ({source, filename}) => {
   try {
     // 获取图片数据
     const { delImages, tempImages } = getImageData()
-    
+
     // 如果有待删除或待保存的图片，需要先检查和处理
     if (delImages.length > 0 || tempImages.length > 0) {
       pendingSaveConfig.value = { source, filename }
-      
+
       // 检查待删除图片是否被其他文件引用
       if (delImages.length > 0) {
         const checkRes = await resourceApi.checkUnusedImages(source, filename, delImages)
         unusedImages.value = checkRes.unused_images || []
         usedImages.value = checkRes.used_images || []
-        
+
         // 如果有未被引用的图片，显示确认弹窗
         if (unusedImages.value.length > 0) {
           showDeleteImagesModal.value = true
           return // 等待用户确认
         }
       }
-      
+
       // 没有需要确认删除的图片，直接处理临时图片并保存
       await processImagesAndSave(source, filename, [], tempImages)
     } else {
@@ -299,10 +299,10 @@ const processImagesAndSave = async (source, filename, deletePaths, tempImages) =
       const processRes = await resourceApi.processImages(source, deletePaths, tempImages)
       console.log('[FlowEditor] 图片处理结果:', processRes)
     }
-    
+
     // 清理节点的临时图片数据
     clearTempImageData()
-    
+
     // 保存节点数据
     await saveNodesOnly(source, filename)
   } catch (e) {
@@ -325,14 +325,14 @@ const saveNodesOnly = async (source, filename) => {
 const handleConfirmDeleteImages = async () => {
   if (!pendingSaveConfig.value) return
   isProcessingImages.value = true
-  
+
   try {
     const { source, filename } = pendingSaveConfig.value
     const { tempImages } = getImageData()
-    
+
     // 删除未被引用的图片，保存临时图片
     await processImagesAndSave(source, filename, unusedImages.value, tempImages)
-    
+
     showDeleteImagesModal.value = false
     pendingSaveConfig.value = null
     unusedImages.value = []
@@ -349,14 +349,14 @@ const handleConfirmDeleteImages = async () => {
 const handleSkipDeleteImages = async () => {
   if (!pendingSaveConfig.value) return
   isProcessingImages.value = true
-  
+
   try {
     const { source, filename } = pendingSaveConfig.value
     const { tempImages } = getImageData()
-    
+
     // 不删除任何图片，只保存临时图片
     await processImagesAndSave(source, filename, [], tempImages)
-    
+
     showDeleteImagesModal.value = false
     pendingSaveConfig.value = null
     unusedImages.value = []

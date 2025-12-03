@@ -26,6 +26,9 @@ const emit = defineEmits(['close', 'confirm', 'delete-image', 'save-with-deletio
 // 保存图片的路径名
 const saveImagePath = ref('')
 
+// 生成图片计数器（用于生成唯一文件名） - 实际上主要依靠下面的查重逻辑
+const imageCounter = ref(1)
+
 // 本地图片列表（实时操作）
 const localImages = ref([]) // 当前图片 (_images)
 const localTempImages = ref([]) // 新增图片 (_temp_images)
@@ -94,13 +97,13 @@ const guideList = computed(() => {
   }
 })
 
-// --- 计算默认保存路径 (修改版：检查所有列表防止重名) ---
+// --- 计算默认保存路径 (防止重复) ---
 const generateDefaultSavePath = () => {
   // 移除文件名的扩展名（如 .json）
   const baseFilename = props.filename ? props.filename.replace(/\.[^/.]+$/, '') : 'default'
   const nodeId = props.nodeId || 'node'
 
-  // 收集所有已经被占用的路径 (Set去重)
+  // 1. 收集所有已知的路径 (包括 props 传入的 和 本地刚操作的)
   const usedPaths = new Set()
 
   const collectPaths = (list) => {
@@ -110,24 +113,24 @@ const generateDefaultSavePath = () => {
     })
   }
 
-  // 检查 props 中的原始数据
+  // 检查原始数据
   collectPaths(props.imageList)
   collectPaths(props.tempImageList)
   collectPaths(props.deletedImageList)
 
-  // 检查本地实时数据 (因为用户可能刚刚添加或删除了图片)
+  // 检查当前本地实时数据
   collectPaths(localImages.value)
   collectPaths(localTempImages.value)
   collectPaths(localDeletedImages.value)
 
-  // 从 1 开始寻找可用的序号
+  // 2. 从 1 开始寻找未被占用的序号
   let index = 1
   let candidatePath = ''
 
   while (true) {
     candidatePath = `${baseFilename}\\${nodeId}_${index}.png`
     if (!usedPaths.has(candidatePath)) {
-      break // 找到未被使用的路径
+      break // 找到唯一路径
     }
     index++
   }
@@ -156,17 +159,18 @@ watch(() => props.visible, async (val) => {
     resetView()
     ocrResult.value = ''
     previewUrl.value = ''
+    imageCounter.value = 1
 
     // 初始化本地图片列表（深拷贝）
     localImages.value = (props.imageList || []).map(img => ({...img}))
     localTempImages.value = (props.tempImageList || []).map(img => ({...img}))
-    // 已删除图片保留来源标记（如果有的话，没有则默认为 images）
+    // 已删除图片保留来源标记
     localDeletedImages.value = (props.deletedImageList || []).map(img => ({
       ...img,
-      _source: img._source || 'images' // 保留已有的来源标记，默认为 images
+      _source: img._source || 'images'
     }))
 
-    // 初始化完成后生成路径，确保考虑到刚刚载入的所有图片
+    // 初始化完成后生成默认路径
     saveImagePath.value = generateDefaultSavePath()
 
     // 记录原始 template 路径
@@ -194,11 +198,9 @@ watch(() => props.visible, async (val) => {
 const copySelection = () => {
   if (!props.selection) return;
   const {x, y, w, h} = props.selection;
-  // 格式化为数组字符串 [x, y, w, h]
   const text = `[${Math.round(x)}, ${Math.round(y)}, ${Math.round(w)}, ${Math.round(h)}]`;
 
   navigator.clipboard.writeText(text).then(() => {
-    // 这里可以加一个简单的 Toast 提示，比如 "已复制"
     console.log('Copied:', text);
   }).catch(err => {
     console.error('Failed to copy:', err);
@@ -372,7 +374,6 @@ const handleConfirm = () => {
   if (props.mode === 'ocr') {
     emit('confirm', ocrResult.value)
   } else if (props.mode === 'image_manager') {
-    // 如果有待删除的图片，保存删除操作
     if (pendingDeletePaths.value.size > 0) {
       const result = {
         type: 'delete_images',
@@ -382,7 +383,6 @@ const handleConfirm = () => {
       emit('close')
       return
     }
-    // 如果有选区，保存截图
     if (selection.w > 0) {
       const result = {
         rect: [Math.round(selection.x), Math.round(selection.y), Math.round(selection.w), Math.round(selection.h)],
@@ -392,86 +392,72 @@ const handleConfirm = () => {
     }
     return
   } else {
-    // 普通坐标模式，如果需要也可以把偏移量传出去，这里仅传选区
     const result = [Math.round(selection.x), Math.round(selection.y), Math.round(selection.w), Math.round(selection.h)]
     emit('confirm', result)
   }
   emit('close')
 }
 
-// 图片管理模式下的保存按钮逻辑
 const handleImageManagerSave = () => {
-  // 收集当前有效图片路径
   const validPaths = currentTemplatePaths.value
-
-  // 收集所有当前状态的图片数据
-  // 保留 _source 标记，以便下次恢复时能恢复到正确位置
   const result = {
     type: 'save_image_changes',
-    validPaths, // 更新到 template 的路径
-    images: localImages.value, // 当前 _images
-    tempImages: localTempImages.value, // 当前 _temp_images
-    deletedImages: localDeletedImages.value // 当前 _del_images（保留 _source 标记）
+    validPaths,
+    images: localImages.value,
+    tempImages: localTempImages.value,
+    deletedImages: localDeletedImages.value
   }
-
   emit('confirm', result)
   emit('close')
 }
 
-// 从当前图片删除（实时移动到已删除区域）
 const deleteFromImages = (path) => {
   const index = localImages.value.findIndex(img => img.path === path)
   if (index !== -1) {
     const [deletedImg] = localImages.value.splice(index, 1)
-    // 标记来源为 images，以便恢复时回到正确位置
     localDeletedImages.value.push({ ...deletedImg, _source: 'images' })
+    saveImagePath.value = generateDefaultSavePath() // 更新文件名
   }
 }
 
-// 从新增图片删除（实时移动到已删除区域）
 const deleteFromTempImages = (path) => {
   const index = localTempImages.value.findIndex(img => img.path === path)
   if (index !== -1) {
     const [deletedImg] = localTempImages.value.splice(index, 1)
-    // 标记来源为 temp，以便恢复时回到正确位置
     localDeletedImages.value.push({ ...deletedImg, _source: 'temp' })
+    saveImagePath.value = generateDefaultSavePath() // 更新文件名
   }
 }
 
-// 恢复已删除的图片（根据来源恢复到正确位置）
 const restoreImage = (path) => {
   const index = localDeletedImages.value.findIndex(img => img.path === path)
   if (index !== -1) {
     const [restoredImg] = localDeletedImages.value.splice(index, 1)
     const { _source, ...imgData } = restoredImg
-
-    // 根据来源恢复到正确的列表
     if (_source === 'temp') {
       localTempImages.value.push(imgData)
     } else {
       localImages.value.push(imgData)
     }
+    saveImagePath.value = generateDefaultSavePath() // 更新文件名
   }
 }
 
-// 保存截图到 _temp_images（仅本地添加，保存时才提交）
 const handleSaveTempImage = () => {
   if (!previewUrl.value || !saveImagePath.value.trim()) return
 
   const imagePath = saveImagePath.value.trim()
   const imageBase64 = previewUrl.value
 
-  // 添加到本地临时图片列表
   localTempImages.value.push({
     path: imagePath,
     base64: imageBase64,
     found: true
   })
 
-  // 生成新的默认路径 (会检测刚刚加入的图片)
+  // 生成新的默认路径
   saveImagePath.value = generateDefaultSavePath()
 
-  // 清空选区和预览
   selection.x = 0
   selection.y = 0
   selection.w = 0
@@ -489,7 +475,7 @@ const handleSaveTempImage = () => {
         :class="props.mode === 'image_manager' ? 'max-w-[98vw]' : 'max-w-[95vw]'"
     >
       <div
-          class="relative bg-slate-900 overflow-hidden select-none group flex items-center justify-center"
+          class="relative bg-slate-900 overflow-hidden select-none group flex items-center justify-center shrink-0"
           style="width: 80vh; aspect-ratio: 16/9;"
           ref="containerRef"
           @wheel="handleWheel"
@@ -559,9 +545,9 @@ const handleSaveTempImage = () => {
         </div>
       </div>
 
-      <div class="w-64 bg-slate-50 border-l border-slate-200 flex flex-col"
+      <div class="w-64 bg-slate-50 border-l border-slate-200 flex flex-col shrink-0"
            :class="{'border-r': props.mode === 'image_manager'}">
-        <div class="px-4 py-3 border-b border-slate-200 bg-white">
+        <div class="px-4 py-3 border-b border-slate-200 bg-white shrink-0">
           <h3 class="font-bold text-slate-700 text-sm flex items-center gap-2">
             <Crosshair :size="16" class="text-indigo-500"/>
             {{ title }}
@@ -569,7 +555,6 @@ const handleSaveTempImage = () => {
         </div>
 
         <div class="flex-1 p-4 space-y-5 overflow-y-auto">
-
           <div v-if="props.mode === 'ocr'" class="space-y-2">
             <div class="text-xs font-semibold text-purple-500 uppercase tracking-wider flex items-center gap-1">
               <ScanText :size="12"/>
@@ -582,17 +567,9 @@ const handleSaveTempImage = () => {
                 <ScanText v-else :size="12"/>
                 {{ isOcrLoading ? '识别中...' : '开始识别' }}
               </button>
-
               <div class="space-y-1">
-                <label
-                    class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">识别结果(取最高评分)</label>
-                <textarea
-                    v-model="ocrResult"
-                    rows="1"
-                    class="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-purple-400 transition-colors resize-none font-mono leading-relaxed overflow-hidden h-9"
-                    placeholder="等待识别..."
-                    spellcheck="false"
-                ></textarea>
+                <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">识别结果</label>
+                <textarea v-model="ocrResult" rows="1" class="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 resize-none font-mono h-9" placeholder="等待识别..."></textarea>
               </div>
             </div>
           </div>
@@ -602,84 +579,41 @@ const handleSaveTempImage = () => {
               <ImageIcon :size="12"/>
               选区截图预览
             </div>
-
-            <div
-                class="bg-slate-100 border border-slate-200 rounded-lg overflow-hidden shadow-inner flex items-center justify-center min-h-[120px] h-[120px] relative p-2">
-              <div
-                  class="absolute inset-0 opacity-10 bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:8px_8px]"></div>
-
-              <img
-                  v-if="previewUrl"
-                  :src="previewUrl"
-                  class="relative z-10 w-full h-full object-contain drop-shadow-sm"
-                  alt="Selection Preview"
-              />
-
+            <div class="bg-slate-100 border border-slate-200 rounded-lg overflow-hidden shadow-inner flex items-center justify-center min-h-[120px] h-[120px] relative p-2">
+              <div class="absolute inset-0 opacity-10 bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:8px_8px]"></div>
+              <img v-if="previewUrl" :src="previewUrl" class="relative z-10 w-full h-full object-contain drop-shadow-sm"/>
               <div v-else class="text-[10px] text-slate-400 relative z-10 flex flex-col items-center gap-1">
                 <MousePointer2 :size="16" class="opacity-50"/>
                 <span>请左键框选区域</span>
               </div>
             </div>
-
             <div class="space-y-1.5">
-              <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">保存路径</label>
+              <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">保存路径</label>
               <div class="flex gap-1">
-                <input
-                    v-model="saveImagePath"
-                    type="text"
-                    class="flex-1 px-2 py-1.5 bg-white border border-slate-200 rounded text-[11px] text-slate-700 font-mono outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-100"
-                    placeholder="文件名\\节点名.png"
-                />
-                <button
-                    @click="handleSaveTempImage"
-                    :disabled="!previewUrl || !saveImagePath.trim()"
-                    class="px-2.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded text-[11px] font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="保存截图到临时图片"
-                >
-                  保存
-                </button>
+                <input v-model="saveImagePath" type="text" class="flex-1 px-2 py-1.5 bg-white border border-slate-200 rounded text-[11px] text-slate-700 font-mono outline-none focus:border-emerald-400" placeholder="文件名.png"/>
+                <button @click="handleSaveTempImage" :disabled="!previewUrl || !saveImagePath.trim()" class="px-2.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded text-[11px] font-bold disabled:opacity-50">保存</button>
               </div>
             </div>
-
           </div>
 
           <div v-else class="space-y-2">
-            <div
-                class="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between">
-              <div class="flex items-center gap-1">
-                <MousePointer2 :size="12"/>
-                当前选区
-              </div>
-              <button
-                  @click="copySelection"
-                  class="text-slate-400 hover:text-indigo-600 transition-colors p-1 rounded-md hover:bg-slate-100"
-                  title="复制坐标 [x, y, w, h]"
-              >
-                <Copy :size="12"/>
-              </button>
+             <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+              <div class="flex items-center gap-1"><MousePointer2 :size="12"/> 当前选区</div>
+              <button @click="copySelection" class="text-slate-400 hover:text-indigo-600 p-1"><Copy :size="12"/></button>
             </div>
-
-            <div
-                class="bg-white border border-slate-200 rounded-lg p-3 font-mono text-xs shadow-sm select-text flex items-center justify-between">
+            <div class="bg-white border border-slate-200 rounded-lg p-3 font-mono text-xs shadow-sm flex items-center justify-between">
               <div class="flex items-center gap-3">
-                <div class="flex items-center gap-1"><span class="text-slate-400">X:</span><span
-                    class="font-bold text-slate-700">{{ Math.round(selection.x) }}</span></div>
-                <div class="flex items-center gap-1"><span class="text-slate-400">Y:</span><span
-                    class="font-bold text-slate-700">{{ Math.round(selection.y) }}</span></div>
-                <div class="flex items-center gap-1"><span class="text-slate-400">W:</span><span
-                    class="font-bold text-slate-700">{{ Math.round(selection.w) }}</span></div>
-                <div class="flex items-center gap-1"><span class="text-slate-400">H:</span><span
-                    class="font-bold text-slate-700">{{ Math.round(selection.h) }}</span></div>
+                <div class="flex items-center gap-1"><span class="text-slate-400">X:</span><span class="font-bold text-slate-700">{{ Math.round(selection.x) }}</span></div>
+                <div class="flex items-center gap-1"><span class="text-slate-400">Y:</span><span class="font-bold text-slate-700">{{ Math.round(selection.y) }}</span></div>
+                <div class="flex items-center gap-1"><span class="text-slate-400">W:</span><span class="font-bold text-slate-700">{{ Math.round(selection.w) }}</span></div>
+                <div class="flex items-center gap-1"><span class="text-slate-400">H:</span><span class="font-bold text-slate-700">{{ Math.round(selection.h) }}</span></div>
               </div>
             </div>
           </div>
 
           <div class="space-y-2">
-            <div class="text-xs font-semibold text-indigo-500 uppercase tracking-wider flex items-center gap-1">
-              操作指南
-            </div>
-            <div
-                class="bg-indigo-50 border border-indigo-100 rounded-lg p-3 text-[11px] text-slate-600 leading-relaxed space-y-2">
+            <div class="text-xs font-semibold text-indigo-500 uppercase tracking-wider flex items-center gap-1">操作指南</div>
+            <div class="bg-indigo-50 border border-indigo-100 rounded-lg p-3 text-[11px] text-slate-600 leading-relaxed space-y-2">
               <div v-for="(guide, index) in guideList" :key="index" class="flex items-start gap-2">
                 <component :is="guide.icon" :size="14" class="text-indigo-400 mt-0.5 shrink-0"/>
                 <span v-html="guide.text"></span>
@@ -688,91 +622,90 @@ const handleSaveTempImage = () => {
           </div>
 
           <div v-if="props.referenceRect" class="pt-2 border-t border-slate-100 space-y-2">
-
             <div class="w-full space-y-1">
-              <div
-                  class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1 truncate"
-                  :title="props.referenceLabel">
-                <Maximize :size="10"/>
-                {{ props.referenceLabel }}
+              <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1 truncate" :title="props.referenceLabel">
+                <Maximize :size="10"/> {{ props.referenceLabel }}
               </div>
-              <div
-                  class="bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-[10px] text-slate-500 font-mono text-center truncate"
-                  :title="'[' + props.referenceRect.join(', ') + ']'">
+              <div class="bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-[10px] text-slate-500 font-mono text-center truncate">
                 [{{ props.referenceRect.join(', ') }}]
               </div>
             </div>
-
             <div class="w-full space-y-1">
-              <div
-                  class="text-[10px] font-semibold text-blue-500 uppercase tracking-wider flex items-center gap-1 truncate"
-                  title="相对偏移">
-                <ArrowLeftRight :size="10"/>
-                相对偏移
+              <div class="text-[10px] font-semibold text-blue-500 uppercase tracking-wider flex items-center gap-1 truncate">
+                <ArrowLeftRight :size="10"/> 相对偏移
               </div>
-              <div
-                  class="bg-blue-50 border border-blue-200 rounded-lg p-1.5 text-[10px] text-blue-600 font-mono text-center truncate">
+              <div class="bg-blue-50 border border-blue-200 rounded-lg p-1.5 text-[10px] text-blue-600 font-mono text-center truncate">
                 [{{ offsetInfo ? offsetInfo.join(', ') : '0, 0, 0, 0' }}]
               </div>
             </div>
           </div>
         </div>
-        <div v-if="props.mode !== 'image_manager'" class="p-4 border-t border-slate-200 bg-white space-y-2">
-          <button
-              @click="handleConfirm"
-              :disabled="props.mode === 'ocr' ? (!ocrResult && !isOcrLoading) : selection.w === 0"
-              class="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold shadow-md shadow-indigo-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Check :size="16"/>
-            {{ props.mode === 'ocr' ? '确认结果' : '确认选取' }}
+
+        <div v-if="props.mode !== 'image_manager'" class="p-4 border-t border-slate-200 bg-white space-y-2 shrink-0">
+          <button @click="handleConfirm" :disabled="props.mode === 'ocr' ? (!ocrResult && !isOcrLoading) : selection.w === 0" class="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold shadow-md flex items-center justify-center gap-2 disabled:opacity-50">
+            <Check :size="16"/> {{ props.mode === 'ocr' ? '确认结果' : '确认选取' }}
           </button>
-          <button @click="$emit('close')"
-                  class="w-full py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2">
-            <X :size="16"/>
-            取消
+          <button @click="$emit('close')" class="w-full py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg text-sm font-medium flex items-center justify-center gap-2">
+            <X :size="16"/> 取消
           </button>
         </div>
       </div>
 
-      <div v-if="props.mode === 'image_manager'" class="w-80 bg-slate-50 flex flex-col h-full overflow-hidden">
-        <div class="px-4 py-3 border-b border-slate-200 bg-white shrink-0">
-          <h3 class="font-bold text-slate-700 text-sm flex items-center gap-2">
-            <ImageIcon :size="16" class="text-pink-500"/>
-            图片列表
-          </h3>
-        </div>
-
-        <div class="flex-1 p-2 overflow-y-auto custom-scrollbar">
-          <div v-if="localImages.length === 0 && localTempImages.length === 0 && localDeletedImages.length === 0"
-               class="flex flex-col items-center justify-center h-40 text-slate-400 space-y-2">
-            <ImageIcon :size="24" class="opacity-30"/>
-            <span class="text-xs">暂无图片</span>
+      <div v-if="props.mode === 'image_manager'" class="w-80 bg-slate-50 relative">
+        <div class="absolute inset-0 flex flex-col">
+          <div class="px-4 py-3 border-b border-slate-200 bg-white shrink-0">
+            <h3 class="font-bold text-slate-700 text-sm flex items-center gap-2">
+              <ImageIcon :size="16" class="text-pink-500"/>
+              图片列表
+            </h3>
           </div>
 
-          <div v-if="localImages.length > 0" class="space-y-2">
-            <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-1">
-              当前图片 ({{ localImages.length }})
+          <div class="flex-1 p-2 overflow-y-auto custom-scrollbar">
+            <div v-if="localImages.length === 0 && localTempImages.length === 0 && localDeletedImages.length === 0" class="flex flex-col items-center justify-center h-40 text-slate-400 space-y-2">
+              <ImageIcon :size="24" class="opacity-30"/>
+              <span class="text-xs">暂无图片</span>
             </div>
-            <div class="grid grid-cols-3 gap-1">
-              <div v-for="(item, index) in localImages" :key="'current-' + index"
-                   class="group relative rounded-md overflow-hidden shadow-sm hover:shadow-md transition-all aspect-square bg-white border border-slate-200">
 
-                <button
-                    @click.stop="deleteFromImages(item.path)"
-                    class="absolute top-0.5 right-0.5 z-20 p-1 text-white rounded-md backdrop-blur transition-all bg-black/50 hover:bg-red-500 opacity-0 group-hover:opacity-100"
-                    title="删除图片"
-                >
-                  <Trash2 :size="12"/>
-                </button>
+            <div v-if="localImages.length > 0" class="space-y-2">
+              <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-1">当前图片 ({{ localImages.length }})</div>
+              <div class="grid grid-cols-3 gap-1">
+                <div v-for="(item, index) in localImages" :key="'current-' + index" class="group relative rounded-md overflow-hidden shadow-sm hover:shadow-md transition-all aspect-square bg-white border border-slate-200">
+                  <button @click.stop="deleteFromImages(item.path)" class="absolute top-0.5 right-0.5 z-20 p-1 text-white rounded-md bg-black/50 hover:bg-red-500 opacity-0 group-hover:opacity-100"><Trash2 :size="12"/></button>
+                  <div class="w-full h-full bg-slate-100 flex items-center justify-center relative">
+                    <div class="absolute inset-0 opacity-10 bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:6px_6px]"></div>
+                    <img :src="item.base64" class="w-full h-full object-contain relative z-10"/>
+                    <div class="absolute bottom-0 left-0 right-0 backdrop-blur-[1px] py-1 px-1 z-20 truncate bg-black/60">
+                      <div class="text-[9px] text-white/90 font-mono text-center truncate select-none" :title="item.path">{{ item.path }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-                <div class="w-full h-full bg-slate-100 flex items-center justify-center relative">
-                  <div
-                      class="absolute inset-0 opacity-10 bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:6px_6px]"></div>
-                  <img :src="item.base64" class="w-full h-full object-contain relative z-10"/>
+            <div v-if="localTempImages.length > 0" class="space-y-2 mt-3">
+              <div class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider px-1 flex items-center gap-1"><ImageIcon :size="10"/> 新增图片(保存文件修改后写入文件) ({{ localTempImages.length }})</div>
+              <div class="grid grid-cols-3 gap-1">
+                <div v-for="(item, index) in localTempImages" :key="'temp-' + index" class="group relative rounded-md overflow-hidden shadow-sm hover:shadow-md transition-all aspect-square bg-white border-2 border-emerald-400">
+                  <button @click.stop="deleteFromTempImages(item.path)" class="absolute top-0.5 right-0.5 z-20 p-1 text-white rounded-md bg-black/50 hover:bg-red-500 opacity-0 group-hover:opacity-100"><Trash2 :size="12"/></button>
+                  <div class="w-full h-full flex items-center justify-center relative bg-emerald-50">
+                    <img :src="item.base64" class="w-full h-full object-contain relative z-10"/>
+                    <div class="absolute bottom-0 left-0 right-0 backdrop-blur-[1px] py-1 px-1 z-20 truncate bg-emerald-600/80">
+                      <div class="text-[9px] text-white/90 font-mono text-center truncate select-none" :title="item.path">{{ item.path }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-                  <div class="absolute bottom-0 left-0 right-0 backdrop-blur-[1px] py-1 px-1 z-20 truncate bg-black/60">
-                    <div class="text-[9px] text-white/90 font-mono text-center truncate select-none" :title="item.path">
-                      {{ item.path }}
+            <div v-if="localDeletedImages.length > 0" class="space-y-2 mt-3">
+              <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1 flex items-center gap-1"><Trash2 :size="10" class="opacity-50"/> 已删除图片(保存文件修改后彻底删除) ({{ localDeletedImages.length }})</div>
+              <div class="grid grid-cols-3 gap-1">
+                <div v-for="(item, index) in localDeletedImages" :key="'deleted-' + index" class="group relative rounded-md overflow-hidden shadow-sm transition-all aspect-square bg-slate-200 border border-slate-300">
+                  <button @click.stop="restoreImage(item.path)" class="absolute top-0.5 right-0.5 z-20 p-1 text-white rounded-md bg-slate-500/70 hover:bg-emerald-500 opacity-0 group-hover:opacity-100"><RotateCw :size="12"/></button>
+                  <div class="w-full h-full bg-slate-200 flex items-center justify-center relative opacity-50 grayscale">
+                    <img :src="item.base64" class="w-full h-full object-contain relative z-10"/>
+                    <div class="absolute bottom-0 left-0 right-0 bg-slate-500/80 backdrop-blur-[1px] py-1 px-1 z-20 truncate">
+                      <div class="text-[9px] text-white/70 font-mono text-center truncate select-none" :title="item.path">{{ item.path }}</div>
                     </div>
                   </div>
                 </div>
@@ -780,85 +713,14 @@ const handleSaveTempImage = () => {
             </div>
           </div>
 
-          <div v-if="localTempImages.length > 0" class="space-y-2 mt-3">
-            <div class="text-[10px] font-bold text-emerald-600 uppercase tracking-wider px-1 flex items-center gap-1">
-              <ImageIcon :size="10"/>
-              新增图片 ({{ localTempImages.length }})
-            </div>
-            <div class="grid grid-cols-3 gap-1">
-              <div v-for="(item, index) in localTempImages" :key="'temp-' + index"
-                   class="group relative rounded-md overflow-hidden shadow-sm hover:shadow-md transition-all aspect-square bg-white border-2 border-emerald-400">
-
-                <button
-                    @click.stop="deleteFromTempImages(item.path)"
-                    class="absolute top-0.5 right-0.5 z-20 p-1 text-white rounded-md backdrop-blur transition-all bg-black/50 hover:bg-red-500 opacity-0 group-hover:opacity-100"
-                    title="删除图片"
-                >
-                  <Trash2 :size="12"/>
-                </button>
-
-                <div class="w-full h-full flex items-center justify-center relative bg-emerald-50">
-                  <div
-                      class="absolute inset-0 opacity-10 bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:6px_6px]"></div>
-                  <img :src="item.base64" class="w-full h-full object-contain relative z-10"/>
-
-                  <div class="absolute bottom-0 left-0 right-0 backdrop-blur-[1px] py-1 px-1 z-20 truncate bg-emerald-600/80">
-                    <div class="text-[9px] text-white/90 font-mono text-center truncate select-none" :title="item.path">
-                      {{ item.path }}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div class="p-3 border-t border-slate-200 bg-white space-y-2 shrink-0">
+            <button @click="handleImageManagerSave" :disabled="!hasTemplateChanged" class="w-full py-2 text-white rounded-lg text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50 bg-indigo-600 hover:bg-indigo-700">
+              <Check :size="16"/> 保存
+            </button>
+            <button @click="$emit('close')" class="w-full py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2">
+              <X :size="16"/> 关闭
+            </button>
           </div>
-
-          <div v-if="localDeletedImages.length > 0" class="space-y-2 mt-3">
-            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1 flex items-center gap-1">
-              <Trash2 :size="10" class="opacity-50"/>
-              已删除图片 ({{ localDeletedImages.length }})
-            </div>
-            <div class="grid grid-cols-3 gap-1">
-              <div v-for="(item, index) in localDeletedImages" :key="'deleted-' + index"
-                   class="group relative rounded-md overflow-hidden shadow-sm transition-all aspect-square bg-slate-200 border border-slate-300">
-
-                <button
-                    @click.stop="restoreImage(item.path)"
-                    class="absolute top-0.5 right-0.5 z-20 p-1 text-white rounded-md backdrop-blur transition-all bg-slate-500/70 hover:bg-emerald-500 opacity-0 group-hover:opacity-100"
-                    title="恢复图片"
-                >
-                  <RotateCw :size="12"/>
-                </button>
-
-                <div class="w-full h-full bg-slate-200 flex items-center justify-center relative opacity-50 grayscale">
-                  <div
-                      class="absolute inset-0 opacity-10 bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:6px_6px]"></div>
-                  <img :src="item.base64" class="w-full h-full object-contain relative z-10"/>
-
-                  <div class="absolute bottom-0 left-0 right-0 bg-slate-500/80 backdrop-blur-[1px] py-1 px-1 z-20 truncate">
-                    <div class="text-[9px] text-white/70 font-mono text-center truncate select-none" :title="item.path">
-                      {{ item.path }}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="p-3 border-t border-slate-200 bg-white space-y-2 shrink-0">
-          <button
-              @click="handleImageManagerSave"
-              :disabled="!hasTemplateChanged"
-              class="w-full py-2 text-white rounded-lg text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200"
-          >
-            <Check :size="16"/>
-            保存
-          </button>
-          <button @click="$emit('close')"
-                  class="w-full py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2">
-            <X :size="16"/>
-            关闭
-          </button>
         </div>
       </div>
 

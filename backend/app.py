@@ -5,8 +5,10 @@ import base64
 import mimetypes
 import random
 import time
+from io import BytesIO
 from typing import Any, Dict, List, Optional
 
+from PIL import Image
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
@@ -74,10 +76,18 @@ def _encode_image_to_base64(fullpath: str) -> Optional[str]:
     except:
         return None
 
+def encode_pil_image_to_base64(img: Image.Image, mime: str = "image/png") -> str:
+    """
+    将 PIL Image 对象转换为 base64 data URI。
+    默认使用 PNG 格式，如需要 JPEG 可传入 mime="image/jpeg"。
+    """
+    buffer = BytesIO()
+    # 根据 mime 推断保存格式
+    format = mime.split("/")[-1].upper()
+    img.save(buffer, format=format)
+    base64_str = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    return f"data:{mime};base64,{base64_str}"
 
-# ---------------------------
-# 路由：系统 & 配置
-# ---------------------------
 @app.route("/system/init", methods=["GET"])
 def system_init():
     return jsonify(load_config())
@@ -297,16 +307,6 @@ def get_file_templates():
 
             if node_images:
                 results[node_id] = node_images
-        # safe_results = {}
-        # for node_id, imgs in results.items():
-        #     safe_results[node_id] = []
-        #     for item in imgs:
-        #         # 复制字典避免修改原始数据
-        #         new_item = dict(item)
-        #         new_item["base64"] = "base64..."
-        #         safe_results[node_id].append(new_item)
-        #
-        # print(safe_results)
         return _json_response(True, "Loaded", {"base_image_path": image_base, "results": results})
     except Exception as e:
         return _json_response(False, str(e), status=500)
@@ -483,8 +483,9 @@ def device_disconnect():
 @app.route("/device/screenshot", methods=["GET"])
 def device_screenshot():
     # 占位符逻辑
-    img_path = os.path.join(os.getcwd(), "banner_placeholder.jpg")
-    b64 = _encode_image_to_base64(img_path)
+    # img_path = os.path.join(os.getcwd(), "banner_placeholder.jpg")
+
+    b64 = encode_pil_image_to_base64(maafw.screencap())
     if b64:
         return _json_response(True, "OK", {"image": b64, "size": [1280, 720]})
     return _json_response(False, "No image", status=404)
