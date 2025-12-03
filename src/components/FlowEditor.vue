@@ -16,7 +16,8 @@ import {resourceApi} from '../services/api.js'
 const {
   nodes, edges, nodeTypes, currentEdgeType, currentSpacing,
   isDirty, currentFilename, currentSource,
-  onValidateConnection, handleConnect, handleEdgesChange, handleNodeUpdate,
+  onValidateConnection: originalValidateConnection,
+  handleConnect, handleEdgesChange, handleNodeUpdate,
   loadNodes, createNodeObject, applyLayout, getNodesData, getImageData, clearTempImageData, clearDirty
 } = useFlowGraph()
 
@@ -24,6 +25,28 @@ const {fitView, removeEdges, findNode, screenToFlowCoordinate} = useVueFlow()
 
 // 计算属性：判断文件是否已加载
 const isFileLoaded = computed(() => !!currentFilename.value)
+
+const onValidateConnection = (connection) => {
+  // 禁止节点连接自己
+  if (connection.source === connection.target) return false
+
+  // 核心修复：禁止从输入端口(id="in")发起连线
+  // 这样就彻底阻止了 "输入端口 -> 输入端口" 的情况
+  if (connection.sourceHandle === 'in') {
+    return false
+  }
+
+  if (connection.targetHandle !== 'in') {
+    return false
+  }
+
+  // 执行 useFlowGraph 中可能存在的原有校验逻辑
+  if (originalValidateConnection) {
+    return originalValidateConnection(connection)
+  }
+
+  return true
+}
 
 const closeAllDetailsSignal = ref(0)
 provide('closeAllDetailsSignal', closeAllDetailsSignal)
