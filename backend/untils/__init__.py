@@ -1,4 +1,3 @@
-# backend/untils/__init__.py
 import os
 import json
 import re

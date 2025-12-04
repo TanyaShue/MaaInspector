@@ -38,11 +38,11 @@
     "current_state": {
         "device_index": 1,
         "resource_profile_index": 1,
-        "resource_file": "debug.json",
+        "resource_file": "式神委派.json",
         "resource_source": "D:\\DeveProject\\study\\MaaInspector\\MaaInspector\\test\\base",
         "agent_socket_id": "1234",
         "edge_type": "default",
-        "spacing": "normal"
+        "spacing": "loose"
     },
     "default_resource_path": "",
     "default_socket_id": "",

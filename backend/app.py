@@ -64,7 +64,6 @@ def save_config(data: Dict[str, Any]) -> bool:
             json.dump(current, f, ensure_ascii=False, indent=4)
         return True
     except Exception as e:
-        print(f"Save config error: {e}")
         return False
 
 
@@ -147,7 +146,10 @@ def resource_load():
         payload = payload["path"]
 
     paths = payload.get("paths", []) or []
-    
+    print(paths)
+    r=maafw.load_resource(paths)
+    print(r)
+    # return jsonify({"message": "OK", "resources": r})
     # 使用 ResourcesManager 获取文件列表
     manager = ResourcesManager(paths)
     results = manager.list_all_files()
@@ -166,8 +168,6 @@ def get_file_nodes():
     data = request.get_json(force=True, silent=True) or {}
     resource_path = _norm_path(data.get("source"))
     filename = data.get("filename")
-    
-    print(f"[get_file_nodes] resource_path={resource_path}, filename={filename}")
 
     if not resource_path or not filename:
         return _json_response(False, "Missing params", status=400)
@@ -180,7 +180,6 @@ def get_file_nodes():
             return _json_response(False, "File not found", {"nodes": {}}, 404)
         return _json_response(True, "Loaded", {"nodes": nodes})
     except Exception as e:
-        print(f"[get_file_nodes] Error: {e}")
         return _json_response(False, str(e), status=500)
 
 
@@ -204,7 +203,6 @@ def resource_file_save():
         count = manager.save_nodes(resource_path, filename, nodes_data)
         return _json_response(True, f"Saved {count} nodes", {"saved_count": count})
     except Exception as e:
-        print(f"Save error: {e}")
         return _json_response(False, f"Save failed: {e}", status=500)
 
 
@@ -239,13 +237,13 @@ def resource_file_create():
 @app.route("/resource/search/nodes", methods=["POST"])
 def search_nodes_globally():
     """
-    全局搜索节点
-    
-    请求体: { 
-        "query": "搜索词", 
-        "use_regex": false, 
+    全局搜索节点 (仅限当前选中的资源配置)
+
+    请求体: {
+        "query": "搜索词",
+        "use_regex": false,
         "current_filename": "当前文件名",
-        "current_source": "当前资源路径" 
+        "current_source": "当前资源路径"
     }
     """
     data = request.get_json(force=True, silent=True) or {}
@@ -258,26 +256,32 @@ def search_nodes_globally():
         return jsonify({"results": []})
 
     cfg = load_config()
-    
-    # 收集所有资源路径
-    all_paths = []
-    for profile in cfg.get("resource_profiles", []):
-        for path in profile.get("paths", []) or []:
+
+    target_paths = []
+
+    profiles = cfg.get("resource_profiles", [])
+    current_state = cfg.get("current_state", {})
+
+    # 获取当前选中的索引，默认为 0
+    current_idx = int(current_state.get("resource_profile_index", 0))
+
+    # 确保索引有效
+    if profiles and 0 <= current_idx < len(profiles):
+        current_profile = profiles[current_idx]
+        raw_paths = current_profile.get("paths", []) or []
+        for path in raw_paths:
             if path:
-                all_paths.append(_norm_path(path))
-    
-    # 使用 ResourcesManager 进行搜索
-    manager = ResourcesManager(all_paths)
+                target_paths.append(_norm_path(path))
+    manager = ResourcesManager(target_paths)
     results = manager.search_nodes(
-        query, 
-        use_regex=use_regex, 
-        exclude_file=current_filename, 
+        query,
+        use_regex=use_regex,
+        exclude_file=current_filename,
         exclude_source=current_source,
         max_results=50
     )
 
     return jsonify({"results": results})
-
 
 @app.route("/resource/file/templates", methods=["POST"])
 def get_file_templates():

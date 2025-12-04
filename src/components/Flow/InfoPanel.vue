@@ -172,16 +172,15 @@ const handleSaveNodes = async () => {
   }
 }
 
-// [核心逻辑] 真正的切换执行者
 const executeFileSwitch = async (filename, source) => {
-  // 使用 source 和 filename 生成唯一 ID 进行查找
-  const targetId = source ? makeFileId(source, filename) : null
-  let target = targetId ? getFileObjById(targetId) : availableFiles.value.find(f => f.value === filename)
-  
-  if (!target && source) {
-    target = {label: `${filename} (Search)`, value: filename, source: source, filename: filename}
-    availableFiles.value.push(target)
-  }
+  const normSource = source ? source.replace(/\\/g, '/').toLowerCase() : ''
+  let target = availableFiles.value.find(f => {
+    const fSource = f.source ? f.source.replace(/\\/g, '/').toLowerCase() : ''
+    if (source) {
+      return f.value === filename && fSource === normSource
+    }
+    return f.value === filename
+  })
 
   if (target) {
     selectedResourceFile.value = makeFileId(target.source, target.value)

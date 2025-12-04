@@ -1,10 +1,6 @@
-{
-type: uploaded file
-fileName: NodeSearch.vue
-fullContent:
 <script setup>
 import {ref, computed, watch, onMounted, onUnmounted} from 'vue'
-import {X, Search, MapPin, Regex, FileJson, Loader2, ArrowRightCircle} from 'lucide-vue-next'
+import {X, Search, MapPin, Regex, FileJson, Loader2, ArrowRightCircle, FolderOpen} from 'lucide-vue-next'
 import {resourceApi} from '../../services/api'
 
 const props = defineProps({
@@ -14,7 +10,6 @@ const props = defineProps({
   currentSource: {type: String, default: ''}    // 当前资源路径（用于排除）
 })
 
-// [修改] 增加 switch-file 事件
 const emit = defineEmits(['close', 'locate-node', 'switch-file'])
 
 // 搜索状态
@@ -70,7 +65,32 @@ const localResults = computed(() => {
     .slice(0, 15)
 })
 
-// --- 2. 远程搜索逻辑 (防抖) ---
+// --- [新增] 2. 远程结果分组逻辑 ---
+const groupedRemoteResults = computed(() => {
+  if (!otherFileResults.value.length) return []
+  
+  const groups = {}
+  
+  otherFileResults.value.forEach(item => {
+    // 创建唯一的分组Key (路径 + 文件名)
+    const key = `${item.source}::${item.filename}`
+    
+    if (!groups[key]) {
+      groups[key] = {
+        key,
+        source: item.source,
+        filename: item.filename,
+        items: []
+      }
+    }
+    groups[key].items.push(item)
+  })
+  
+  // 可以根据需求对文件组进行排序，这里默认按API返回顺序保持
+  return Object.values(groups)
+})
+
+// --- 3. 远程搜索逻辑 (防抖) ---
 let debounceTimer = null
 
 const performRemoteSearch = async () => {
@@ -97,11 +117,8 @@ const performRemoteSearch = async () => {
 }
 
 watch([searchQuery, useRegex], () => {
-  // 清除上一次计时
   if (debounceTimer) clearTimeout(debounceTimer)
-
-  // 本地结果是 computed，自动更新
-  // 远程结果需要延迟请求
+  
   if (searchQuery.value.trim()) {
     debounceTimer = setTimeout(performRemoteSearch, 500) // 500ms 防抖
   } else {
@@ -127,22 +144,16 @@ const getNodeTypeLabel = (type) => {
   return typeMap[type] || type || '未知'
 }
 
-// 简化路径显示：保留首尾部分，中间用 ... 省略
 const shortenPath = (fullPath, maxLen = 35) => {
   if (!fullPath) return ''
-  // 统一路径分隔符
   const normalized = fullPath.replace(/\\/g, '/')
   const parts = normalized.split('/').filter(Boolean)
   
   if (parts.length <= 2) return parts.join('/')
   
-  // 取最后两级目录
   const lastTwo = parts.slice(-2).join('/')
-  
-  // 如果整体长度不超过限制，直接返回
   if (normalized.length <= maxLen) return normalized
   
-  // 否则省略中间部分
   const firstPart = parts[0]
   return `${firstPart}/.../${lastTwo}`
 }
@@ -153,15 +164,14 @@ const locateLocalNode = (node) => {
 }
 
 const switchToRemoteNode = (result) => {
-  // result: { filename, source, node_id, display_id }
   emit('switch-file', {
     filename: result.filename,
     source: result.source,
-    nodeId: result.node_id // 这里的 node_id 是 JSON key，对应 VueFlow 的 node.id
+    nodeId: result.node_id
   })
 }
 
-// 拖动逻辑 (保持不变)
+// 拖动逻辑
 const startDrag = (e) => {
   if (e.target.closest('input') || e.target.closest('.search-results') || e.target.closest('button')) return
   isDragging.value = true
@@ -188,7 +198,6 @@ watch(() => props.visible, (val) => {
   }
 })
 
-// 快捷键
 const handleKeydown = (e) => {
   if (e.key === 'Escape') emit('close')
 }
@@ -256,8 +265,7 @@ onUnmounted(() => {
       <div class="flex-1 overflow-y-auto custom-scrollbar bg-slate-50/30">
 
         <div v-if="localResults.length > 0" class="py-2">
-          <div
-              class="px-4 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+          <div class="px-4 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
             <span>当前文件</span>
             <span class="bg-emerald-100 text-emerald-600 px-1.5 rounded-full">{{ localResults.length }}</span>
           </div>
@@ -281,12 +289,10 @@ onUnmounted(() => {
         <div v-if="localResults.length > 0 && (otherFileResults.length > 0 || isSearchingRemote)"
              class="h-px bg-slate-200 mx-4 my-1"></div>
 
-        <div v-if="searchQuery.trim()" class="py-2">
-          <div
-              class="px-4 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+        <div v-if="searchQuery.trim()" class="pb-2 pt-2">
+          <div class="px-4 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between mb-1">
             <span>全局搜索</span>
-            <span v-if="!isSearchingRemote"
-                  class="bg-slate-200 text-slate-600 px-1.5 rounded-full">{{ otherFileResults.length }}</span>
+            <span v-if="!isSearchingRemote" class="bg-slate-200 text-slate-600 px-1.5 rounded-full">{{ otherFileResults.length }}</span>
             <Loader2 v-else :size="12" class="animate-spin text-blue-500"/>
           </div>
 
@@ -295,24 +301,34 @@ onUnmounted(() => {
             其他资源目录中无匹配节点
           </div>
 
-          <div
-              v-for="(res, idx) in otherFileResults"
-              :key="idx + res.node_id"
-              class="flex items-center justify-between px-4 py-2 hover:bg-blue-50 cursor-pointer transition-colors group border-l-2 border-transparent hover:border-blue-400"
-              @click="switchToRemoteNode(res)"
-          >
-            <div class="min-w-0 flex-1">
-              <div class="font-mono text-sm text-slate-700 font-medium truncate">{{ res.display_id }}</div>
-              <div class="flex items-center gap-1.5 mt-0.5">
-                <FileJson :size="10" class="text-slate-400 shrink-0"/>
-                <span class="text-[10px] text-slate-500 truncate" :title="res.filename">{{ res.filename }}</span>
-                <span class="text-[10px] text-slate-300">·</span>
-                <span class="text-[10px] text-slate-400 truncate" :title="res.source">{{ shortenPath(res.source) }}</span>
+          <div v-if="!isSearchingRemote && groupedRemoteResults.length > 0">
+            <div v-for="group in groupedRemoteResults" :key="group.key" class="mb-2">
+              
+              <div class="px-4 py-1.5 bg-slate-100 border-y border-slate-200/50 flex items-center gap-2 sticky top-0 z-10">
+                <FileJson :size="12" class="text-slate-500"/>
+                <span class="text-xs font-semibold text-slate-600 truncate" :title="group.filename">{{ group.filename }}</span>
+                <span class="text-[10px] text-slate-400 truncate ml-auto font-mono" :title="group.source">
+                  {{ shortenPath(group.source) }}
+                </span>
               </div>
-            </div>
-            <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-              <span class="text-[10px] text-blue-600 font-bold">Go</span>
-              <ArrowRightCircle :size="14" class="text-blue-500"/>
+
+              <div
+                  v-for="(res, idx) in group.items"
+                  :key="idx + res.node_id"
+                  class="flex items-center justify-between px-4 pl-8 py-2 hover:bg-blue-50 cursor-pointer transition-colors group border-l-[3px] border-transparent hover:border-blue-400 ml-0"
+                  @click="switchToRemoteNode(res)"
+              >
+                <div class="min-w-0 flex-1">
+                  <div class="font-mono text-sm text-slate-700 font-medium truncate flex items-center gap-2">
+                    {{ res.display_id }}
+                  </div>
+                </div>
+                <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                  <span class="text-[10px] text-blue-600 font-bold">Go</span>
+                  <ArrowRightCircle :size="14" class="text-blue-500"/>
+                </div>
+              </div>
+
             </div>
           </div>
         </div>
@@ -342,4 +358,3 @@ onUnmounted(() => {
   border-radius: 4px;
 }
 </style>
-}

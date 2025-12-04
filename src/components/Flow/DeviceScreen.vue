@@ -23,18 +23,14 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'confirm', 'delete-image', 'save-with-deletions'])
 
-// 保存图片的路径名
 const saveImagePath = ref('')
 
-// 生成图片计数器（用于生成唯一文件名） - 实际上主要依靠下面的查重逻辑
 const imageCounter = ref(1)
 
-// 本地图片列表（实时操作）
 const localImages = ref([]) // 当前图片 (_images)
 const localTempImages = ref([]) // 新增图片 (_temp_images)
 const localDeletedImages = ref([]) // 已删除图片 (_del_images)，带来源标记
 
-// 原始 template 路径（用于判断是否有变化）
 const originalTemplatePaths = ref([])
 
 const isLoading = ref(false)
@@ -164,6 +160,7 @@ watch(() => props.visible, async (val) => {
     // 初始化本地图片列表（深拷贝）
     localImages.value = (props.imageList || []).map(img => ({...img}))
     localTempImages.value = (props.tempImageList || []).map(img => ({...img}))
+
     // 已删除图片保留来源标记
     localDeletedImages.value = (props.deletedImageList || []).map(img => ({
       ...img,
@@ -179,13 +176,15 @@ watch(() => props.visible, async (val) => {
       ...(props.tempImageList || []).map(img => img.path)
     ]
 
-    await fetchScreenshot()
+    if (!imageUrl.value) {
+      await fetchScreenshot()
+    }
     if (props.initialRect && props.initialRect.length === 4) {
       selection.x = props.initialRect[0]
       selection.y = props.initialRect[1]
       selection.w = props.initialRect[2]
       selection.h = props.initialRect[3]
-      nextTick(() => generatePreviewSnapshot())
+      await nextTick(() => generatePreviewSnapshot())
     } else {
       selection.x = 0;
       selection.y = 0;
@@ -493,7 +492,7 @@ const handleSaveTempImage = () => {
         >
           <div v-if="!imageUrl" class="flex items-center justify-center w-full h-full text-slate-500 flex-col gap-3">
             <Smartphone :size="48" class="opacity-50"/>
-            <span class="text-xs font-mono">{{ isLoading ? '正在获取屏幕...' : '无法获取画面' }}</span>
+            <span class="text-xs font-mono">{{ isLoading ? '正在获取屏幕...' : '无法获取画面(设备连接状态异常)' }}</span>
           </div>
 
           <img
@@ -568,7 +567,7 @@ const handleSaveTempImage = () => {
                 {{ isOcrLoading ? '识别中...' : '开始识别' }}
               </button>
               <div class="space-y-1">
-                <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">识别结果</label>
+                <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">识别结果(取最高评分)</label>
                 <textarea v-model="ocrResult" rows="1" class="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 resize-none font-mono h-9" placeholder="等待识别..."></textarea>
               </div>
             </div>

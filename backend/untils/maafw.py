@@ -51,7 +51,7 @@ class MaaFW:
         if not connected:
             return (False, f"Failed to connect {path} {address}")
 
-        return (True, None)
+        return True, None
 
 
     def connect_win32hwnd(
@@ -67,12 +67,12 @@ class MaaFW:
         if not connected:
             return (False, f"Failed to connect {hex(hwnd)}")
 
-        return (True, None)
+        return True, None
 
     def load_resource(self, dir: List[Path]) -> Tuple[bool, Optional[str]]:
         if not self.resource:
             self.resource = Resource()
-
+        dir = [Path(p) for p in dir]
         for d in dir:
             if not d.exists():
                 return (False, f"{d} does not exist.")
@@ -83,7 +83,7 @@ class MaaFW:
                     False,
                     "Fail to load resource,please check the outputs of CLI.",
                 )
-        return (True, None)
+        return True, None
 
     def create_agent(self, identifier: str) -> str:
         if not self.resource:
