@@ -16,7 +16,6 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'action'])
-// 移除定时器变量，只需要记录当前激活的 submenu key
 const showSubmenu = ref(null)
 
 const handleAction = (action, payload = null) => {
@@ -59,9 +58,9 @@ const spacingTypes = [
 const menuItems = computed(() => {
   if (props.type === 'node') {
     return [
-      {label: '调试该节点', action: 'debug', icon: Bug, color: 'text-amber-600'},
+      {label: '调试该节点', action: 'debug_this_node', icon: Bug, color: 'text-amber-600'},
+      {label: '仅识别该节点', action: 'debug_this_reco', icon: Bug, color: 'text-amber-600'},
       {type: 'divider'},
-      // { label: '编辑节点样式', action: 'edit', icon: Edit, color: 'text-slate-600' }, // 暂时注释，避免与双击打开的NodeDetails混淆
       {label: '复制节点', action: 'duplicate', icon: Copy, color: 'text-slate-600'},
       {type: 'divider'},
       {label: '删除节点', action: 'delete', icon: Trash2, color: 'text-red-500'},

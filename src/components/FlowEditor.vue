@@ -171,7 +171,7 @@ const handleMenuAction = ({action, type, data, payload}) => {
       nodes.value.push(createNodeObject(newId, {id: newId, recognition: payload || 'DirectHit'}))
       if (menu.value.flowPos) nodes.value[nodes.value.length - 1].position = {...menu.value.flowPos}
       break
-    case 'debug':
+    case 'debug_this_node':
       if (type === 'node') {
         const node = findNode(data.id)
         if (node) {
