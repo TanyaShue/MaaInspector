@@ -225,7 +225,7 @@ const handleResourceLoad = async () => {
       availableFiles.value = res.list
       // 使用唯一 ID 检查文件是否仍然存在
       let fileStillExists = selectedResourceFile.value ? getFileObjById(selectedResourceFile.value) : null
-      
+
       // 兼容旧配置：如果没有找到，尝试仅通过文件名匹配（适用于从旧配置恢复的情况）
       if (!fileStillExists && selectedResourceFile.value && !selectedResourceFile.value.includes('|')) {
         const matchByName = availableFiles.value.find(f => f.value === selectedResourceFile.value)
@@ -234,7 +234,7 @@ const handleResourceLoad = async () => {
           fileStillExists = matchByName
         }
       }
-      
+
       if (!selectedResourceFile.value || !fileStillExists) {
         if (availableFiles.value.length > 0) {
           const firstFile = availableFiles.value[0]
@@ -259,8 +259,8 @@ const handleCreateFile = async ({path, filename}) => {
     const simpleName = filename.endsWith('.json') ? filename : filename + '.json'
     // 查找新创建的文件：source 现在是资源根目录，与 path 相同（规范化比较）
     const normalizedPath = path.replace(/\\/g, '/').toLowerCase()
-    const newFileObj = availableFiles.value.find(f => 
-      f.value === simpleName && 
+    const newFileObj = availableFiles.value.find(f =>
+      f.value === simpleName &&
       f.source.replace(/\\/g, '/').toLowerCase() === normalizedPath
     )
     if (newFileObj) {
@@ -298,7 +298,7 @@ const fetchSystemState = async () => {
     }
     if (state.agent_socket_id) currentAgentSocket.value = state.agent_socket_id
     else if (data.agent_socket_id) currentAgentSocket.value = data.agent_socket_id
-    
+
     // 加载画布配置（连线类型和布局间隔）
     if (state.edge_type || state.spacing) {
       emit('update-canvas-config', {
@@ -306,7 +306,7 @@ const fetchSystemState = async () => {
         spacing: state.spacing || 'normal'
       })
     }
-    
+
     systemStatus.value = 'connected'
   } catch (e) {
     console.error("Init failed", e)

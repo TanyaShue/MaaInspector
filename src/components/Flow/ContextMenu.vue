@@ -59,7 +59,7 @@ const menuItems = computed(() => {
   if (props.type === 'node') {
     return [
       {label: '调试该节点', action: 'debug_this_node', icon: Bug, color: 'text-amber-600'},
-      {label: '仅识别该节点', action: 'debug_this_reco', icon: Bug, color: 'text-amber-600'},
+      {label: '仅识别该节点', action: 'debug_this_node_reco', icon: Bug, color: 'text-amber-600'},
       {type: 'divider'},
       {label: '复制节点', action: 'duplicate', icon: Copy, color: 'text-slate-600'},
       {type: 'divider'},
