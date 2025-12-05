@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 from PIL import Image
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from maa.resource import Resource
 
 # 假设这些模块依然存在
 from maa.toolkit import Toolkit
@@ -472,6 +473,28 @@ def agent_connect():
 def agent_disconnect():
     states["agent"]["connected"] = False
     return _json_response(True, "Agent Stopped")
+
+@app.route("/debug/node", methods=["POST"])
+def debug_node():
+    data = request.get_json()
+    node=data.get("node")
+    id=node.get("id")
+    node=convert_node(node)
+    print(node)
+    print(data.get("debug_mode"))
+    maafw.resource=Resource()
+    print(maafw.run_task(id, node))
+    return _json_response(True, "debug_return Succest",{})
+
+
+def convert_node(node: dict) -> dict:
+    if not node or "id" not in node:
+        return {}
+
+    new_dict = node.copy()       # 复制避免修改原数据
+    node_id = new_dict.pop("id") # 拿出 id
+    return {node_id: new_dict}
+
 
 
 if __name__ == "__main__":

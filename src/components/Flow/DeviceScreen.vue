@@ -279,11 +279,14 @@ const handleSaveTempImage = () => {
     found: true
   })
 
-  saveImagePath.value = generateDefaultSavePath()
+saveImagePath.value = generateDefaultSavePath()
   selection.x = 0; selection.y = 0; selection.w = 0; selection.h = 0;
   previewUrl.value = ''
-  // 通知 Canvas 更新选区显示
-  if(canvasRef.value) canvasRef.value.generatePreviewSnapshot()
+
+  if(canvasRef.value && canvasRef.value.resetView) {
+      canvasRef.value.resetView()
+  }
+
 }
 </script>
 

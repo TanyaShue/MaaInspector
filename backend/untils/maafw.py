@@ -107,7 +107,7 @@ class MaaFW:
     ):
 
         if not self.tasker:
-            self.tasker = Tasker(notification_handler=self.notification_handler)
+            self.tasker = Tasker()
 
         if not self.resource or not self.controller:
             return (False, "Resource or Controller not initialized")
@@ -115,9 +115,8 @@ class MaaFW:
         self.tasker.bind(self.resource, self.controller)
         if not self.tasker.inited:
             return (False, "Failed to init MaaFramework tasker")
-        self.tasker.resource.set_cpu()
+        print(self.tasker.post_task(entry, pipeline_override).wait().get())
 
-        self.tasker.post_task(entry, pipeline_override)
         return None
 
     def stop_task(self):

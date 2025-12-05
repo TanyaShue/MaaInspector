@@ -10,7 +10,7 @@ import NodeSearch from './Flow/NodeSearch.vue'
 import SaveConfirmModal from './Flow/Modals/SaveConfirmModal.vue'
 import DeleteImagesConfirmModal from './Flow/Modals/DeleteImagesConfirmModal.vue'
 import { useFlowGraph } from '../utils/useFlowGraph.js'
-import { resourceApi } from '../services/api.js'
+import { resourceApi ,debugApi} from '../services/api.js'
 
 const {
   nodes, edges, nodeTypes, currentEdgeType, currentSpacing, isDirty, currentFilename, currentSource,
@@ -121,13 +121,13 @@ const handleMenuAction = ({ action, type, data, payload }) => {
       nodes.value.push(newNode)
       break
     case 'debug_this_node':
-      if (type === 'node' && findNode(data.id)) {
-        const n = findNode(data.id); n.data.status = 'running'; setTimeout(() => n.data.status = 'success', 1500)
+      if (type === 'node') {
+        handleDebugNode(data.id, 'standard')
       }
       break
     case 'debug_this_node_reco':
-      if (type === 'node' && findNode(data.id)) {
-        const n = findNode(data.id); n.data.status = 'running'; setTimeout(() => n.data.status = 'error', 1500)
+      if (type === 'node') {
+        handleDebugNode(data.id, 'recognition_only') // 假设区分不同调试模式
       }
       break
     case 'edit':
@@ -156,6 +156,60 @@ const handleMenuAction = ({ action, type, data, payload }) => {
   }
 }
 
+// 3. 新增核心调试处理函数
+const handleDebugNode = async (nodeId, mode = 'standard') => {
+  const node = findNode(nodeId)
+  if (!node) return
+
+  // 1. 设置 UI 状态为运行中
+  node.data.status = 'running'
+  node.data._result = null // 清空旧结果
+
+  try {
+    // 2. 触发保存 (复用现有的保存逻辑)
+    // 注意：这里调用的是 FlowEditor 内部定义的 handleSaveNodes
+    await handleSaveNodes({
+      source: currentSource.value,
+      filename: currentFilename.value
+    })
+
+    // 3. 准备发送给接口的数据
+    // 将节点业务数据 (data.data) 与当前文件上下文结合
+    const debugPayload = {
+      node: node.data.data,       // 节点的核心业务数据
+      debug_mode: mode,           // 调试模式
+      context: {
+        source: currentSource.value,
+        filename: currentFilename.value
+      }
+    }
+
+    // 4. 调用接口
+    const res = await debugApi.runNode(debugPayload)
+
+    // 5. 根据接口返回判断成功/失败
+    // 假设接口返回结构为 { success: boolean, data: any, message: string }
+    if (res && res.success) {
+      node.data.status = 'success'
+    } else {
+      node.data.status = 'failure'
+    }
+
+    // 6. 将完整返回结果写入 _result
+    node.data._result = res
+
+  } catch (error) {
+    console.error('Debug failed:', error)
+    node.data.status = 'error'
+    node.data._result = {
+      success: false,
+      error: error.message || 'Network/Server Error'
+    }
+  } finally {
+    // 强制触发 Vue 更新 (如果视图没有自动响应)
+    nodes.value = [...nodes.value]
+  }
+}
 // --- Helpers ---
 const handleLocateNode = (nodeId) => {
   nodes.value = nodes.value.map(n => ({ ...n, selected: n.id === nodeId }))

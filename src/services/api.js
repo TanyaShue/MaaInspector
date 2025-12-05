@@ -52,3 +52,10 @@ export const agentApi = {
   connect: (socketId) => request('/agent/connect', { method: 'POST', body: JSON.stringify({ socket_id: socketId }) }),
   disconnect: () => request('/agent/disconnect', { method: 'POST' })
 }
+export const debugApi = {
+  // 发送节点数据进行调试
+  runNode: (nodeData, context) => request('/debug/node', {
+    method: 'POST',
+    body: JSON.stringify({ ...nodeData, ...context })
+  })
+}
