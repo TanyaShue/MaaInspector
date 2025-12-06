@@ -11,3 +11,47 @@ body {
     padding: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
+
+@layer components {
+    .input-base {
+        @apply w-full bg-white border border-slate-200 rounded-lg py-2 pr-3 text-xs text-slate-600 outline-none transition-all shadow-sm focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50;
+    }
+
+    .btn-primary {
+        @apply rounded-lg py-1.5 text-xs font-bold text-white transition-all shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5;
+    }
+
+    .btn-danger {
+        @apply rounded-lg py-1.5 text-xs font-bold transition-all border active:scale-95 flex items-center justify-center gap-1.5 bg-white border-slate-200 text-slate-600 hover:text-red-500 hover:border-red-200;
+    }
+
+    .btn-icon {
+        @apply p-1.5 bg-white text-slate-400 border border-slate-200 rounded-lg hover:text-indigo-600 hover:border-indigo-300 transition-colors shadow-sm active:scale-95;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        background-color: #cbd5e1;
+        border-radius: 4px;
+    }
+
+    .custom-scrollbar-dark::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    .custom-scrollbar-dark::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .custom-scrollbar-dark::-webkit-scrollbar-thumb {
+        background-color: #475569;
+        border-radius: 4px;
+    }
+}

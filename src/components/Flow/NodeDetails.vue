@@ -280,7 +280,7 @@ watch(() => props.visible, (val) => {
 
       <div class="flex-1 min-h-0 relative">
         <div v-show="activeTab === 'properties'"
-             class="absolute inset-0 overflow-y-auto custom-scrollbar p-3 space-y-2.5">
+             class="absolute inset-0 overflow-y-auto custom-scrollbar-dark p-3 space-y-2.5">
 
           <div class="bg-white rounded-xl border border-slate-200 overflow-visible relative z-50">
             <button @click="toggleSection('basic')"
@@ -321,7 +321,7 @@ watch(() => props.visible, (val) => {
                     </button>
 
                     <div v-if="isRecognitionDropdownOpen"
-                         class="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-[220px] overflow-y-auto custom-scrollbar flex flex-col py-1">
+                         class="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-[220px] overflow-y-auto custom-scrollbar-dark flex flex-col py-1">
                       <button v-for="type in recognitionTypes" :key="type.value"
                               @click="selectRecognitionType(type.value)"
                               class="flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-slate-50 transition-colors shrink-0"
@@ -357,7 +357,7 @@ watch(() => props.visible, (val) => {
                     </button>
 
                     <div v-if="isActionDropdownOpen"
-                         class="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-[220px] overflow-y-auto custom-scrollbar flex flex-col py-1">
+                         class="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-[220px] overflow-y-auto custom-scrollbar-dark flex flex-col py-1">
                       <button v-for="type in actionTypes" :key="type.value" @click="selectActionType(type.value)"
                               class="flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-slate-50 transition-colors shrink-0"
                               :class="{ 'bg-indigo-50/60 text-indigo-600': currentAction === type.value, 'text-slate-700': currentAction !== type.value }">
@@ -573,7 +573,7 @@ watch(() => props.visible, (val) => {
                   添加回调事件
                 </button>
                 <div v-if="isFocusDropdownOpen"
-                     class="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-[220px] overflow-y-auto custom-scrollbar flex flex-col py-1 z-[60]">
+                    class="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-[220px] overflow-y-auto custom-scrollbar-dark flex flex-col py-1 z-[60]">
                   <button v-for="t in availableFocusEvents" :key="t" @click="addFocusParam(t)"
                           class="px-3 py-2 text-xs text-left text-slate-700 hover:bg-slate-50 transition-colors">{{ t }}
                   </button>
@@ -636,7 +636,7 @@ watch(() => props.visible, (val) => {
              class="absolute inset-0 z-10 w-full h-full p-3 flex flex-col bg-white overflow-hidden">
           <div class="flex-1 bg-slate-900 rounded-xl overflow-hidden border border-slate-700 flex flex-col relative">
             <textarea
-                class="w-full h-full bg-transparent text-[10px] font-mono text-green-400 p-3 outline-none resize-none custom-scrollbar"
+               class="w-full h-full bg-transparent text-[10px] font-mono text-green-400 p-3 outline-none resize-none custom-scrollbar-dark"
                 :value="jsonStr" @input="handleJsonInput" spellcheck="false"></textarea>
             <div v-if="jsonError"
                  class="absolute bottom-3 left-3 right-3 bg-red-500/90 text-white px-3 py-2 rounded-lg backdrop-blur-sm shadow-lg flex items-start gap-2 z-10">
@@ -668,9 +668,3 @@ watch(() => props.visible, (val) => {
     />
   </Teleport>
 </template>
-
-<style scoped>
-.custom-scrollbar::-webkit-scrollbar { width: 4px; }
-.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-.custom-scrollbar::-webkit-scrollbar-thumb { background-color: #475569; border-radius: 4px; }
-</style>

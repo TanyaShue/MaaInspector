@@ -67,7 +67,7 @@ const selectDetector = (val) => {
           <ChevronDown :size="12" class="text-slate-400" :class="{ 'rotate-180': isOrderByDropdownOpen }"/>
         </button>
         <div v-if="isOrderByDropdownOpen"
-             class="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-[160px] overflow-y-auto custom-scrollbar z-50 flex flex-col py-1">
+             class="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-[160px] overflow-y-auto custom-scrollbar-dark z-50 flex flex-col py-1">
           <button v-for="opt in orderByOptions" :key="opt.value" @click="selectOrderBy(opt.value)"
                   class="px-3 py-1.5 text-xs text-left hover:bg-slate-50 transition-colors"
                   :class="getValue('order_by', 'Horizontal') === opt.value ? 'text-indigo-600 bg-indigo-50/50' : 'text-slate-700'">
@@ -134,7 +134,7 @@ const selectDetector = (val) => {
             <ChevronDown :size="12" class="text-slate-400" :class="{ 'rotate-180': isDetectorDropdownOpen }"/>
           </button>
           <div v-if="isDetectorDropdownOpen"
-               class="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-[160px] overflow-y-auto custom-scrollbar z-50 flex flex-col py-1">
+              class="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-[160px] overflow-y-auto custom-scrollbar-dark z-50 flex flex-col py-1">
             <button v-for="opt in detectorOptions" :key="opt" @click="selectDetector(opt)"
                     class="px-3 py-1.5 text-xs text-left hover:bg-slate-50 transition-colors"
                     :class="getValue('detector', 'SIFT') === opt ? 'text-indigo-600 bg-indigo-50/50' : 'text-slate-700'">
@@ -263,9 +263,3 @@ const selectDetector = (val) => {
     </template>
   </div>
 </template>
-
-<style scoped>
-.custom-scrollbar::-webkit-scrollbar { width: 4px; }
-.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-.custom-scrollbar::-webkit-scrollbar-thumb { background-color: #475569; border-radius: 4px; }
-</style>

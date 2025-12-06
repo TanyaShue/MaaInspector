@@ -254,6 +254,7 @@ export function useNodeForm(props, emit) {
     return {
         formData, jsonStr, jsonError, getValue, setValue, getArrayValue, setArrayValue,
         getArrayList, setArrayList, getJsonValue, setJsonValue, getTargetValue, setTargetValue, handleJsonInput,
+        updateJsonFromForm,
         focusData, availableFocusEvents, addFocusParam, removeFocusParam, updateFocusParam
     }
 }
