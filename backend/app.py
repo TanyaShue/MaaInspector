@@ -150,8 +150,7 @@ def resource_load():
     print(paths)
     r=maafw.load_resource(paths)
     print(r)
-    # return jsonify({"message": "OK", "resources": r})
-    # 使用 ResourcesManager 获取文件列表
+
     manager = ResourcesManager(paths)
     results = manager.list_all_files()
 
@@ -478,11 +477,12 @@ def agent_disconnect():
 def debug_node():
     data = request.get_json()
     node=data.get("node")
+    node["next"] = []
+    node["on_error"] = []
     id=node.get("id")
     node=convert_node(node)
     print(node)
     print(data.get("debug_mode"))
-    maafw.resource=Resource()
     print(maafw.run_task(id, node))
     return _json_response(True, "debug_return Succest",{})
 
@@ -498,4 +498,4 @@ def convert_node(node: dict) -> dict:
 
 
 if __name__ == "__main__":
-    app.run(port=5000, debug=True)
+    app.run(port=5001, debug=True)

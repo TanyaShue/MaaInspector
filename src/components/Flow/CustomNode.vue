@@ -107,7 +107,7 @@ const contentHeightClass = computed(() => {
     <div class="flex items-center justify-between px-4 py-3 rounded-t-xl border-b transition-colors duration-300" :class="headerStyle">
       <div class="flex items-center">
         <div :class="['p-2 rounded-lg text-white shadow-sm mr-3', config.bg]">
-          <component :is="config.icon" :size="18"/>
+          <component v-if="config.icon" :is="config.icon" :size="18"/>
         </div>
         <div>
           <div class="font-bold text-slate-700 text-sm truncate max-w-[150px]" :title="data.id">{{ data.id }}</div>
@@ -115,7 +115,7 @@ const contentHeightClass = computed(() => {
         </div>
       </div>
       <div v-if="statusConfig" class="flex items-center p-1 -mr-1 rounded-md">
-        <component :is="statusConfig.icon" :size="18" :class="[statusConfig.color, statusConfig.spin ? 'animate-spin' : '']"/>
+        <component v-if="statusConfig.icon" :is="statusConfig.icon" :size="18" :class="[statusConfig.color, statusConfig.spin ? 'animate-spin' : '']"/>
       </div>
     </div>
 
@@ -137,7 +137,7 @@ const contentHeightClass = computed(() => {
               </div>
             </div>
             <div v-else class="w-full h-full flex flex-col items-center justify-center gap-1">
-              <component :is="config.icon" :size="24" class="text-slate-300"/>
+              <component v-if="config.icon" :is="config.icon" :size="24" class="text-slate-300"/>
               <span class="text-[9px] text-slate-400">No Image</span>
             </div>
           </div>
@@ -166,7 +166,7 @@ const contentHeightClass = computed(() => {
       <div v-if="currentActionConfig" class="shrink-0 flex flex-col items-center justify-center">
         <div class="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 cursor-help hover:scale-105 shadow-sm border border-slate-100"
             :class="currentActionConfig.bg" :title="`执行动作: ${currentActionConfig.label}`">
-          <component :is="currentActionConfig.icon" :size="18" :class="currentActionConfig.color"/>
+          <component v-if="currentActionConfig.icon" :is="currentActionConfig.icon" :size="18" :class="currentActionConfig.color"/>
         </div>
       </div>
     </div>
@@ -176,11 +176,6 @@ const contentHeightClass = computed(() => {
         <span class="text-[10px] font-bold text-blue-500 opacity-60 group-hover:opacity-100 transition-opacity">Next</span>
         <Handle id="source-a" type="source" :position="Position.Bottom" class="!w-full !h-full !inset-0 !translate-x-0 !rounded-none !opacity-0 group-hover:!opacity-50 !bg-blue-400 !transition-opacity"/>
         <div class="absolute bottom-0 w-full h-1 bg-blue-200 group-hover:bg-blue-500 transition-colors rounded-bl-xl"></div>
-      </div>
-      <div class="flex-1 relative group hover:bg-amber-50 flex justify-center items-center cursor-crosshair transition-colors">
-        <span class="text-[10px] font-bold text-amber-500 opacity-60 group-hover:opacity-100 transition-opacity">Int.</span>
-        <Handle id="source-b" type="source" :position="Position.Bottom" class="!w-full !h-full !inset-0 !translate-x-0 !rounded-none !opacity-0 group-hover:!opacity-50 !bg-amber-400 !transition-opacity"/>
-        <div class="absolute bottom-0 w-full h-1 bg-amber-200 group-hover:bg-amber-500 transition-colors"></div>
       </div>
       <div class="flex-1 relative group hover:bg-rose-50 flex justify-center items-center cursor-crosshair transition-colors">
         <span class="text-[10px] font-bold text-rose-500 opacity-60 group-hover:opacity-100 transition-opacity">Err.</span>

@@ -36,6 +36,14 @@ export const recognitionTypes = RECOGNITION_CONFIG.filter(t => t.key !== 'Unknow
     color: t.color.replace('600', '500') // 保持原有 select 颜色逻辑
 }))
 
+// 供菜单/快捷入口使用的识别类型（包含 Unknown）
+export const recognitionMenuOptions = RECOGNITION_CONFIG.map(t => ({
+    label: `${t.label} (${t.key})`,
+    value: t.key,
+    icon: t.icon,
+    color: t.color.replace('600', '500')
+}))
+
 // 2. 动作类型 (合并了 CustomNode.vue 中的样式配置)
 export const ACTION_CONFIG = [
     { key: 'DoNothing', label: '无动作', icon: Square, color: 'text-slate-400', bg: 'bg-slate-50' },
@@ -100,7 +108,7 @@ export const focusEventTypes = [
 ]
 
 export const DEFAULTS = {
-    recognition: 'DirectHit', action: 'DoNothing', next: [], interrupt: [], on_error: [],
+    recognition: 'DirectHit', action: 'DoNothing', next: [], on_error: [],
     is_sub: false, rate_limit: 1000, timeout: 20000, inverse: false, enabled: true,
     pre_delay: 200, post_delay: 200, pre_wait_freezes: 0, post_wait_freezes: 0,
     roi: [0, 0, 0, 0], roi_offset: [0, 0, 0, 0], index: 0, order_by: 'Horizontal',
@@ -145,9 +153,23 @@ export function useNodeForm(props, emit) {
         return Array.isArray(val) ? val.join(', ') : (val || '')
     }
 
+    const getArrayList = (key) => {
+        const val = formData.value[key]
+        if (Array.isArray(val)) return [...val]
+        if (val === undefined || val === null || val === '') return []
+        return [val]
+    }
+
     const setArrayValue = (key, value) => {
         if (!value || value.trim() === '') delete formData.value[key]
         else formData.value[key] = value.split(',').map(s => s.trim()).filter(Boolean)
+        emitUpdateData()
+    }
+
+    const setArrayList = (key, arr) => {
+        const cleaned = (arr || []).map(v => typeof v === 'string' ? v.trim() : v).filter(Boolean)
+        if (!cleaned.length) delete formData.value[key]
+        else formData.value[key] = cleaned
         emitUpdateData()
     }
 
@@ -231,7 +253,7 @@ export function useNodeForm(props, emit) {
 
     return {
         formData, jsonStr, jsonError, getValue, setValue, getArrayValue, setArrayValue,
-        getJsonValue, setJsonValue, getTargetValue, setTargetValue, handleJsonInput,
+        getArrayList, setArrayList, getJsonValue, setJsonValue, getTargetValue, setTargetValue, handleJsonInput,
         focusData, availableFocusEvents, addFocusParam, removeFocusParam, updateFocusParam
     }
 }

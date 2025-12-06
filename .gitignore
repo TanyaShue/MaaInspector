@@ -30,3 +30,5 @@ get-pip.py
 /backend/config/
 /backend/debug/
 /.vscode/
+**/__pycache__/
+backend/config.json

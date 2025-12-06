@@ -2,6 +2,7 @@
 import { ref, markRaw, computed } from 'vue'
 import { useVueFlow, MarkerType } from '@vue-flow/core'
 import { useLayout } from './useLayout.js'
+import { SPACING_OPTIONS } from './flowOptions.js'
 import CustomNode from '../components/Flow/CustomNode.vue'
 
 export function useFlowGraph() {
@@ -16,28 +17,27 @@ export function useFlowGraph() {
 
   const nodeTypes = { custom: markRaw(CustomNode) }
 
-  const SPACING_OPTIONS = {
-    compact: { ranksep: 40, nodesep: 30 },
-    normal:  { ranksep: 80, nodesep: 60 },
-    loose:   { ranksep: 120, nodesep: 150 }
-  }
-
   const PORT_MAPPING = {
-    'source-a': { field: 'next',         type: 'array',  color: '#3b82f6' },
-    'source-b': { field: 'interrupt',    type: 'array',  color: '#f59e0b' },
-    'source-c': { field: 'on_error',     type: 'string', color: '#f43f5e' }
+    'source-a': { field: 'next',     type: 'array',  color: '#3b82f6' },
+    'source-c': { field: 'on_error', type: 'array',  color: '#f43f5e' }
   }
 
   const { addEdges, removeEdges, findNode, fitView } = useVueFlow()
   const { layout } = useLayout()
 
   // --- Helpers ---
+
+  // 1. 获取节点数据 (已过滤 Unknown 节点)
   const getNodesData = () => {
     const result = {}
     nodes.value.forEach(node => {
+      // 过滤缺失引用和未知节点
       if (node.data._isMissing) return
+      if (node.data.type === 'Unknown') return
+
       const nodeData = { ...node.data.data }
       delete nodeData.id
+      delete nodeData.interrupt
       result[node.id] = nodeData
     })
     return result
@@ -48,30 +48,40 @@ export function useFlowGraph() {
     return JSON.stringify(getNodesData()) !== originalDataSnapshot.value
   })
 
-  const getEdgeStyle = (handleId) => {
+  // 2. 修改：getEdgeStyle 样式逻辑
+  const getEdgeStyle = (handleId, isJumpBack = false) => {
     const config = PORT_MAPPING[handleId] || { color: '#94a3b8' }
+
+    // 默认颜色使用端口定义颜色，如果是 JumpBack 则使用紫色
+    let strokeColor = isJumpBack ? '#a855f7' : config.color
+
     return {
-      style: { stroke: config.color, strokeWidth: 2 },
-      animated: true,
+      style: {
+        stroke: strokeColor,
+        strokeWidth: 2,
+        strokeDasharray: '5 5' // 显式设置虚线，保证视觉一致
+      },
+      animated: true, // 恢复：所有连线都开启动画（流动的虚线），保持和原版一致
       type: currentEdgeType.value,
       markerEnd: MarkerType.ArrowClosed,
+      data: { isJumpBack }
     }
   }
 
-  // --- 核心逻辑 1: 连接校验 (合并了 FlowEditor 中的严格校验) ---
+  // --- 核心逻辑 1: 连接校验 ---
   const onValidateConnection = (connection) => {
-    // 禁止自连
     if (connection.source === connection.target) return false
-    // 禁止 输入端口 -> 输入端口
     if (connection.sourceHandle === 'in') return false
-    // 目标必须是输入端口
     if (connection.targetHandle !== 'in') return false
     return true
   }
 
   // --- 核心逻辑 2: 创建节点 ---
   const createNodeObject = (id, rawContent, isMissing = false) => {
-    let logicType = rawContent.recognition || 'DirectHit'
+    const sanitizedContent = { ...rawContent }
+    delete sanitizedContent.interrupt
+
+    let logicType = sanitizedContent.recognition || 'DirectHit'
     if (isMissing) logicType = 'Unknown'
     const isUnknown = logicType === 'Unknown'
 
@@ -82,7 +92,7 @@ export function useFlowGraph() {
       data: {
         id,
         type: logicType,
-        data: isUnknown ? { id } : { ...rawContent, id, recognition: logicType },
+        data: isUnknown ? { id } : { ...sanitizedContent, id, recognition: logicType },
         _isMissing: isMissing,
         status: 'idle'
       }
@@ -90,18 +100,37 @@ export function useFlowGraph() {
   }
 
   // --- 核心逻辑 3: 处理连线 (Toggle模式) ---
-  const updateNodeDataConnection = (sourceNode, field, targetId, isArrayType, isAdd) => {
+  const updateNodeDataConnection = (sourceNode, field, targetId, isArrayType, isAdd, isJumpBack = false) => {
     if (!sourceNode.data.data) sourceNode.data.data = {}
     const data = sourceNode.data.data
 
+    const storedId = isJumpBack ? `[JumpBack]${targetId}` : targetId
+
     if (isArrayType) {
       if (!Array.isArray(data[field])) data[field] = []
-      const idx = data[field].indexOf(targetId)
-      if (isAdd && idx === -1) data[field].push(targetId)
-      else if (!isAdd && idx > -1) data[field].splice(idx, 1)
+
+      const existingIndex = data[field].findIndex(id =>
+        id === targetId || id === `[JumpBack]${targetId}`
+      )
+
+      if (isAdd) {
+        if (existingIndex === -1) {
+          data[field].push(storedId)
+        } else {
+            data[field][existingIndex] = storedId
+        }
+      } else if (existingIndex > -1) {
+        data[field].splice(existingIndex, 1)
+      }
     } else {
-      if (isAdd) data[field] = targetId
-      else if (data[field] === targetId) delete data[field]
+      if (isAdd) {
+        data[field] = storedId
+      } else {
+        const currentVal = data[field] || ''
+        if (currentVal === targetId || currentVal === `[JumpBack]${targetId}`) {
+             delete data[field]
+        }
+      }
     }
   }
 
@@ -118,9 +147,10 @@ export function useFlowGraph() {
         updateNodeDataConnection(sourceNode, portConfig.field, params.target, portConfig.type === 'array', false)
       }
     } else {
-      addEdges({ ...params, ...getEdgeStyle(params.sourceHandle), label: portConfig?.field })
+      // 建立连接：默认为普通连接 (isJumpBack = false)
+      addEdges({ ...params, ...getEdgeStyle(params.sourceHandle, false), label: portConfig?.field })
       if (sourceNode && portConfig) {
-        updateNodeDataConnection(sourceNode, portConfig.field, params.target, portConfig.type === 'array', true)
+        updateNodeDataConnection(sourceNode, portConfig.field, params.target, portConfig.type === 'array', true, false)
       }
     }
   }
@@ -140,6 +170,32 @@ export function useFlowGraph() {
     })
   }
 
+  // --- 4. 设置连线类型 (JumpBack) ---
+  const setEdgeJumpBack = (edgeId, isJumpBack) => {
+    const edge = edges.value.find(e => e.id === edgeId)
+    if (!edge) return
+
+    const sourceNode = findNode(edge.source)
+    const portConfig = PORT_MAPPING[edge.sourceHandle]
+
+    // 更新 Edge 数据和 Label
+    edge.data = { ...edge.data, isJumpBack }
+    edge.label = isJumpBack ? 'JumpBack' : (portConfig?.field || '')
+
+    // 更新 Edge 样式 (颜色变化)
+    const newStyle = getEdgeStyle(edge.sourceHandle, isJumpBack)
+    edge.style = newStyle.style
+    edge.animated = newStyle.animated // 始终为 true
+
+    // 强制刷新
+    edges.value = [...edges.value]
+
+    // 更新 Node 数据
+    if (sourceNode && portConfig) {
+        updateNodeDataConnection(sourceNode, portConfig.field, edge.target, portConfig.type === 'array', true, isJumpBack)
+    }
+  }
+
   const handleNodeUpdate = ({ oldId, newId, newType, newData }) => {
     const node = findNode(oldId)
     if (!node) return
@@ -153,12 +209,10 @@ export function useFlowGraph() {
     if (oldId !== newId) {
       if (findNode(newId)) { alert(`ID "${newId}" already exists!`); return }
 
-      // 更新本节点 ID
       node.id = newId
       node.data.id = newId
       if (node.data.data) node.data.data.id = newId
 
-      // 更新连线 ID
       edges.value = edges.value.map(e => {
         let update = {}
         if (e.source === oldId) update.source = newId
@@ -166,17 +220,32 @@ export function useFlowGraph() {
         return (update.source || update.target) ? { ...e, ...update, id: e.id.replace(oldId, newId) } : e
       })
 
-      // 更新其他节点对本节点的引用
       nodes.value.forEach(n => {
         if (n.id === newId || !n.data.data) return
         const d = n.data.data
-        ;['next', 'interrupt'].forEach(f => {
+        ;['next'].forEach(f => {
           if (Array.isArray(d[f])) {
-             const idx = d[f].indexOf(oldId); if (idx > -1) d[f][idx] = newId
+             d[f] = d[f].map(item => {
+                 if (item === oldId) return newId
+                 if (item === `[JumpBack]${oldId}`) return `[JumpBack]${newId}`
+                 return item
+             })
           }
         })
-        ;['on_error', 'timeout_next'].forEach(f => {
+        if (Array.isArray(d.on_error)) {
+          d.on_error = d.on_error.map(item => {
+            if (item === oldId) return newId
+            if (item === `[JumpBack]${oldId}`) return `[JumpBack]${newId}`
+            return item
+          })
+        } else if (d.on_error) {
+          if (d.on_error === oldId) d.on_error = newId
+          if (d.on_error === `[JumpBack]${oldId}`) d.on_error = `[JumpBack]${newId}`
+        }
+
+        ['timeout_next'].forEach(f => {
           if (d[f] === oldId) d[f] = newId
+          if (d[f] === `[JumpBack]${oldId}`) d[f] = `[JumpBack]${newId}`
         })
       })
     }
@@ -193,7 +262,6 @@ export function useFlowGraph() {
     if (!nodeData.data) nodeData.data = {}
     let tpl = nodeData.data.template
 
-    // Normalize to array
     let paths = []
     if (Array.isArray(tpl)) paths = [...tpl]
     else if (typeof tpl === 'string' && tpl) paths = [tpl]
@@ -203,43 +271,33 @@ export function useFlowGraph() {
     } else if (mode === 'remove') {
       paths = paths.filter(p => p !== path)
     }
-
-    // Set back
     nodeData.data.template = paths
   }
 
-  // --- 处理特殊操作 (重构后) ---
   const handleSpecialAction = (node, actionData) => {
     const action = actionData._action
 
-    // 1. 删除图片
     if (action === 'delete_images' || (action === 'save_screenshot' && actionData.deletePaths?.length)) {
       const deletePaths = actionData.deletePaths || []
       if (!deletePaths.length) return
-
       const currentImages = node.data._images || []
       node.data._del_images = [...(node.data._del_images || []), ...currentImages.filter(img => deletePaths.includes(img.path))]
       node.data._images = currentImages.filter(img => !deletePaths.includes(img.path))
-
       deletePaths.forEach(path => modifyTemplatePath(node.data, path, 'remove'))
     }
 
-    // 2. 添加临时图片
     if (action === 'add_temp_image') {
       const { imagePath, imageBase64 } = actionData
       if (!imagePath || !imageBase64) return
-
       if (!node.data._temp_images) node.data._temp_images = []
       node.data._temp_images.push({ path: imagePath, base64: imageBase64, found: true })
       modifyTemplatePath(node.data, imagePath, 'add')
     }
 
-    // 3. 恢复图片
     if (action === 'restore_image') {
       const { imagePath } = actionData
       const delImages = node.data._del_images || []
       const imageToRestore = delImages.find(img => img.path === imagePath)
-
       if (imageToRestore) {
         node.data._del_images = delImages.filter(img => img.path !== imagePath)
         if (!node.data._images) node.data._images = []
@@ -248,7 +306,6 @@ export function useFlowGraph() {
       }
     }
 
-    // 4. 保存变更
     if (action === 'save_image_changes') {
       const { validPaths, images, tempImages, deletedImages } = actionData
       node.data._images = images || []
@@ -273,25 +330,36 @@ export function useFlowGraph() {
     // 2. 创建连线 & 补充缺失节点
     for (const [nodeId, nodeContent] of Object.entries(rawNodesData)) {
       const linkFields = [
-        { key: 'next', handle: 'source-a' }, { key: 'interrupt', handle: 'source-b' },
-        { key: 'on_error', handle: 'source-c' }, { key: 'timeout_next', handle: 'source-c' }
+        { key: 'next', handle: 'source-a' },
+        { key: 'on_error', handle: 'source-c' },
+        { key: 'timeout_next', handle: 'source-c' }
       ]
 
       linkFields.forEach(({ key, handle }) => {
         if (nodeContent[key]) {
-          const targets = Array.isArray(nodeContent[key]) ? nodeContent[key] : [nodeContent[key]]
-          targets.forEach(targetId => {
-            if (!targetId) return
+          const rawTargets = Array.isArray(nodeContent[key]) ? nodeContent[key] : [nodeContent[key]]
+
+          rawTargets.forEach(rawTargetId => {
+            if (!rawTargetId) return
+
+            let targetId = rawTargetId
+            let isJumpBack = false
+            if (typeof targetId === 'string' && targetId.startsWith('[JumpBack]')) {
+                isJumpBack = true
+                targetId = targetId.replace('[JumpBack]', '')
+            }
+
             if (!createdNodeIds.has(targetId)) {
               newNodes.push(createNodeObject(targetId, {}, true))
               createdNodeIds.add(targetId)
             }
+
             newEdges.push({
               id: `e-${nodeId}-${targetId}-${key}`,
               source: nodeId, target: targetId,
               sourceHandle: handle, targetHandle: 'in',
-              label: key,
-              ...getEdgeStyle(handle)
+              label: isJumpBack ? 'JumpBack' : key,
+              ...getEdgeStyle(handle, isJumpBack)
             })
           })
         }
@@ -336,7 +404,9 @@ export function useFlowGraph() {
   return {
     nodes, edges, nodeTypes, currentEdgeType, currentSpacing, isDirty, currentFilename, currentSource, SPACING_OPTIONS,
     createNodeObject, onValidateConnection, handleConnect, handleEdgesChange, handleNodeUpdate,
-    loadNodes, getNodesData, getImageData, clearTempImageData, clearDirty: () => originalDataSnapshot.value = JSON.stringify(getNodesData()),
+    loadNodes, getNodesData, getImageData, clearTempImageData,
+    setEdgeJumpBack,
+    clearDirty: () => originalDataSnapshot.value = JSON.stringify(getNodesData()),
     layout, applyLayout: (k) => { nodes.value = layout(nodes.value, edges.value, SPACING_OPTIONS[k]); setTimeout(() => fitView({ padding: 0.2, duration: 500 }), 50) }
   }
 }

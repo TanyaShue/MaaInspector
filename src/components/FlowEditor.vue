@@ -16,7 +16,8 @@ const {
   nodes, edges, nodeTypes, currentEdgeType, currentSpacing, isDirty, currentFilename, currentSource,
   onValidateConnection,
   handleConnect, handleEdgesChange, handleNodeUpdate, loadNodes, createNodeObject, applyLayout,
-  getNodesData, getImageData, clearTempImageData, clearDirty
+  getNodesData, getImageData, clearTempImageData, clearDirty,
+  setEdgeJumpBack // 引入新功能
 } = useFlowGraph()
 
 const { fitView, removeEdges, findNode, screenToFlowCoordinate } = useVueFlow()
@@ -127,7 +128,7 @@ const handleMenuAction = ({ action, type, data, payload }) => {
       break
     case 'debug_this_node_reco':
       if (type === 'node') {
-        handleDebugNode(data.id, 'recognition_only') // 假设区分不同调试模式
+        handleDebugNode(data.id, 'recognition_only')
       }
       break
     case 'edit':
@@ -146,6 +147,16 @@ const handleMenuAction = ({ action, type, data, payload }) => {
       if (type === 'node') { removeEdges(edges.value.filter(e => e.source === data.id || e.target === data.id)); nodes.value = nodes.value.filter(n => n.id !== data.id) }
       else if (type === 'edge') removeEdges([data.id])
       break
+    case 'setJumpBack':
+        if (type === 'edge') {
+            setEdgeJumpBack(data.id, true)
+        }
+        break
+    case 'setNormalLink':
+        if (type === 'edge') {
+            setEdgeJumpBack(data.id, false)
+        }
+        break
     case 'layout': applyLayout(currentSpacing.value); break
     case 'changeSpacing': if (payload) { currentSpacing.value = payload; applyLayout(payload) }; break
     case 'changeEdgeType': if (payload) { currentEdgeType.value = payload; edges.value = edges.value.map(e => ({ ...e, type: payload })) }; break
@@ -163,21 +174,19 @@ const handleDebugNode = async (nodeId, mode = 'standard') => {
 
   // 1. 设置 UI 状态为运行中
   node.data.status = 'running'
-  node.data._result = null // 清空旧结果
+  node.data._result = null
 
   try {
-    // 2. 触发保存 (复用现有的保存逻辑)
-    // 注意：这里调用的是 FlowEditor 内部定义的 handleSaveNodes
+    // 2. 触发保存
     await handleSaveNodes({
       source: currentSource.value,
       filename: currentFilename.value
     })
 
     // 3. 准备发送给接口的数据
-    // 将节点业务数据 (data.data) 与当前文件上下文结合
     const debugPayload = {
-      node: node.data.data,       // 节点的核心业务数据
-      debug_mode: mode,           // 调试模式
+      node: node.data.data,
+      debug_mode: mode,
       context: {
         source: currentSource.value,
         filename: currentFilename.value
@@ -188,7 +197,6 @@ const handleDebugNode = async (nodeId, mode = 'standard') => {
     const res = await debugApi.runNode(debugPayload)
 
     // 5. 根据接口返回判断成功/失败
-    // 假设接口返回结构为 { success: boolean, data: any, message: string }
     if (res && res.success) {
       node.data.status = 'success'
     } else {
@@ -206,7 +214,6 @@ const handleDebugNode = async (nodeId, mode = 'standard') => {
       error: error.message || 'Network/Server Error'
     }
   } finally {
-    // 强制触发 Vue 更新 (如果视图没有自动响应)
     nodes.value = [...nodes.value]
   }
 }
@@ -341,8 +348,6 @@ const handleCancelDeleteImages = () => { showDeleteImagesModal.value = false; pe
 
       <ContextMenu v-if="menu.visible" v-bind="menu" :currentEdgeType="currentEdgeType" :currentSpacing="currentSpacing" @close="closeMenu" @action="handleMenuAction"/>
     </VueFlow>
-
-    <NodeEditorModal :visible="editor.visible" :nodeId="editor.nodeId" :nodeData="editor.nodeData" @close="editor.visible = false" @save="handleEditorSave"/>
     <NodeSearch :visible="searchVisible" :nodes="nodes" :current-filename="currentFilename" :current-source="currentSource" @close="searchVisible = false" @locate-node="handleLocateNode" @switch-file="handleRequestSwitch"/>
     <SaveConfirmModal :visible="showSaveModal" :filename="currentFilename" :is-saving="isSavingModal" @cancel="handleCancelSwitch" @discard="handleDiscardChanges" @save="handleSaveAndSwitch"/>
     <DeleteImagesConfirmModal :visible="showDeleteImagesModal" :unused-images="unusedImages" :used-images="usedImages" :is-processing="isProcessingImages" @cancel="handleCancelDeleteImages" @confirm="handleConfirmDeleteImages" @skip="handleSkipDeleteImages"/>

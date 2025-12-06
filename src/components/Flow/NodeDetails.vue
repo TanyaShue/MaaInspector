@@ -1,7 +1,7 @@
 <script setup>
 import {computed, nextTick, reactive, ref, watch, inject} from 'vue'
 import {
-  AlertCircle, Check, ChevronDown, ChevronRight, Clock,
+  AlertCircle, Check, ChevronDown, ChevronRight, ChevronUp, Clock,
   FileJson, GitBranch, Info, MessageSquare, Plus,
   Settings, X, Zap
 } from 'lucide-vue-next'
@@ -24,7 +24,7 @@ const emit = defineEmits(['close', 'update-id', 'update-type', 'update-data'])
 const formMethods = useNodeForm(props, emit)
 const {
   formData, jsonStr, jsonError, getValue, setValue,
-  getArrayValue, setArrayValue, updateJsonFromForm, handleJsonInput,
+  getArrayList, setArrayList, updateJsonFromForm, handleJsonInput,
   focusData, availableFocusEvents, addFocusParam, removeFocusParam, updateFocusParam
 } = formMethods
 
@@ -34,6 +34,8 @@ const expandedSections = reactive({
   basic: true, flow: false, common: false, recognition: true, action: true, focus: false
 })
 const editingId = ref('')
+const newNextLink = ref('')
+const newErrorLink = ref('')
 const recSectionRef = ref(null)
 const actSectionRef = ref(null)
 
@@ -77,6 +79,8 @@ const currentRecognition = computed(() => formData.value.recognition || 'DirectH
 const currentAction = computed(() => formData.value.action || 'DoNothing')
 const recognitionConfig = computed(() => recognitionTypes.find(r => r.value === currentRecognition.value) || recognitionTypes[0])
 const actionConfig = computed(() => actionTypes.find(a => a.value === currentAction.value) || actionTypes[0])
+const nextList = computed(() => getArrayList('next'))
+const onErrorList = computed(() => getArrayList('on_error'))
 
 const toggleSection = (key) => {
   expandedSections[key] = !expandedSections[key]
@@ -192,6 +196,32 @@ const handleImageDelete = (imageName) => {
   emit('update-data', {_action: 'delete_image', name: imageName})
 }
 
+const addLink = (key, valueRef) => {
+  const val = valueRef.value.trim()
+  if (!val) return
+  const current = getArrayList(key)
+  if (!current.includes(val)) {
+    current.push(val)
+    setArrayList(key, current)
+  }
+  valueRef.value = ''
+}
+
+const removeLink = (key, index) => {
+  const current = getArrayList(key)
+  current.splice(index, 1)
+  setArrayList(key, current)
+}
+
+const moveLink = (key, index, direction) => {
+  const current = getArrayList(key)
+  const targetIndex = index + direction
+  if (targetIndex < 0 || targetIndex >= current.length) return
+  const [item] = current.splice(index, 1)
+  current.splice(targetIndex, 0, item)
+  setArrayList(key, current)
+}
+
 watch(() => props.visible, (val) => {
   if (val) {
     editingId.value = props.nodeId
@@ -221,7 +251,7 @@ watch(() => props.visible, (val) => {
           class="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-slate-50 to-slate-100/80 border-b border-slate-100 shrink-0">
         <div class="flex items-center gap-2.5">
           <div class="p-1.5 rounded-lg bg-white shadow-sm border border-slate-100">
-            <component :is="recognitionConfig.icon" :size="16" :class="recognitionConfig.color"/>
+            <component v-if="recognitionConfig.icon" :is="recognitionConfig.icon" :size="16" :class="recognitionConfig.color"/>
           </div>
           <div><span class="font-bold text-slate-700 text-sm">节点属性</span>
             <div class="text-[10px] text-slate-400 font-mono">#{{ nodeId }}</div>
@@ -281,7 +311,7 @@ watch(() => props.visible, (val) => {
                         @click="isRecognitionDropdownOpen = !isRecognitionDropdownOpen; isActionDropdownOpen = false"
                         class="w-full flex items-center justify-between px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 cursor-pointer text-left">
                       <div class="flex items-center gap-2 overflow-hidden">
-                        <component :is="recognitionConfig.icon" :size="14" :class="recognitionConfig.color"
+                        <component v-if="recognitionConfig.icon" :is="recognitionConfig.icon" :size="14" :class="recognitionConfig.color"
                                    class="shrink-0"/>
                         <span class="truncate">{{ recognitionConfig.label }} <span
                             class="text-slate-400 text-[10px] ml-0.5">({{ recognitionConfig.value }})</span></span>
@@ -296,7 +326,7 @@ watch(() => props.visible, (val) => {
                               @click="selectRecognitionType(type.value)"
                               class="flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-slate-50 transition-colors shrink-0"
                               :class="{ 'bg-indigo-50/60 text-indigo-600': currentRecognition === type.value, 'text-slate-700': currentRecognition !== type.value }">
-                        <component :is="type.icon" :size="14" :class="type.color" class="shrink-0"/>
+                        <component v-if="type.icon" :is="type.icon" :size="14" :class="type.color" class="shrink-0"/>
                         <span class="truncate">{{ type.label }}</span>
                         <span class="ml-auto text-[10px] font-mono text-slate-400">{{ type.value }}</span>
                         <Check v-if="currentRecognition === type.value" :size="12" class="text-indigo-600 ml-2"/>
@@ -317,7 +347,7 @@ watch(() => props.visible, (val) => {
                     <button @click="isActionDropdownOpen = !isActionDropdownOpen; isRecognitionDropdownOpen = false"
                             class="w-full flex items-center justify-between px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 cursor-pointer text-left">
                       <div class="flex items-center gap-2 overflow-hidden">
-                        <component :is="actionConfig.icon" :size="14" :class="actionConfig.color" class="shrink-0"/>
+                        <component v-if="actionConfig.icon" :is="actionConfig.icon" :size="14" :class="actionConfig.color" class="shrink-0"/>
                         <span class="truncate">{{ actionConfig.label }} <span class="text-slate-400 text-[10px] ml-0.5">({{
                             actionConfig.value
                           }})</span></span>
@@ -331,7 +361,7 @@ watch(() => props.visible, (val) => {
                       <button v-for="type in actionTypes" :key="type.value" @click="selectActionType(type.value)"
                               class="flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-slate-50 transition-colors shrink-0"
                               :class="{ 'bg-indigo-50/60 text-indigo-600': currentAction === type.value, 'text-slate-700': currentAction !== type.value }">
-                        <component :is="type.icon" :size="14" :class="type.color" class="shrink-0"/>
+                        <component v-if="type.icon" :is="type.icon" :size="14" :class="type.color" class="shrink-0"/>
                         <span class="truncate">{{ type.label }}</span>
                         <span class="ml-auto text-[10px] font-mono text-slate-400">{{ type.value }}</span>
                         <Check v-if="currentAction === type.value" :size="12" class="text-indigo-600 ml-2"/>
@@ -357,28 +387,88 @@ watch(() => props.visible, (val) => {
                 <span class="font-semibold text-slate-700 text-xs">流程控制</span></div>
               <component :is="expandedSections.flow ? ChevronDown : ChevronRight" :size="14" class="text-slate-400"/>
             </button>
-            <div v-show="expandedSections.flow" class="p-3 space-y-2.5 border-t border-slate-100">
-              <div class="space-y-1"><label
-                  class="text-[10px] font-semibold text-blue-600 uppercase tracking-wide flex items-center gap-1">
-                <div class="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
-                后继节点 (Next)</label><input :value="getArrayValue('next')"
-                                              @input="setArrayValue('next', $event.target.value)"
-                                              class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
-                                              placeholder="用逗号分隔"/></div>
-              <div class="space-y-1"><label
-                  class="text-[10px] font-semibold text-amber-600 uppercase tracking-wide flex items-center gap-1">
-                <div class="w-1.5 h-1.5 rounded-full bg-amber-500"></div>
-                中断节点 (Interrupt)</label><input :value="getArrayValue('interrupt')"
-                                                   @input="setArrayValue('interrupt', $event.target.value)"
-                                                   class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-100"
-                                                   placeholder="用逗号分隔"/></div>
-              <div class="space-y-1"><label
-                  class="text-[10px] font-semibold text-rose-600 uppercase tracking-wide flex items-center gap-1">
-                <div class="w-1.5 h-1.5 rounded-full bg-rose-500"></div>
-                错误节点 (OnError)</label><input :value="getArrayValue('on_error')"
-                                                 @input="setArrayValue('on_error', $event.target.value)"
-                                                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-rose-400 focus:ring-1 focus:ring-rose-100"
-                                                 placeholder="用逗号分隔"/></div>
+            <div v-show="expandedSections.flow" class="p-3 space-y-3 border-t border-slate-100">
+              <div class="space-y-1">
+                <label class="text-[10px] font-semibold text-blue-600 uppercase tracking-wide flex items-center gap-1">
+                  <div class="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
+                  后继节点 (Next)
+                </label>
+                <div class="space-y-1">
+                  <div v-if="nextList.length" class="space-y-1">
+                    <div v-for="(link, idx) in nextList" :key="`next-${link}-${idx}`"
+                         class="flex items-center gap-2 p-2 bg-blue-50/70 border border-blue-100 rounded-lg">
+                      <span class="flex-1 text-xs font-mono text-blue-800 truncate">{{ link }}</span>
+                      <div class="flex items-center gap-1">
+                        <button @click="moveLink('next', idx, -1)" :disabled="idx === 0"
+                                class="p-1 rounded-md border border-blue-100 text-blue-500 hover:bg-blue-100 disabled:opacity-40">
+                          <ChevronUp :size="12"/>
+                        </button>
+                        <button @click="moveLink('next', idx, 1)" :disabled="idx === nextList.length - 1"
+                                class="p-1 rounded-md border border-blue-100 text-blue-500 hover:bg-blue-100 disabled:opacity-40">
+                          <ChevronDown :size="12"/>
+                        </button>
+                        <button @click="removeLink('next', idx)"
+                                class="p-1 rounded-md border border-blue-100 text-blue-500 hover:bg-blue-100">
+                          <X :size="12"/>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-else class="text-[10px] text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-md px-2 py-1.5">
+                    暂无后继节点，添加一个以定义执行顺序
+                  </div>
+                  <div class="flex gap-1">
+                    <input v-model="newNextLink" @keyup.enter="addLink('next', newNextLink)"
+                           class="flex-1 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+                           placeholder="输入节点 ID，回车添加"/>
+                    <button @click="addLink('next', newNextLink)"
+                            class="px-3 rounded-lg bg-blue-500 text-white text-[11px] font-bold hover:bg-blue-600 transition-colors">
+                      添加
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="space-y-1">
+                <label class="text-[10px] font-semibold text-rose-600 uppercase tracking-wide flex items-center gap-1">
+                  <div class="w-1.5 h-1.5 rounded-full bg-rose-500"></div>
+                  错误节点 (OnError)
+                </label>
+                <div class="space-y-1">
+                  <div v-if="onErrorList.length" class="space-y-1">
+                    <div v-for="(link, idx) in onErrorList" :key="`err-${link}-${idx}`"
+                         class="flex items-center gap-2 p-2 bg-rose-50/70 border border-rose-100 rounded-lg">
+                      <span class="flex-1 text-xs font-mono text-rose-800 truncate">{{ link }}</span>
+                      <div class="flex items-center gap-1">
+                        <button @click="moveLink('on_error', idx, -1)" :disabled="idx === 0"
+                                class="p-1 rounded-md border border-rose-100 text-rose-500 hover:bg-rose-100 disabled:opacity-40">
+                          <ChevronUp :size="12"/>
+                        </button>
+                        <button @click="moveLink('on_error', idx, 1)" :disabled="idx === onErrorList.length - 1"
+                                class="p-1 rounded-md border border-rose-100 text-rose-500 hover:bg-rose-100 disabled:opacity-40">
+                          <ChevronDown :size="12"/>
+                        </button>
+                        <button @click="removeLink('on_error', idx)"
+                                class="p-1 rounded-md border border-rose-100 text-rose-500 hover:bg-rose-100">
+                          <X :size="12"/>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-else class="text-[10px] text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-md px-2 py-1.5">
+                    暂未配置错误分支，可添加备用流程
+                  </div>
+                  <div class="flex gap-1">
+                    <input v-model="newErrorLink" @keyup.enter="addLink('on_error', newErrorLink)"
+                           class="flex-1 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-rose-400 focus:ring-1 focus:ring-rose-100"
+                           placeholder="输入节点 ID，回车添加"/>
+                    <button @click="addLink('on_error', newErrorLink)"
+                            class="px-3 rounded-lg bg-rose-500 text-white text-[11px] font-bold hover:bg-rose-600 transition-colors">
+                      添加
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 

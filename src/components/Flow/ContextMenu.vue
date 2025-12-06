@@ -2,9 +2,10 @@
 import {computed, ref} from 'vue' // computed 仅用于 menuItems
 import {
   Trash2, Copy, Edit, PlusCircle, RefreshCw, XCircle, ChevronRight,
-  Activity, Check, Move, Target, Image, Sparkles, Palette, ScanText, Brain, ScanEye, Code2, Bug, Scissors, HelpCircle,
-  Search, FolderClosed
+  Check, Bug, Scissors, Search, FolderClosed, Repeat, ArrowRightCircle, Move
 } from 'lucide-vue-next'
+import { recognitionMenuOptions } from '../../utils/nodeLogic.js'
+import { EDGE_TYPE_OPTIONS, SPACING_TYPE_OPTIONS } from '../../utils/flowOptions.js'
 
 const props = defineProps({
   x: {type: Number, required: true},
@@ -32,29 +33,6 @@ const handleMouseLeave = () => {
   showSubmenu.value = null
 }
 
-const nodeTypes = [
-  {label: '通用匹配 (DirectHit)', value: 'DirectHit', icon: Target, color: 'text-blue-500'},
-  {label: '模板匹配 (Template)', value: 'TemplateMatch', icon: Image, color: 'text-indigo-500'},
-  {label: '特征匹配 (Feature)', value: 'FeatureMatch', icon: Sparkles, color: 'text-violet-500'},
-  {label: '颜色识别 (Color)', value: 'ColorMatch', icon: Palette, color: 'text-pink-500'},
-  {label: 'OCR识别 (Text)', value: 'OCR', icon: ScanText, color: 'text-emerald-500'},
-  {label: '模型 分类 (Classify)', value: 'NeuralNetworkClassify', icon: Brain, color: 'text-amber-500'},
-  {label: '模型 检测 (Detect)', value: 'NeuralNetworkDetect', icon: ScanEye, color: 'text-orange-500'},
-  {label: '自定义 (Custom)', value: 'Custom', icon: Code2, color: 'text-slate-500'},
-  {label: '未知节点 (Unknown)', value: 'Unknown', icon: HelpCircle, color: 'text-gray-500'},
-]
-
-const edgeTypes = [
-  {label: '直角连线 (Step)', value: 'smoothstep', icon: Activity},
-  {label: '贝塞尔曲线 (Bezier)', value: 'default', icon: Activity},
-]
-
-const spacingTypes = [
-  {label: '紧凑 (Compact)', value: 'compact', icon: Move},
-  {label: '默认 (Normal)', value: 'normal', icon: Move},
-  {label: '宽松 (Loose)', value: 'loose', icon: Move},
-]
-
 const menuItems = computed(() => {
   if (props.type === 'node') {
     return [
@@ -66,9 +44,23 @@ const menuItems = computed(() => {
       {label: '删除节点', action: 'delete', icon: Trash2, color: 'text-red-500'},
     ]
   } else if (props.type === 'edge') {
-    return [
-      {label: '断开连接', action: 'delete', icon: Scissors, color: 'text-red-500'}
-    ]
+    const items = []
+
+    // 仅当 sourceHandle 为 Next (source-a) 或 Error (source-c) 时显示 JumpBack 选项
+    if (props.data && (props.data.sourceHandle === 'source-a' || props.data.sourceHandle === 'source-c')) {
+        const isJumpBack = props.data.data?.isJumpBack
+
+        if (isJumpBack) {
+            items.push({label: '设为普通连线', action: 'setNormalLink', icon: ArrowRightCircle, color: 'text-blue-600'})
+        } else {
+            items.push({label: '设为 JumpBack 连线', action: 'setJumpBack', icon: Repeat, color: 'text-purple-600'})
+        }
+        items.push({type: 'divider'})
+    }
+
+    items.push({label: '断开连接', action: 'delete', icon: Scissors, color: 'text-red-500'})
+    return items
+
   } else {
     return [
       {
@@ -77,7 +69,7 @@ const menuItems = computed(() => {
         action: 'add',
         icon: PlusCircle,
         color: 'text-blue-600',
-        submenu: nodeTypes,
+        submenu: recognitionMenuOptions,
         submenuAction: 'add'
       },
       {type: 'divider'},
@@ -93,17 +85,17 @@ const menuItems = computed(() => {
       {
         key: 'layout-spacing',
         label: '布局间距',
-        icon: Move,
+        icon: SPACING_TYPE_OPTIONS[0]?.icon,
         color: 'text-slate-600',
-        submenu: spacingTypes,
+        submenu: SPACING_TYPE_OPTIONS,
         submenuAction: 'changeSpacing'
       },
       {
         key: 'edge-type',
         label: '连线类型',
-        icon: Activity,
+        icon: EDGE_TYPE_OPTIONS[0]?.icon,
         color: 'text-slate-600',
-        submenu: edgeTypes,
+        submenu: EDGE_TYPE_OPTIONS,
         submenuAction: 'changeEdgeType'
       },
       {type: 'divider'},
@@ -144,7 +136,7 @@ const menuItems = computed(() => {
               @click="handleAction(item.action)"
           >
             <div class="flex items-center gap-2">
-              <component :is="item.icon" :size="16" :class="item.color"/>
+              <component v-if="item.icon" :is="item.icon" :size="16" :class="item.color"/>
               <span
                   :class="['font-medium text-slate-600', (item.label === '删除节点' || item.label === '断开连接') ? 'text-red-500' : '']">{{
                   item.label

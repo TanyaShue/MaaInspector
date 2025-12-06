@@ -35,7 +35,6 @@ export function useLayout() {
     // 这样能引导 Dagre 将连接 A 端口的子节点放在左侧
     const handleOrder = {
       'source-a': 1, // 左 -> 优先
-      'source-b': 2, // 中
       'source-c': 3  // 右 -> 最后
     }
 
