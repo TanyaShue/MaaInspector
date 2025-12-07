@@ -1,8 +1,8 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import {
-  X, Bug, PlayCircle, MapPin, Loader2, RefreshCw, Search as SearchIcon,
-  Terminal, Activity
+  X, Bug, PlayCircle, MapPin, Loader2, Search as SearchIcon,
+  Terminal, Activity, CheckCircle2, XCircle
 } from 'lucide-vue-next'
 import { deviceApi, debugApi } from '../../services/api'
 
@@ -22,18 +22,34 @@ const dragOffset = ref({ x: 0, y: 0 })
 
 const searchValue = ref('')
 const selectedNodeId = ref('')
+const isOptionOpen = ref(false)
 const previewUrl = ref('')
 const isLoadingPreview = ref(false)
 const events = ref([])
+const isStreamRunning = ref(false)
+const isPausing = ref(false)
 
 let stopStream = null
+let previewTimer = null
+const pendingResultTimers = []
 
 const nodeOptions = computed(() => props.nodes.map(node => ({
   id: node.id,
   label: node.data?.data?.id || node.id
 })))
 
+const filteredNodeOptions = computed(() => {
+  const keyword = searchValue.value.trim().toLowerCase()
+  if (!keyword) return nodeOptions.value
+  return nodeOptions.value.filter(opt =>
+      opt.id.toLowerCase().includes(keyword) || opt.label.toLowerCase().includes(keyword))
+})
+
 const sortedEvents = computed(() => [...events.value].sort((a, b) => b.timestamp - a.timestamp))
+const actionButtonText = computed(() => {
+  if (isPausing.value) return '暂停中...'
+  return isStreamRunning.value ? '暂停调试' : '启动调试'
+})
 
 const startDrag = (e) => {
   if (e.target.closest('input') || e.target.closest('select') || e.target.closest('button')) return
@@ -53,6 +69,7 @@ const stopDrag = () => {
 }
 
 const fetchPreview = async () => {
+  if (isLoadingPreview.value) return
   isLoadingPreview.value = true
   try {
     const res = await deviceApi.getScreenshot()
@@ -65,16 +82,50 @@ const fetchPreview = async () => {
   }
 }
 
+const startPreviewAutoRefresh = () => {
+  stopPreviewAutoRefresh()
+  fetchPreview()
+  previewTimer = setInterval(fetchPreview, 1000)
+}
+
+const stopPreviewAutoRefresh = () => {
+  if (previewTimer) clearInterval(previewTimer)
+  previewTimer = null
+}
+
 const appendEvent = (payload) => {
   if (!payload) return
   const nextList = Array.isArray(payload.next_list) ? payload.next_list : []
   const record = {
     taskId: payload.task_id || Date.now(),
     name: payload.name || searchValue.value || selectedNodeId.value || '未知节点',
-    nextList,
+    nextList: nextList.map(child => ({ ...child, status: 'pending' })),
     timestamp: Date.now()
   }
-  events.value = [record, ...events.value].slice(0, 30)
+  events.value = [record, ...events.value].slice(0, 200)
+  scheduleNodeResults(record)
+}
+
+const clearPendingResultTimers = () => {
+  pendingResultTimers.forEach(t => clearTimeout(t))
+  pendingResultTimers.length = 0
+}
+
+const scheduleNodeResults = (record) => {
+  record.nextList.forEach((child, idx) => {
+    const delay = 500 + Math.random() * 1800
+    const timer = setTimeout(() => {
+      const status = Math.random() > 0.3 ? 'success' : 'fail'
+      events.value = events.value.map(evt => {
+        if (evt.taskId === record.taskId && evt.timestamp === record.timestamp) {
+          const nextList = evt.nextList.map((c, i) => i === idx ? { ...c, status } : c)
+          return { ...evt, nextList }
+        }
+        return evt
+      })
+    }, delay)
+    pendingResultTimers.push(timer)
+  })
 }
 
 const startMockStream = () => {
@@ -82,11 +133,14 @@ const startMockStream = () => {
   stopStream = debugApi.subscribeMockNodeStream(appendEvent, {
     initialNodeId: selectedNodeId.value || searchValue.value
   })
+  isStreamRunning.value = true
 }
 
 const stopMockStream = () => {
   if (stopStream) stopStream()
   stopStream = null
+  clearPendingResultTimers()
+  isStreamRunning.value = false
 }
 
 const handleDebugNow = () => {
@@ -100,8 +154,67 @@ const handleLocate = (id) => {
   if (targetId) emit('locate-node', targetId)
 }
 
-const handleViewResult = (item) => {
-  console.info('[DebugPanel] 查看调试结果（占位）', item)
+const mockPauseRequest = () => {
+  return new Promise((resolve) => {
+    // 模拟向后端发送暂停请求，后端返回 { success: true }
+    setTimeout(() => resolve({ success: true }), 500)
+  })
+}
+
+const handleStartStream = () => {
+  if (isStreamRunning.value) return
+  events.value = []
+  startMockStream()
+}
+
+const handlePauseStream = async () => {
+  if (!isStreamRunning.value || isPausing.value) return
+  isPausing.value = true
+  try {
+    const res = await mockPauseRequest()
+    if (res?.success) {
+      stopMockStream()
+    }
+  } finally {
+    isPausing.value = false
+  }
+}
+
+const handleResetStream = () => {
+  events.value = []
+  if (isStreamRunning.value) {
+    startMockStream()
+  }
+}
+
+const handleActionButton = async () => {
+  if (isPausing.value) return
+  if (isStreamRunning.value) {
+    await handlePauseStream()
+  } else {
+    handleDebugNow()
+    handleStartStream()
+  }
+}
+
+const handleChildClick = (child, item) => {
+  console.info('[DebugPanel] 节点点击', { parent: item, child })
+}
+
+const handleOptionSelect = (opt) => {
+  searchValue.value = opt.id
+  selectedNodeId.value = opt.id
+  isOptionOpen.value = false
+}
+
+const toggleOptionList = () => {
+  isOptionOpen.value = !isOptionOpen.value
+}
+
+const closeOptionList = () => {
+  setTimeout(() => {
+    isOptionOpen.value = false
+  }, 120)
 }
 
 const formatTime = (ts) => {
@@ -115,10 +228,10 @@ watch(() => props.visible, (val) => {
     searchValue.value = props.initialNodeId || ''
     position.value = { x: window.innerWidth - 920, y: 160 }
     events.value = []
-    startMockStream()
-    fetchPreview()
+    startPreviewAutoRefresh()
   } else {
     stopMockStream()
+    stopPreviewAutoRefresh()
   }
 })
 
@@ -136,6 +249,7 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('mouseup', stopDrag)
   stopMockStream()
+  stopPreviewAutoRefresh()
 })
 </script>
 
@@ -169,13 +283,6 @@ onUnmounted(() => {
         </div>
         <div class="flex items-center gap-2">
           <button
-              class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold shadow hover:bg-amber-600 transition-colors"
-              @click.stop="handleDebugNow"
-          >
-            <PlayCircle :size="16"/>
-            <span>在窗口调试</span>
-          </button>
-          <button
               class="p-1.5 hover:bg-white rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
               @click.stop="$emit('close')"
           >
@@ -184,7 +291,7 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div class="flex flex-1">
+      <div class="flex flex-1 min-h-0">
         <div class="w-[240px] bg-slate-50 border-r border-slate-200 p-3 flex flex-col gap-3">
           <div class="text-xs text-slate-500 font-semibold flex items-center gap-2">
             <Terminal :size="14" class="text-amber-500"/> 设备预览
@@ -195,57 +302,83 @@ onUnmounted(() => {
               <Bug :size="20" class="text-amber-500"/>
               <span>等待截图或使用占位图</span>
             </div>
-            <div v-if="isLoadingPreview" class="absolute inset-0 bg-white/70 flex items-center justify-center">
-              <Loader2 class="animate-spin text-amber-500" :size="20"/>
-            </div>
           </div>
-          <button
-              class="flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-white transition-colors"
-              @click="fetchPreview"
-          >
-            <RefreshCw :size="16" class="text-amber-500"/>
-            刷新预览
-          </button>
           <div class="text-[10px] text-slate-400 leading-relaxed">
             右侧调试面板会持续接收伪造的后端事件，JumpBack 节点会被单独标记。
           </div>
         </div>
 
-        <div class="flex-1 flex flex-col">
+        <div class="flex-1 flex flex-col min-h-0">
           <div class="p-4 border-b border-slate-100 bg-white flex flex-col gap-3">
-            <div class="flex gap-3">
+            <div class="flex gap-3 items-center">
               <div class="relative flex-1">
                 <SearchIcon :size="14" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
                 <input
                     v-model="searchValue"
                     type="text"
-                    :placeholder="selectedNodeId ? '' : '输入节点 ID...'"
-                    class="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all font-mono"
+                    :placeholder="selectedNodeId ? '' : '输入或选择节点 ID...'"
+                    class="w-full pl-9 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all font-mono"
+                    @focus="isOptionOpen = true"
+                    @blur="closeOptionList"
+                    @keyup.enter="handleDebugNow"
                 />
+                <button
+                    class="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 rounded-md text-xs border border-slate-200 text-slate-500 hover:bg-white"
+                    type="button"
+                    @mousedown.prevent
+                    @click="toggleOptionList"
+                >
+                  列表
+                </button>
+                <div
+                    v-if="isOptionOpen && filteredNodeOptions.length"
+                    class="absolute z-10 mt-1 w-full max-h-52 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-sm custom-scrollbar"
+                >
+                  <button
+                      v-for="opt in filteredNodeOptions"
+                      :key="opt.id"
+                      type="button"
+                      class="w-full text-left px-3 py-2 hover:bg-amber-50 text-sm text-slate-700 flex justify-between items-center"
+                      @mousedown.prevent
+                      @click="handleOptionSelect(opt)"
+                  >
+                    <span class="font-mono">{{ opt.label }}</span>
+                    <span class="text-[11px] text-slate-400">{{ opt.id }}</span>
+                  </button>
+                </div>
               </div>
-              <select
-                  v-model="selectedNodeId"
-                  class="w-52 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all"
+              <button
+                  class="flex items-center gap-1 px-3 py-2 rounded-lg text-white text-xs font-semibold shadow transition-colors"
+                  :class="isStreamRunning ? 'bg-amber-500 hover:bg-amber-600' : 'bg-emerald-500 hover:bg-emerald-600'"
+                  @click="handleActionButton"
+                  :disabled="isPausing"
               >
-                <option value="">选择节点...</option>
-                <option v-for="opt in nodeOptions" :key="opt.id" :value="opt.id">
-                  {{ opt.label }}
-                </option>
-              </select>
+                <Loader2 v-if="isPausing" :size="16" class="animate-spin"/>
+                <PlayCircle v-else :size="16"/>
+                <span>{{ actionButtonText }}</span>
+              </button>
             </div>
             <div class="flex items-center gap-3 text-[11px] text-slate-500">
               <div class="flex items-center gap-1">
                 <Activity :size="14" class="text-amber-500"/>
                 <span>实时事件数量：{{ events.length }}</span>
               </div>
-              <button
-                  class="px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50"
-                  @click="startMockStream"
-              >重置模拟流</button>
+              <div class="flex items-center gap-3 text-[11px] text-slate-500">
+                <div class="flex items-center gap-2">
+                  <span class="w-2.5 h-2.5 rounded-full bg-blue-400"></span>
+                  <span>顺序</span>
+                  <span class="w-2.5 h-2.5 rounded-full bg-purple-400"></span>
+                  <span>JumpBack</span>
+                </div>
+                <button
+                    class="px-2 py-1 rounded border border-slate-200 text-slate-700 bg-white hover:bg-slate-50"
+                    @click="handleResetStream"
+                >重置模拟流</button>
+              </div>
             </div>
           </div>
 
-          <div class="flex-1 overflow-y-auto bg-slate-50 p-4 space-y-3 custom-scrollbar">
+          <div class="flex-1 overflow-y-auto bg-slate-50 p-4 space-y-3 custom-scrollbar min-h-0">
             <div v-if="sortedEvents.length === 0" class="h-full w-full flex items-center justify-center text-slate-400 text-sm">
               等待调试结果流入...
             </div>
@@ -265,10 +398,6 @@ onUnmounted(() => {
                 </div>
                 <div class="flex items-center gap-2">
                   <button
-                      class="px-2 py-1 text-[12px] rounded border border-slate-200 text-slate-600 hover:bg-slate-50"
-                      @click="handleViewResult(item)"
-                  >查看调试结果</button>
-                  <button
                       class="px-2 py-1 text-[12px] rounded bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-100 flex items-center gap-1"
                       @click="handleLocate(item.name)"
                   >
@@ -277,14 +406,27 @@ onUnmounted(() => {
                 </div>
               </div>
               <div class="flex flex-wrap gap-2">
-                <span
+                <button
                     v-for="(child, idx) in item.nextList"
                     :key="child.name + idx"
-                    class="px-2 py-1 rounded-full text-[12px] font-mono border"
-                    :class="child.jump_back ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'"
+                    class="px-2 py-1 rounded-full text-[12px] font-mono border transition-colors flex items-center gap-2"
+                    :class="[
+                      child.jump_back ? 'bg-purple-50 text-purple-600 border-purple-100' : 'bg-blue-50 text-blue-600 border-blue-100',
+                      child.status === 'pending'
+                        ? 'opacity-80'
+                        : child.status === 'success'
+                          ? (child.jump_back ? 'ring-1 ring-purple-200' : 'ring-1 ring-blue-200')
+                          : 'ring-1 ring-rose-200'
+                    ]"
+                    @click="handleChildClick(child, item)"
                 >
-                  {{ child.name }} <span class="ml-1 text-[11px] font-semibold">{{ child.jump_back ? 'JumpBack' : '顺序' }}</span>
-                </span>
+                  <span>{{ child.name }}</span>
+                  <span class="text-[11px] flex items-center gap-1">
+                    <Loader2 v-if="child.status === 'pending'" :size="12" class="animate-spin"/>
+                    <CheckCircle2 v-else-if="child.status === 'success'" :size="14" class="text-emerald-600"/>
+                    <XCircle v-else :size="14" class="text-rose-600"/>
+                  </span>
+                </button>
               </div>
             </div>
           </div>
