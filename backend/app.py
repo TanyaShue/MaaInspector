@@ -477,7 +477,7 @@ def agent_disconnect():
 def debug_node():
     data = request.get_json()
     node=data.get("node")
-    node["next"] = []
+    # node["next"] = []
     node["on_error"] = []
     id=node.get("id")
     node=convert_node(node)

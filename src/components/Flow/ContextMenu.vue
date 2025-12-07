@@ -38,6 +38,7 @@ const menuItems = computed(() => {
     return [
       {label: '调试该节点', action: 'debug_this_node', icon: Bug, color: 'text-amber-600'},
       {label: '仅识别该节点', action: 'debug_this_node_reco', icon: Bug, color: 'text-amber-600'},
+      {label: '在调试窗口中调试', action: 'debug_in_panel', icon: Bug, color: 'text-amber-700'},
       {type: 'divider'},
       {label: '复制节点', action: 'duplicate', icon: Copy, color: 'text-slate-600'},
       {type: 'divider'},
@@ -74,6 +75,7 @@ const menuItems = computed(() => {
       },
       {type: 'divider'},
       {label: '搜索节点', action: 'search', icon: Search, color: 'text-emerald-600'},
+      {label: '打开调试窗口', action: 'openDebugPanel', icon: Bug, color: 'text-amber-600'},
       {label: '关闭所有节点面板', action: 'closeAllDetails', icon: FolderClosed, color: 'text-slate-600'},
       {type: 'divider'},
       {

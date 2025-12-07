@@ -7,6 +7,7 @@ import { FolderSearch } from 'lucide-vue-next'
 import ContextMenu from './Flow/ContextMenu.vue'
 import InfoPanel from './Flow/InfoPanel.vue'
 import NodeSearch from './Flow/NodeSearch.vue'
+import NodeDebugPanel from './Flow/NodeDebugPanel.vue'
 import SaveConfirmModal from './Flow/Modals/SaveConfirmModal.vue'
 import DeleteImagesConfirmModal from './Flow/Modals/DeleteImagesConfirmModal.vue'
 import { useFlowGraph } from '../utils/useFlowGraph.js'
@@ -32,6 +33,7 @@ const isDeviceConnected = ref(false)
 const menu = ref({ visible: false, x: 0, y: 0, type: null, data: null, flowPos: { x: 0, y: 0 } })
 const editor = ref({ visible: false, nodeId: '', nodeData: null })
 const searchVisible = ref(false)
+const debugPanel = ref({ visible: false, nodeId: '' })
 
 // Panels & Confirm Modals State
 const infoPanelRef = ref(null)
@@ -131,6 +133,11 @@ const handleMenuAction = ({ action, type, data, payload }) => {
         handleDebugNode(data.id, 'recognition_only')
       }
       break
+    case 'debug_in_panel':
+      if (type === 'node') {
+        debugPanel.value = { visible: true, nodeId: data.id }
+      }
+      break
     case 'edit':
       editor.value = { visible: true, nodeId: data.id, nodeData: JSON.parse(JSON.stringify(data.data.data || { id: data.id, recognition: 'DirectHit' })) }
       break
@@ -163,6 +170,9 @@ const handleMenuAction = ({ action, type, data, payload }) => {
     case 'reset': fitView({ padding: 0.2, duration: 500 }); break
     case 'clear': nodes.value = []; edges.value = []; break
     case 'search': searchVisible.value = true; break
+    case 'openDebugPanel':
+      debugPanel.value = { visible: true, nodeId: type === 'node' ? data?.id : '' }
+      break
     case 'closeAllDetails': closeAllDetailsSignal.value++; break
   }
 }
@@ -349,6 +359,16 @@ const handleCancelDeleteImages = () => { showDeleteImagesModal.value = false; pe
       <ContextMenu v-if="menu.visible" v-bind="menu" :currentEdgeType="currentEdgeType" :currentSpacing="currentSpacing" @close="closeMenu" @action="handleMenuAction"/>
     </VueFlow>
     <NodeSearch :visible="searchVisible" :nodes="nodes" :current-filename="currentFilename" :current-source="currentSource" @close="searchVisible = false" @locate-node="handleLocateNode" @switch-file="handleRequestSwitch"/>
+    <NodeDebugPanel
+      :visible="debugPanel.visible"
+      :nodes="nodes"
+      :current-filename="currentFilename"
+      :current-source="currentSource"
+      :initial-node-id="debugPanel.nodeId"
+      @close="debugPanel.visible = false"
+      @locate-node="handleLocateNode"
+      @debug-node="(nodeId) => handleDebugNode(nodeId, 'standard')"
+    />
     <SaveConfirmModal :visible="showSaveModal" :filename="currentFilename" :is-saving="isSavingModal" @cancel="handleCancelSwitch" @discard="handleDiscardChanges" @save="handleSaveAndSwitch"/>
     <DeleteImagesConfirmModal :visible="showDeleteImagesModal" :unused-images="unusedImages" :used-images="usedImages" :is-processing="isProcessingImages" @cancel="handleCancelDeleteImages" @confirm="handleConfirmDeleteImages" @skip="handleSkipDeleteImages"/>
   </div>

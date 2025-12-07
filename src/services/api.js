@@ -57,5 +57,46 @@ export const debugApi = {
   runNode: (nodeData, context) => request('/debug/node', {
     method: 'POST',
     body: JSON.stringify({ ...nodeData, ...context })
-  })
+  }),
+
+  /**
+   * 临时的后端流结果伪实现
+   * onData 将收到形如 { task_id, name, next_list: [{ name, jump_back, anchor }], focus }
+   */
+  subscribeMockNodeStream: (onData, { initialNodeId = '' } = {}) => {
+    if (typeof onData !== 'function') return () => {}
+
+    let timer = null
+    let seed = Date.now()
+
+    const randomBool = () => Math.random() > 0.6
+    const randomId = () => `N-${Math.floor(seed + Math.random() * 1_000_000)}`
+
+    const buildPayload = () => {
+      seed += 137
+      const taskId = 100000000 + Math.floor(Math.random() * 6)
+      const base = initialNodeId || randomId()
+      const nextCount = Math.max(3, Math.floor(Math.random() * 5) + 1)
+      const next_list = Array.from({ length: nextCount }).map(() => ({
+        name: randomId(),
+        jump_back: randomBool(),
+        anchor: false
+      }))
+
+      return {
+        task_id: taskId,
+        name: base,
+        next_list,
+        focus: null
+      }
+    }
+
+    timer = setInterval(() => {
+      onData(buildPayload())
+    }, 2500)
+
+    return () => {
+      if (timer) clearInterval(timer)
+    }
+  }
 }

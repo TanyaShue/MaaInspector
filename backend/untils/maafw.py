@@ -4,9 +4,11 @@ from typing import Callable, List, Optional, Tuple, Union
 
 from PIL import Image
 from maa.agent_client import AgentClient
+from maa.context import ContextEventSink
 from maa.controller import AdbController, Win32Controller
+from maa.event_sink import NotificationType
 from maa.resource import Resource
-from maa.tasker import Tasker, RecognitionDetail
+from maa.tasker import Tasker, RecognitionDetail, TaskerEventSink
 from maa.toolkit import Toolkit, AdbDevice, DesktopWindow
 from numpy import ndarray
 
@@ -115,7 +117,9 @@ class MaaFW:
         self.tasker.bind(self.resource, self.controller)
         if not self.tasker.inited:
             return (False, "Failed to init MaaFramework tasker")
-        print(self.tasker.post_task(entry, pipeline_override).wait().get())
+        self.tasker.add_context_sink(MyNotificationHandler())
+        self.tasker.add_sink(NotificationHandler())
+        self.tasker.post_task(entry, pipeline_override)
 
         return None
 
@@ -154,6 +158,47 @@ class MaaFW:
             return False
 
         return self.tasker.clear_cache()
+
+
+class MyNotificationHandler(ContextEventSink):
+    """通知处理器类，处理识别事件"""
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def on_node_next_list(
+            self,
+            context: ContextEventSink,
+            noti_type: NotificationType,
+            detail: ContextEventSink.NodeNextListDetail,
+    ):
+        if noti_type != NotificationType.Starting:
+            return
+
+        # 使用信号发送数据，而不是直接调用回调
+        print(detail)
+
+    def on_node_recognition(
+            self,
+            context: ContextEventSink,
+            noti_type: ContextEventSink,
+            detail: ContextEventSink.NodeRecognitionDetail,
+    ):
+
+        if noti_type == NotificationType.Succeeded:
+            print(detail)
+
+class NotificationHandler(TaskerEventSink):
+    """通知处理器类，处理识别事件"""
+
+    def __init__(self) -> None:
+        super().__init__()
+    def on_tasker_task(
+        self, tasker: Tasker, noti_type: NotificationType, detail: TaskerEventSink.TaskerTaskDetail
+    ):
+        print(tasker)
+        print(noti_type)
+        print(detail)
 
 
 def cvmat_to_image(cvmat: ndarray) -> Image.Image:
