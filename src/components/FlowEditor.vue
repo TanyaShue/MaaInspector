@@ -227,6 +227,20 @@ const handleDebugNode = async (nodeId, mode = 'standard') => {
     nodes.value = [...nodes.value]
   }
 }
+const handleUpdateNodeStatus = ({ nodeId, status }) => {
+  if (!nodeId || !status) return
+  let changed = false
+  nodes.value = nodes.value.map(n => {
+    const match = n.id === nodeId || n.data?.data?.id === nodeId
+    if (!match) return n
+    if (n.data?.status === status) return n
+    changed = true
+    return { ...n, data: { ...n.data, status } }
+  })
+  if (changed) {
+    nodes.value = [...nodes.value]
+  }
+}
 // --- Helpers ---
 const handleLocateNode = (nodeId) => {
   nodes.value = nodes.value.map(n => ({ ...n, selected: n.id === nodeId }))
@@ -368,6 +382,7 @@ const handleCancelDeleteImages = () => { showDeleteImagesModal.value = false; pe
       @close="debugPanel.visible = false"
       @locate-node="handleLocateNode"
       @debug-node="(nodeId) => handleDebugNode(nodeId, 'standard')"
+      @update-node-status="handleUpdateNodeStatus"
     />
     <SaveConfirmModal :visible="showSaveModal" :filename="currentFilename" :is-saving="isSavingModal" @cancel="handleCancelSwitch" @discard="handleDiscardChanges" @save="handleSaveAndSwitch"/>
     <DeleteImagesConfirmModal :visible="showDeleteImagesModal" :unused-images="unusedImages" :used-images="usedImages" :is-processing="isProcessingImages" @cancel="handleCancelDeleteImages" @confirm="handleConfirmDeleteImages" @skip="handleSkipDeleteImages"/>

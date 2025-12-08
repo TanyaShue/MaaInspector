@@ -1,5 +1,8 @@
 import re
+import time
 from pathlib import Path
+from queue import Empty, Queue
+from threading import Lock
 from typing import Callable, List, Optional, Tuple, Union
 
 from PIL import Image
@@ -11,6 +14,39 @@ from maa.resource import Resource
 from maa.tasker import Tasker, RecognitionDetail, TaskerEventSink
 from maa.toolkit import Toolkit, AdbDevice, DesktopWindow
 from numpy import ndarray
+
+
+class DebugStreamBroker:
+    """简易的 SSE 事件分发器"""
+
+    def __init__(self):
+        self._clients: List[Queue] = []
+        self._lock = Lock()
+
+    def register(self) -> Queue:
+        q = Queue()
+        with self._lock:
+            self._clients.append(q)
+        return q
+
+    def unregister(self, q: Queue):
+        with self._lock:
+            if q in self._clients:
+                self._clients.remove(q)
+
+    def publish(self, payload: dict):
+        if not payload:
+            return
+        with self._lock:
+            for q in list(self._clients):
+                try:
+                    q.put_nowait(payload)
+                except Exception:
+                    # 忽略单个客户端队列的异常，避免阻塞其他客户端
+                    pass
+
+
+debug_broker = DebugStreamBroker()
 
 
 class MaaFW:
@@ -117,8 +153,8 @@ class MaaFW:
         self.tasker.bind(self.resource, self.controller)
         if not self.tasker.inited:
             return (False, "Failed to init MaaFramework tasker")
-        self.tasker.add_context_sink(MyNotificationHandler())
-        # self.tasker.add_sink(NotificationHandler())
+        if self.tasker._sink_holder == {}:
+            self.tasker.add_context_sink(MyNotificationHandler(debug_broker))
         self.tasker.post_task(entry, pipeline_override)
 
         return None
@@ -161,47 +197,76 @@ class MaaFW:
 
 
 class MyNotificationHandler(ContextEventSink):
-    """通知处理器类，处理识别事件"""
+    """通知处理器类，处理识别事件并透传到 SSE"""
 
-    def __init__(self) -> None:
+    def __init__(self, broker: DebugStreamBroker) -> None:
         super().__init__()
+        self.broker = broker
+
+    @staticmethod
+    def _normalize_next_list(next_list):
+        result = []
+        for item in next_list or []:
+            result.append(
+                {
+                    "name": getattr(item, "name", "") or "",
+                    "jump_back": bool(getattr(item, "jump_back", False)),
+                    "anchor": bool(getattr(item, "anchor", False)),
+                }
+            )
+        return result
 
     def on_node_next_list(
-            self,
-            context: ContextEventSink,
-            noti_type: NotificationType,
-            detail: ContextEventSink.NodeNextListDetail,
+        self,
+        context: ContextEventSink,
+        noti_type: NotificationType,
+        detail: ContextEventSink.NodeNextListDetail,
     ):
         if noti_type != NotificationType.Starting:
             return
+
+        payload = {
+            "type": "node_next_list",
+            "task_id": detail.task_id,
+            "name": detail.name,
+            "next_list": self._normalize_next_list(detail.next_list),
+            "focus": getattr(detail, "focus", None),
+            "timestamp": int(time.time() * 1000),
+        }
         print(f"开始识别:{detail}")
+        self.broker.publish(payload)
 
     def on_node_recognition(
-            self,
-            context: ContextEventSink,
-            noti_type: ContextEventSink,
-            detail: ContextEventSink.NodeRecognitionDetail,
+        self,
+        context: ContextEventSink,
+        noti_type: NotificationType,
+        detail: ContextEventSink.NodeRecognitionDetail,
     ):
+        status_map = {
+            NotificationType.Starting: "starting",
+            NotificationType.Succeeded: "succeeded",
+            NotificationType.Failed: "failed",
+        }
+        status = status_map.get(noti_type, "unknown")
+
+        payload = {
+            "type": "node_recognition",
+            "task_id": detail.task_id,
+            "reco_id": detail.reco_id,
+            "name": detail.name,
+            "status": status,
+            "focus": getattr(detail, "focus", None),
+            "timestamp": int(time.time() * 1000),
+        }
+
         if noti_type == NotificationType.Starting:
-            print(f"当前开始的节点的名称为:{detail.name},完整参数为:"
-                  f"{detail}")
+            print(f"当前开始的节点的名称为:{detail.name},完整参数为:{detail}")
         if noti_type == NotificationType.Succeeded:
             print(f"当前成功识别的节点的名称为:{detail.name},识别id为:{detail.reco_id}")
         if noti_type == NotificationType.Failed:
             print(f"当前识别失败的节点的名称为:{detail.name},识别id为:{detail.reco_id}")
 
-class NotificationHandler(TaskerEventSink):
-    """通知处理器类，处理识别事件"""
-
-    def __init__(self) -> None:
-        super().__init__()
-    def on_tasker_task(
-        self, tasker: Tasker, noti_type: NotificationType, detail: TaskerEventSink.TaskerTaskDetail
-    ):
-        print(tasker)
-        print(noti_type)
-        print(detail)
-
+        self.broker.publish(payload)
 
 def cvmat_to_image(cvmat: ndarray) -> Image.Image:
     pil = Image.fromarray(cvmat)

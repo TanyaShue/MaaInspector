@@ -60,43 +60,30 @@ export const debugApi = {
   }),
 
   /**
-   * 临时的后端流结果伪实现
-   * onData 将收到形如 { task_id, name, next_list: [{ name, jump_back, anchor }], focus }
+   * 真实后端 SSE 调试流
+   * onData 将收到:
+   *  - type=node_next_list: { task_id, name, next_list, focus, timestamp }
+   *  - type=node_recognition: { task_id, name, reco_id, status, focus, timestamp }
    */
-  subscribeMockNodeStream: (onData, { initialNodeId = '' } = {}) => {
+  subscribeNodeStream: (onData) => {
     if (typeof onData !== 'function') return () => {}
 
-    let timer = null
-    let seed = Date.now()
+    const es = new EventSource(`${API_BASE_URL}/debug/stream`)
 
-    const randomBool = () => Math.random() > 0.6
-    const randomId = () => `N-${Math.floor(seed + Math.random() * 1_000_000)}`
-
-    const buildPayload = () => {
-      seed += 137
-      const taskId = 100000000 + Math.floor(Math.random() * 6)
-      const base = initialNodeId || randomId()
-      const nextCount = Math.max(3, Math.floor(Math.random() * 5) + 1)
-      const next_list = Array.from({ length: nextCount }).map(() => ({
-        name: randomId(),
-        jump_back: randomBool(),
-        anchor: false
-      }))
-
-      return {
-        task_id: taskId,
-        name: base,
-        next_list,
-        focus: null
+    es.onmessage = (evt) => {
+      if (!evt?.data) return
+      try {
+        const payload = JSON.parse(evt.data)
+        onData(payload)
+      } catch (e) {
+        console.warn('[DebugStream] 无法解析消息', e)
       }
     }
 
-    timer = setInterval(() => {
-      onData(buildPayload())
-    }, 2500)
-
-    return () => {
-      if (timer) clearInterval(timer)
+    es.onerror = (err) => {
+      console.warn('[DebugStream] SSE 连接异常', err)
     }
+
+    return () => es.close()
   }
 }

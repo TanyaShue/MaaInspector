@@ -21,7 +21,7 @@ const props = defineProps({
   initialNodeId: { type: String, default: '' }
 })
 
-const emit = defineEmits(['close', 'locate-node', 'debug-node'])
+const emit = defineEmits(['close', 'locate-node', 'debug-node', 'update-node-status'])
 
 const position = ref({ x: 360, y: 140 })
 const isDragging = ref(false)
@@ -34,12 +34,16 @@ const previewUrl = ref('')
 const isLoadingPreview = ref(false)
 const events = ref([])
 const isStreamRunning = ref(false)
-const isPausing = ref(false)
 const selectedDetail = ref(null)
 
 let stopStream = null
 let previewTimer = null
-const pendingResultTimers = []
+const STATUS_TEXT = {
+  [STATUS.UNKNOWN]: '未开始',
+  [STATUS.STARTING]: '进行中',
+  [STATUS.SUCCEEDED]: '成功',
+  [STATUS.FAILED]: '失败'
+}
 
 const nodeOptions = computed(() => props.nodes.map(node => ({
   id: node.id,
@@ -54,11 +58,22 @@ const filteredNodeOptions = computed(() => {
 })
 
 const sortedEvents = computed(() => [...events.value].sort((a, b) => b.timestamp - a.timestamp))
-const actionButtonText = computed(() => {
-  if (isPausing.value) return '暂停中...'
-  return isStreamRunning.value ? '暂停调试' : '启动调试'
-})
+const actionButtonText = computed(() => '开始调试')
 const showPreviewPanel = computed(() => !selectedDetail.value)
+
+const createRecordId = (taskId) => `${taskId || 'task'}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`
+const mapStatusToNode = (status) => {
+  if (status === STATUS.SUCCEEDED) return 'success'
+  if (status === STATUS.FAILED) return 'error'
+  if (status === STATUS.STARTING) return 'running'
+  return null
+}
+const aggregateNextListStatus = (list = []) => {
+  if (list.some(item => item.status === STATUS.STARTING || item.status === STATUS.UNKNOWN)) return STATUS.STARTING
+  if (list.some(item => item.status === STATUS.FAILED)) return STATUS.FAILED
+  if (list.some(item => item.status === STATUS.SUCCEEDED)) return STATUS.SUCCEEDED
+  return STATUS.UNKNOWN
+}
 
 const startDrag = (e) => {
   if (e.target.closest('input') || e.target.closest('select') || e.target.closest('button')) return
@@ -102,22 +117,28 @@ const stopPreviewAutoRefresh = () => {
   previewTimer = null
 }
 
-const appendEvent = (payload) => {
+const upsertNextList = (payload) => {
   if (!payload) return
   const nextList = Array.isArray(payload.next_list) ? payload.next_list : []
+  const taskId = payload.task_id || Date.now()
   const record = {
-    taskId: payload.task_id || Date.now(),
+    recordId: createRecordId(taskId),
+    taskId,
     name: payload.name || searchValue.value || selectedNodeId.value || '未知节点',
-    nextList: nextList.map(child => ({ ...child, status: STATUS.UNKNOWN })),
-    timestamp: Date.now()
+    nextList: nextList.map(child => ({
+      ...child,
+      status: STATUS.UNKNOWN,
+      reco_id: child.reco_id ?? null
+    })),
+    timestamp: payload.timestamp || Date.now()
   }
-  events.value = [record, ...events.value].slice(0, 200)
-  scheduleNodeResults(record)
-}
 
-const clearPendingResultTimers = () => {
-  pendingResultTimers.forEach(t => clearTimeout(t))
-  pendingResultTimers.length = 0
+  // 每次 next_list 推送都新增一条主任务记录，保留历史记录
+  events.value = [record, ...events.value].slice(0, 200)
+
+  // 推送时将同名节点标记为运行中，便于画布同步
+  const mapped = mapStatusToNode(STATUS.STARTING)
+  if (mapped) emit('update-node-status', { nodeId: record.name, status: mapped })
 }
 
 const normalizeDetailFields = (child) => {
@@ -133,43 +154,87 @@ const normalizeDetailFields = (child) => {
       }))
 }
 
-const updateChildStatus = (record, idx, status) => {
-  events.value = events.value.map(evt => {
-    if (evt.taskId === record.taskId && evt.timestamp === record.timestamp) {
-      const nextList = evt.nextList.map((c, i) => i === idx ? { ...c, status } : c)
-      return { ...evt, nextList }
+const applyRecognition = (payload) => {
+  if (!payload) return
+  const status = payload.status || STATUS.UNKNOWN
+  let matched = false
+  let updatedRecord = null
+  const updatedEvents = [...events.value]
+
+  for (let i = 0; i < updatedEvents.length; i++) {
+    const evt = updatedEvents[i]
+    if (evt.taskId !== payload.task_id) continue
+    matched = true
+    const nextList = [...evt.nextList]
+    let idx = nextList.findIndex(c => c.name === payload.name)
+    if (idx === -1) {
+      nextList.push({
+        name: payload.name,
+        jump_back: false,
+        anchor: false,
+        status: STATUS.UNKNOWN
+      })
+      idx = nextList.length - 1
     }
-    return evt
-  })
+    nextList[idx] = {
+      ...nextList[idx],
+      status,
+      reco_id: payload.reco_id
+    }
+    updatedEvents[i] = { ...evt, nextList }
+    updatedRecord = updatedEvents[i]
+    break
+  }
+
+  if (!matched) {
+    const taskId = payload.task_id || Date.now()
+    updatedRecord = {
+      recordId: createRecordId(taskId),
+      taskId,
+      name: payload.name || '未知节点',
+      nextList: [{
+        name: payload.name,
+        jump_back: false,
+        anchor: false,
+        status,
+        reco_id: payload.reco_id
+      }],
+      timestamp: payload.timestamp || Date.now()
+    }
+    updatedEvents.unshift(updatedRecord)
+  }
+
+  events.value = updatedEvents.slice(0, 200)
+
+  const mapped = mapStatusToNode(status)
+  if (mapped) emit('update-node-status', { nodeId: payload.name, status: mapped })
+
+  if (updatedRecord) {
+    const parentStatus = aggregateNextListStatus(updatedRecord.nextList)
+    const mappedParent = mapStatusToNode(parentStatus)
+    if (mappedParent) emit('update-node-status', { nodeId: updatedRecord.name, status: mappedParent })
+  }
 }
 
-const scheduleNodeResults = (record) => {
-  record.nextList.forEach((child, idx) => {
-    const startDelay = 200 + Math.random() * 600
-    const resultDelay = startDelay + 500 + Math.random() * 1400
-
-    const startTimer = setTimeout(() => updateChildStatus(record, idx, STATUS.STARTING), startDelay)
-    const resultTimer = setTimeout(() => {
-      const status = Math.random() > 0.3 ? STATUS.SUCCEEDED : STATUS.FAILED
-      updateChildStatus(record, idx, status)
-    }, resultDelay)
-
-    pendingResultTimers.push(startTimer, resultTimer)
-  })
+const handleSsePayload = (payload) => {
+  if (!payload || !payload.type) return
+  if (payload.type === 'node_next_list') {
+    upsertNextList(payload)
+  }
+  if (payload.type === 'node_recognition') {
+    applyRecognition(payload)
+  }
 }
 
-const startMockStream = () => {
-  stopMockStream()
-  stopStream = debugApi.subscribeMockNodeStream(appendEvent, {
-    initialNodeId: selectedNodeId.value || searchValue.value
-  })
+const startRealtimeStream = () => {
+  if (isStreamRunning.value) return
+  stopStream = debugApi.subscribeNodeStream(handleSsePayload)
   isStreamRunning.value = true
 }
 
-const stopMockStream = () => {
+const stopRealtimeStream = () => {
   if (stopStream) stopStream()
   stopStream = null
-  clearPendingResultTimers()
   isStreamRunning.value = false
 }
 
@@ -184,30 +249,9 @@ const handleLocate = (id) => {
   if (targetId) emit('locate-node', targetId)
 }
 
-const mockPauseRequest = () => {
-  return new Promise((resolve) => {
-    // 模拟向后端发送暂停请求，后端返回 { success: true }
-    setTimeout(() => resolve({ success: true }), 500)
-  })
-}
-
 const handleStartStream = () => {
-  if (isStreamRunning.value) return
-  events.value = []
-  selectedDetail.value = null
-  startMockStream()
-}
-
-const handlePauseStream = async () => {
-  if (!isStreamRunning.value || isPausing.value) return
-  isPausing.value = true
-  try {
-    const res = await mockPauseRequest()
-    if (res?.success) {
-      stopMockStream()
-    }
-  } finally {
-    isPausing.value = false
+  if (!isStreamRunning.value) {
+    startRealtimeStream()
   }
 }
 
@@ -215,22 +259,20 @@ const handleResetStream = () => {
   events.value = []
   selectedDetail.value = null
   if (isStreamRunning.value) {
-    startMockStream()
+    startRealtimeStream()
   }
 }
 
 const handleActionButton = async () => {
-  if (isPausing.value) return
-  if (isStreamRunning.value) {
-    await handlePauseStream()
-  } else {
-    handleDebugNow()
-    handleStartStream()
-  }
+  handleStartStream()
+  handleDebugNow()
 }
 
 const handleChildClick = (child, item) => {
   if (![STATUS.SUCCEEDED, STATUS.FAILED].includes(child.status)) return
+  if (child.reco_id !== undefined) {
+    console.log('当前节点 reco_id:', child.reco_id)
+  }
   const image = child.debug_image || child.image || child.screenshot || ''
   selectedDetail.value = {
     record: item,
@@ -272,8 +314,9 @@ watch(() => props.visible, (val) => {
     position.value = { x: window.innerWidth - 920, y: 160 }
     events.value = []
     startPreviewAutoRefresh()
+    startRealtimeStream()
   } else {
-    stopMockStream()
+    stopRealtimeStream()
     stopPreviewAutoRefresh()
   }
 })
@@ -291,7 +334,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener('mouseup', stopDrag)
-  stopMockStream()
+  stopRealtimeStream()
   stopPreviewAutoRefresh()
 })
 </script>
@@ -350,7 +393,7 @@ onUnmounted(() => {
             </div>
           </div>
           <div class="text-[10px] text-slate-400 leading-relaxed">
-            右侧调试面板会持续接收伪造的后端事件，JumpBack 节点会被单独标记。
+            右侧调试面板实时接收后端推送的调试事件，JumpBack 节点会被单独标记。
           </div>
         </div>
 
@@ -397,10 +440,8 @@ onUnmounted(() => {
                   class="flex items-center gap-1 px-3 py-2 rounded-lg text-white text-xs font-semibold shadow transition-colors"
                   :class="isStreamRunning ? 'bg-amber-500 hover:bg-amber-600' : 'bg-emerald-500 hover:bg-emerald-600'"
                   @click="handleActionButton"
-                  :disabled="isPausing"
               >
-                <Loader2 v-if="isPausing" :size="16" class="animate-spin"/>
-                <PlayCircle v-else :size="16"/>
+                <PlayCircle :size="16"/>
                 <span>{{ actionButtonText }}</span>
               </button>
             </div>
@@ -419,7 +460,7 @@ onUnmounted(() => {
                 <button
                     class="px-2 py-1 rounded border border-slate-200 text-slate-700 bg-white hover:bg-slate-50"
                     @click="handleResetStream"
-                >重置模拟流</button>
+                >清空调试记录</button>
               </div>
             </div>
           </div>
@@ -431,7 +472,7 @@ onUnmounted(() => {
 
             <div
                 v-for="item in sortedEvents"
-                :key="`${item.taskId}-${item.timestamp}`"
+                :key="item.recordId || `${item.taskId}-${item.timestamp}`"
                 class="bg-white rounded-lg border border-slate-200 shadow-sm p-3 space-y-2"
             >
               <div class="flex items-center justify-between">

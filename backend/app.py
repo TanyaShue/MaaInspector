@@ -5,17 +5,18 @@ import base64
 import mimetypes
 import time
 from io import BytesIO
+from queue import Empty
 from typing import Any, Dict, List, Optional
 
 from PIL import Image
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, Response, stream_with_context
 from flask_cors import CORS
 from maa.resource import Resource
 
 # 假设这些模块依然存在
 from maa.toolkit import Toolkit
 from backend.untils import ResourcesManager
-from backend.untils.maafw import maafw
+from backend.untils.maafw import maafw, debug_broker
 
 app = Flask(__name__)
 CORS(app)
@@ -48,6 +49,11 @@ def _json_response(ok: bool, message: str = "", data: Optional[dict] = None, sta
     if data is not None:
         payload.update(data)
     return jsonify(payload), status
+
+
+def _sse_format(data: dict) -> str:
+    """格式化 SSE 数据"""
+    return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
 def load_config() -> Dict[str, Any]:
@@ -482,6 +488,35 @@ def agent_connect():
 def agent_disconnect():
     states["agent"]["connected"] = False
     return _json_response(True, "Agent Stopped")
+
+
+@app.route("/debug/stream", methods=["GET"])
+def debug_stream():
+    """SSE 调试信息通道，推送节点列表与识别结果"""
+    q = debug_broker.register()
+
+    def event_stream():
+        try:
+            # 首包握手
+            yield _sse_format({"type": "hello", "timestamp": int(time.time() * 1000)})
+            while True:
+                try:
+                    payload = q.get(timeout=15)
+                    yield _sse_format(payload)
+                except Empty:
+                    # 心跳防止连接被中断
+                    yield ": keep-alive\n\n"
+        finally:
+            debug_broker.unregister(q)
+
+    return Response(
+        stream_with_context(event_stream()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 @app.route("/debug/node", methods=["POST"])
 def debug_node():
