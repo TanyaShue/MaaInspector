@@ -135,10 +135,6 @@ const upsertNextList = (payload) => {
 
   // 每次 next_list 推送都新增一条主任务记录，保留历史记录
   events.value = [record, ...events.value].slice(0, 200)
-
-  // 推送时将同名节点标记为运行中，便于画布同步
-  const mapped = mapStatusToNode(STATUS.STARTING)
-  if (mapped) emit('update-node-status', { nodeId: record.name, status: mapped })
 }
 
 const normalizeDetailFields = (child) => {
@@ -208,12 +204,6 @@ const applyRecognition = (payload) => {
 
   const mapped = mapStatusToNode(status)
   if (mapped) emit('update-node-status', { nodeId: payload.name, status: mapped })
-
-  if (updatedRecord) {
-    const parentStatus = aggregateNextListStatus(updatedRecord.nextList)
-    const mappedParent = mapStatusToNode(parentStatus)
-    if (mappedParent) emit('update-node-status', { nodeId: updatedRecord.name, status: mappedParent })
-  }
 }
 
 const handleSsePayload = (payload) => {
@@ -312,11 +302,9 @@ watch(() => props.visible, (val) => {
     selectedNodeId.value = props.initialNodeId || ''
     searchValue.value = props.initialNodeId || ''
     position.value = { x: window.innerWidth - 920, y: 160 }
-    events.value = []
     startPreviewAutoRefresh()
     startRealtimeStream()
   } else {
-    stopRealtimeStream()
     stopPreviewAutoRefresh()
   }
 })

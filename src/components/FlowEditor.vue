@@ -182,8 +182,7 @@ const handleDebugNode = async (nodeId, mode = 'standard') => {
   const node = findNode(nodeId)
   if (!node) return
 
-  // 1. 设置 UI 状态为运行中
-  node.data.status = 'running'
+  // 仅重置结果缓存，状态改由后端 SSE 统一驱动
   node.data._result = null
 
   try {
@@ -206,19 +205,11 @@ const handleDebugNode = async (nodeId, mode = 'standard') => {
     // 4. 调用接口
     const res = await debugApi.runNode(debugPayload)
 
-    // 5. 根据接口返回判断成功/失败
-    if (res && res.success) {
-      node.data.status = 'success'
-    } else {
-      node.data.status = 'failure'
-    }
-
-    // 6. 将完整返回结果写入 _result
+    // 5. 将完整返回结果写入 _result（状态由 SSE 更新）
     node.data._result = res
 
   } catch (error) {
     console.error('Debug failed:', error)
-    node.data.status = 'error'
     node.data._result = {
       success: false,
       error: error.message || 'Network/Server Error'
@@ -241,7 +232,6 @@ const handleUpdateNodeStatus = ({ nodeId, status }) => {
     nodes.value = [...nodes.value]
   }
 }
-// --- Helpers ---
 const handleLocateNode = (nodeId) => {
   nodes.value = nodes.value.map(n => ({ ...n, selected: n.id === nodeId }))
   setTimeout(() => fitView({ nodes: [nodeId], padding: 0.5, maxZoom: 1.5, minZoom: 0.8, duration: 600 }), 50)
