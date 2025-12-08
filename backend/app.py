@@ -531,6 +531,11 @@ def debug_node():
     print(maafw.run_task(id, node))
     return _json_response(True, "debug_return Succest",{})
 
+@app.route("/debug/stop", methods=["POST"])
+def debug_stop():
+    maafw.stop_task()
+    return _json_response(True, "debug_return Succest",{})
+
 
 
 
