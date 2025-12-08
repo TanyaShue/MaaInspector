@@ -41,6 +41,7 @@ const menuItems = computed(() => {
       {label: '调试该节点', action: 'debug_this_node', icon: Bug, color: 'text-amber-600'},
       {label: '仅识别该节点', action: 'debug_this_node_reco', icon: Bug, color: 'text-amber-600'},
       {label: '在调试窗口中调试', action: 'debug_in_panel', icon: Bug, color: 'text-amber-700'},
+      {label: '重新布局任务链', action: 'layout_chain', icon: Move, color: 'text-indigo-600'},
       {type: 'divider'},
       {label: '复制节点', action: 'duplicate', icon: Copy, color: 'text-slate-600'},
       {type: 'divider'},

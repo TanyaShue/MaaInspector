@@ -18,7 +18,7 @@ const {
   onValidateConnection,
   handleConnect, handleEdgesChange, handleNodeUpdate, loadNodes, createNodeObject, applyLayout,
   getNodesData, getImageData, clearTempImageData, clearDirty,
-  setEdgeJumpBack // 引入新功能
+  setEdgeJumpBack, layoutChainFromNode // 引入新功能
 } = useFlowGraph()
 
 const { fitView, removeEdges, findNode, screenToFlowCoordinate } = useVueFlow()
@@ -164,6 +164,11 @@ const handleMenuAction = ({ action, type, data, payload }) => {
             setEdgeJumpBack(data.id, false)
         }
         break
+    case 'layout_chain':
+      if (type === 'node') {
+        layoutChainFromNode(data.id, currentSpacing.value)
+      }
+      break
     case 'layout': applyLayout(currentSpacing.value); break
     case 'changeSpacing': if (payload) { currentSpacing.value = payload; applyLayout(payload) }; break
     case 'changeEdgeType': if (payload) { currentEdgeType.value = payload; edges.value = edges.value.map(e => ({ ...e, type: payload })) }; break
