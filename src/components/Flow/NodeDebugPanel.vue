@@ -135,6 +135,17 @@ const upsertNextList = (payload) => {
 
   // 每次 next_list 推送都新增一条主任务记录，保留历史记录
   events.value = [record, ...events.value].slice(0, 200)
+
+  // 将当前文件中对应节点名称的状态置为 ignored（等待识别）
+  if (nextList.length) {
+    const targetNames = new Set(nextList.map(child => child.name).filter(Boolean))
+    props.nodes.forEach(node => {
+      const nodeName = node.data?.data?.id || node.id
+      if (targetNames.has(nodeName)) {
+        emit('update-node-status', { nodeId: nodeName, status: 'ignored' })
+      }
+    })
+  }
 }
 
 const normalizeDetailFields = (child) => {

@@ -25,7 +25,11 @@ const emit = defineEmits(['open-picker'])
       当前动作无需额外配置。
     </div>
     <div v-else class="rounded-xl border border-slate-100 overflow-hidden">
-      <NodeAction :currentType="currentAction" :form="form" @open-picker="emit('open-picker', $event)" />
+      <NodeAction
+        :currentType="currentAction"
+        :form="form"
+        @open-picker="(...args) => emit('open-picker', ...args)"
+      />
     </div>
   </div>
 </template>

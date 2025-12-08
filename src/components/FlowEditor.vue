@@ -170,8 +170,12 @@ const handleMenuAction = ({ action, type, data, payload }) => {
     case 'reset': fitView({ padding: 0.2, duration: 500 }); break
     case 'clear': nodes.value = []; edges.value = []; break
     case 'search': searchVisible.value = true; break
+    case 'closeSearch': searchVisible.value = false; break
     case 'openDebugPanel':
       debugPanel.value = { visible: true, nodeId: type === 'node' ? data?.id : '' }
+      break
+    case 'closeDebugPanel':
+      debugPanel.value = { ...debugPanel.value, visible: false, nodeId: '' }
       break
     case 'closeAllDetails': closeAllDetailsSignal.value++; break
   }
@@ -360,7 +364,16 @@ const handleCancelDeleteImages = () => { showDeleteImagesModal.value = false; pe
         </div>
       </div>
 
-      <ContextMenu v-if="menu.visible" v-bind="menu" :currentEdgeType="currentEdgeType" :currentSpacing="currentSpacing" @close="closeMenu" @action="handleMenuAction"/>
+      <ContextMenu
+          v-if="menu.visible"
+          v-bind="menu"
+          :currentEdgeType="currentEdgeType"
+          :currentSpacing="currentSpacing"
+          :debug-panel-visible="debugPanel.visible"
+          :search-visible="searchVisible"
+          @close="closeMenu"
+          @action="handleMenuAction"
+      />
     </VueFlow>
     <NodeSearch :visible="searchVisible" :nodes="nodes" :current-filename="currentFilename" :current-source="currentSource" @close="searchVisible = false" @locate-node="handleLocateNode" @switch-file="handleRequestSwitch"/>
     <NodeDebugPanel

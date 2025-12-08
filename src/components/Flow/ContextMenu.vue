@@ -13,7 +13,9 @@ const props = defineProps({
   type: {type: String, required: true}, // 'node' | 'edge' | 'pane'
   data: {type: Object, default: null},
   currentEdgeType: {type: String, default: 'smoothstep'},
-  currentSpacing: {type: String, default: 'normal'}
+  currentSpacing: {type: String, default: 'normal'},
+  debugPanelVisible: {type: Boolean, default: false},
+  searchVisible: {type: Boolean, default: false}
 })
 
 const emit = defineEmits(['close', 'action'])
@@ -63,6 +65,13 @@ const menuItems = computed(() => {
     return items
 
   } else {
+    const searchMenuItem = props.searchVisible
+        ? {label: '关闭搜索窗口', action: 'closeSearch', icon: Search, color: 'text-emerald-600'}
+        : {label: '搜索节点', action: 'search', icon: Search, color: 'text-emerald-600'}
+    const debugMenuItem = props.debugPanelVisible
+        ? {label: '关闭调试窗口', action: 'closeDebugPanel', icon: Bug, color: 'text-amber-600'}
+        : {label: '打开调试窗口', action: 'openDebugPanel', icon: Bug, color: 'text-amber-600'}
+
     return [
       {
         key: 'add-node',
@@ -74,8 +83,8 @@ const menuItems = computed(() => {
         submenuAction: 'add'
       },
       {type: 'divider'},
-      {label: '搜索节点', action: 'search', icon: Search, color: 'text-emerald-600'},
-      {label: '打开调试窗口', action: 'openDebugPanel', icon: Bug, color: 'text-amber-600'},
+      searchMenuItem,
+      debugMenuItem,
       {label: '关闭所有节点面板', action: 'closeAllDetails', icon: FolderClosed, color: 'text-slate-600'},
       {type: 'divider'},
       {

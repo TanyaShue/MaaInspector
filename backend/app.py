@@ -537,8 +537,5 @@ def debug_stop():
     return _json_response(True, "debug_return Succest",{})
 
 
-
-
-
 if __name__ == "__main__":
     app.run(port=5001, debug=True)
