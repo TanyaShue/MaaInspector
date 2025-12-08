@@ -6,6 +6,13 @@ import {
 } from 'lucide-vue-next'
 import { deviceApi, debugApi } from '../../services/api'
 
+const STATUS = {
+  UNKNOWN: 'unknown',
+  STARTING: 'starting',
+  SUCCEEDED: 'succeeded',
+  FAILED: 'failed'
+}
+
 const props = defineProps({
   visible: { type: Boolean, default: false },
   nodes: { type: Array, default: () => [] },
@@ -28,6 +35,7 @@ const isLoadingPreview = ref(false)
 const events = ref([])
 const isStreamRunning = ref(false)
 const isPausing = ref(false)
+const selectedDetail = ref(null)
 
 let stopStream = null
 let previewTimer = null
@@ -50,6 +58,7 @@ const actionButtonText = computed(() => {
   if (isPausing.value) return '暂停中...'
   return isStreamRunning.value ? '暂停调试' : '启动调试'
 })
+const showPreviewPanel = computed(() => !selectedDetail.value)
 
 const startDrag = (e) => {
   if (e.target.closest('input') || e.target.closest('select') || e.target.closest('button')) return
@@ -99,7 +108,7 @@ const appendEvent = (payload) => {
   const record = {
     taskId: payload.task_id || Date.now(),
     name: payload.name || searchValue.value || selectedNodeId.value || '未知节点',
-    nextList: nextList.map(child => ({ ...child, status: 'pending' })),
+    nextList: nextList.map(child => ({ ...child, status: STATUS.UNKNOWN })),
     timestamp: Date.now()
   }
   events.value = [record, ...events.value].slice(0, 200)
@@ -111,20 +120,41 @@ const clearPendingResultTimers = () => {
   pendingResultTimers.length = 0
 }
 
+const normalizeDetailFields = (child) => {
+  if (!child) return []
+  if (Array.isArray(child.detailList)) return child.detailList
+  if (Array.isArray(child.details)) return child.details
+  const skipKeys = ['name', 'status', 'jump_back', 'debug_image', 'image', 'screenshot']
+  return Object.entries(child)
+      .filter(([k]) => !skipKeys.includes(k))
+      .map(([label, value]) => ({
+        label,
+        value: typeof value === 'object' ? JSON.stringify(value) : String(value ?? '')
+      }))
+}
+
+const updateChildStatus = (record, idx, status) => {
+  events.value = events.value.map(evt => {
+    if (evt.taskId === record.taskId && evt.timestamp === record.timestamp) {
+      const nextList = evt.nextList.map((c, i) => i === idx ? { ...c, status } : c)
+      return { ...evt, nextList }
+    }
+    return evt
+  })
+}
+
 const scheduleNodeResults = (record) => {
   record.nextList.forEach((child, idx) => {
-    const delay = 500 + Math.random() * 1800
-    const timer = setTimeout(() => {
-      const status = Math.random() > 0.3 ? 'success' : 'fail'
-      events.value = events.value.map(evt => {
-        if (evt.taskId === record.taskId && evt.timestamp === record.timestamp) {
-          const nextList = evt.nextList.map((c, i) => i === idx ? { ...c, status } : c)
-          return { ...evt, nextList }
-        }
-        return evt
-      })
-    }, delay)
-    pendingResultTimers.push(timer)
+    const startDelay = 200 + Math.random() * 600
+    const resultDelay = startDelay + 500 + Math.random() * 1400
+
+    const startTimer = setTimeout(() => updateChildStatus(record, idx, STATUS.STARTING), startDelay)
+    const resultTimer = setTimeout(() => {
+      const status = Math.random() > 0.3 ? STATUS.SUCCEEDED : STATUS.FAILED
+      updateChildStatus(record, idx, status)
+    }, resultDelay)
+
+    pendingResultTimers.push(startTimer, resultTimer)
   })
 }
 
@@ -164,6 +194,7 @@ const mockPauseRequest = () => {
 const handleStartStream = () => {
   if (isStreamRunning.value) return
   events.value = []
+  selectedDetail.value = null
   startMockStream()
 }
 
@@ -182,6 +213,7 @@ const handlePauseStream = async () => {
 
 const handleResetStream = () => {
   events.value = []
+  selectedDetail.value = null
   if (isStreamRunning.value) {
     startMockStream()
   }
@@ -198,7 +230,18 @@ const handleActionButton = async () => {
 }
 
 const handleChildClick = (child, item) => {
-  console.info('[DebugPanel] 节点点击', { parent: item, child })
+  if (![STATUS.SUCCEEDED, STATUS.FAILED].includes(child.status)) return
+  const image = child.debug_image || child.image || child.screenshot || ''
+  selectedDetail.value = {
+    record: item,
+    child,
+    image,
+    fields: normalizeDetailFields(child)
+  }
+}
+
+const handleDetailClose = () => {
+  selectedDetail.value = null
 }
 
 const handleOptionSelect = (opt) => {
@@ -292,7 +335,10 @@ onUnmounted(() => {
       </div>
 
       <div class="flex flex-1 min-h-0">
-        <div class="w-[240px] bg-slate-50 border-r border-slate-200 p-3 flex flex-col gap-3">
+        <div
+            v-if="showPreviewPanel"
+            class="w-[240px] bg-slate-50 border-r border-slate-200 p-3 flex flex-col gap-3"
+        >
           <div class="text-xs text-slate-500 font-semibold flex items-center gap-2">
             <Terminal :size="14" class="text-amber-500"/> 设备预览
           </div>
@@ -412,9 +458,11 @@ onUnmounted(() => {
                     class="px-2 py-1 rounded-full text-[12px] font-mono border transition-colors flex items-center gap-2"
                     :class="[
                       child.jump_back ? 'bg-purple-50 text-purple-600 border-purple-100' : 'bg-blue-50 text-blue-600 border-blue-100',
-                      child.status === 'pending'
-                        ? 'opacity-80'
-                        : child.status === 'success'
+                    child.status === STATUS.UNKNOWN
+                      ? 'opacity-60'
+                      : child.status === STATUS.STARTING
+                        ? 'ring-1 ring-amber-200'
+                        : child.status === STATUS.SUCCEEDED
                           ? (child.jump_back ? 'ring-1 ring-purple-200' : 'ring-1 ring-blue-200')
                           : 'ring-1 ring-rose-200'
                     ]"
@@ -422,8 +470,9 @@ onUnmounted(() => {
                 >
                   <span>{{ child.name }}</span>
                   <span class="text-[11px] flex items-center gap-1">
-                    <Loader2 v-if="child.status === 'pending'" :size="12" class="animate-spin"/>
-                    <CheckCircle2 v-else-if="child.status === 'success'" :size="14" class="text-emerald-600"/>
+                    <Activity v-if="child.status === STATUS.UNKNOWN" :size="14" class="text-slate-400"/>
+                    <Loader2 v-else-if="child.status === STATUS.STARTING" :size="12" class="animate-spin text-amber-600"/>
+                    <CheckCircle2 v-else-if="child.status === STATUS.SUCCEEDED" :size="14" class="text-emerald-600"/>
                     <XCircle v-else :size="14" class="text-rose-600"/>
                   </span>
                 </button>
@@ -431,6 +480,66 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
+
+        <transition name="detail-slide">
+          <div
+              v-if="selectedDetail"
+              class="w-[320px] border-l border-slate-200 bg-white flex flex-col min-h-0"
+          >
+            <div class="flex items-center justify-between px-3 py-2 border-b border-slate-200 bg-slate-50">
+              <div class="flex flex-col">
+                <span class="text-sm font-semibold text-slate-700">{{ selectedDetail.child.name }}</span>
+                <span class="text-[11px] text-slate-500">任务 #{{ selectedDetail.record.taskId }}</span>
+              </div>
+              <button
+                  class="px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-100"
+                  @click="handleDetailClose"
+              >
+                返回
+              </button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto custom-scrollbar">
+              <div class="p-3 space-y-3">
+                <div class="text-xs text-slate-500 font-semibold flex items-center gap-2">
+                  <Activity :size="14" class="text-amber-500"/> 调试快照
+                </div>
+                <div class="relative w-full aspect-[4/5] bg-slate-50 border border-dashed border-slate-200 rounded-lg overflow-hidden flex items-center justify-center">
+                  <img
+                      v-if="selectedDetail.image"
+                      :src="selectedDetail.image"
+                      alt="debug detail"
+                      class="w-full h-full object-contain"
+                  />
+                  <div v-else class="text-xs text-slate-400 flex flex-col items-center gap-1">
+                    <Bug :size="18" class="text-amber-500"/>
+                    <span>暂无调试截图</span>
+                  </div>
+                </div>
+
+                <div class="text-xs text-slate-500 font-semibold flex items-center gap-2 pt-2">
+                  <Terminal :size="14" class="text-amber-500"/> 调试结果
+                </div>
+                <div class="grid gap-2" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));">
+                  <div
+                      v-for="(field, idx) in selectedDetail.fields"
+                      :key="idx"
+                      class="p-2 rounded border border-slate-200 bg-slate-50"
+                  >
+                    <div class="text-[11px] text-slate-500 truncate">{{ field.label }}</div>
+                    <div class="text-sm text-slate-700 break-words">{{ field.value || '—' }}</div>
+                  </div>
+                  <div
+                      v-if="!selectedDetail.fields || selectedDetail.fields.length === 0"
+                      class="text-xs text-slate-400"
+                  >
+                    暂无可显示的调试结果。
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </transition>
       </div>
     </div>
   </transition>
@@ -446,6 +555,16 @@ onUnmounted(() => {
 }
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
+}
+
+.detail-slide-enter-active,
+.detail-slide-leave-active {
+  transition: all 180ms ease;
+}
+.detail-slide-enter-from,
+.detail-slide-leave-to {
+  opacity: 0;
+  transform: translateX(12px);
 }
 </style>
 

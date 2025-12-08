@@ -35,6 +35,13 @@ states = {"device": {"connected": False}, "resource": {"loaded": False}, "agent"
 def _norm_path(p: Optional[str]) -> Optional[str]:
     return os.path.normpath(p) if p else None
 
+def convert_node(node: dict) -> dict:
+    if not node or "id" not in node:
+        return {}
+
+    new_dict = node.copy()
+    node_id = new_dict.pop("id")
+    return {node_id: new_dict}
 
 def _json_response(ok: bool, message: str = "", data: Optional[dict] = None, status: int = 200):
     payload = {"success": ok, "message": message}
@@ -451,7 +458,10 @@ def device_disconnect():
 
 @app.route("/device/screenshot", methods=["GET"])
 def device_screenshot():
-    b64 = encode_pil_image_to_base64(maafw.screencap())
+    b64=None
+    s=maafw.screencap()
+    if s is not None:
+        b64 = encode_pil_image_to_base64(s)
     if b64:
         return _json_response(True, "OK", {"image": b64, "size": [1280, 720]})
     return _json_response(False, "No image", status=404)
@@ -487,13 +497,6 @@ def debug_node():
     return _json_response(True, "debug_return Succest",{})
 
 
-def convert_node(node: dict) -> dict:
-    if not node or "id" not in node:
-        return {}
-
-    new_dict = node.copy()       # 复制避免修改原数据
-    node_id = new_dict.pop("id") # 拿出 id
-    return {node_id: new_dict}
 
 
 

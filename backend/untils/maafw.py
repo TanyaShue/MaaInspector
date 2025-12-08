@@ -118,7 +118,7 @@ class MaaFW:
         if not self.tasker.inited:
             return (False, "Failed to init MaaFramework tasker")
         self.tasker.add_context_sink(MyNotificationHandler())
-        self.tasker.add_sink(NotificationHandler())
+        # self.tasker.add_sink(NotificationHandler())
         self.tasker.post_task(entry, pipeline_override)
 
         return None
@@ -174,9 +174,7 @@ class MyNotificationHandler(ContextEventSink):
     ):
         if noti_type != NotificationType.Starting:
             return
-
-        # 使用信号发送数据，而不是直接调用回调
-        print(detail)
+        print(f"开始识别:{detail}")
 
     def on_node_recognition(
             self,
@@ -184,9 +182,13 @@ class MyNotificationHandler(ContextEventSink):
             noti_type: ContextEventSink,
             detail: ContextEventSink.NodeRecognitionDetail,
     ):
-
+        if noti_type == NotificationType.Starting:
+            print(f"当前开始的节点的名称为:{detail.name},完整参数为:"
+                  f"{detail}")
         if noti_type == NotificationType.Succeeded:
-            print(detail)
+            print(f"当前成功识别的节点的名称为:{detail.name},识别id为:{detail.reco_id}")
+        if noti_type == NotificationType.Failed:
+            print(f"当前识别失败的节点的名称为:{detail.name},识别id为:{detail.reco_id}")
 
 class NotificationHandler(TaskerEventSink):
     """通知处理器类，处理识别事件"""
