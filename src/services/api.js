@@ -58,6 +58,8 @@ export const debugApi = {
     method: 'POST',
     body: JSON.stringify({ ...nodeData, ...context })
   }),
+  // 暂停调试任务
+  stop: () => request('/debug/stop', { method: 'POST' }),
 
   /**
    * 真实后端 SSE 调试流

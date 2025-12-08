@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import {
-  X, Bug, PlayCircle, MapPin, Loader2, Search as SearchIcon,
+  X, Bug, PlayCircle, PauseCircle, MapPin, Loader2, Search as SearchIcon,
   Terminal, Activity, CheckCircle2, XCircle
 } from 'lucide-vue-next'
 import { deviceApi, debugApi } from '../../services/api'
@@ -269,6 +269,14 @@ const handleActionButton = async () => {
   handleDebugNow()
 }
 
+const handlePauseDebug = async () => {
+  try {
+    await debugApi.stop()
+  } catch (e) {
+    console.warn('[DebugPanel] 暂停调试失败', e)
+  }
+}
+
 const handleChildClick = (child, item) => {
   if (![STATUS.SUCCEEDED, STATUS.FAILED].includes(child.status)) return
   if (child.reco_id !== undefined) {
@@ -435,14 +443,23 @@ onUnmounted(() => {
                   </button>
                 </div>
               </div>
-              <button
-                  class="flex items-center gap-1 px-3 py-2 rounded-lg text-white text-xs font-semibold shadow transition-colors"
-                  :class="isStreamRunning ? 'bg-amber-500 hover:bg-amber-600' : 'bg-emerald-500 hover:bg-emerald-600'"
-                  @click="handleActionButton"
-              >
-                <PlayCircle :size="16"/>
-                <span>{{ actionButtonText }}</span>
-              </button>
+              <div class="flex items-center gap-2">
+                <button
+                    class="flex items-center gap-1 px-3 py-2 rounded-lg text-white text-xs font-semibold shadow transition-colors"
+                    :class="isStreamRunning ? 'bg-amber-500 hover:bg-amber-600' : 'bg-emerald-500 hover:bg-emerald-600'"
+                    @click="handleActionButton"
+                >
+                  <PlayCircle :size="16"/>
+                  <span>{{ actionButtonText }}</span>
+                </button>
+                <button
+                    class="flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-semibold shadow transition-colors border border-slate-200 text-slate-700 bg-white hover:bg-slate-50"
+                    @click="handlePauseDebug"
+                >
+                  <PauseCircle :size="16" class="text-amber-600"/>
+                  <span>暂停调试</span>
+                </button>
+              </div>
             </div>
             <div class="flex items-center gap-3 text-[11px] text-slate-500">
               <div class="flex items-center gap-1">
