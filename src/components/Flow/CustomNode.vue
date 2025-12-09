@@ -2,7 +2,7 @@
 import { computed, ref, inject, watch } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import NodeDetails from './NodeDetails.vue'
-import { NODE_CONFIG_MAP, ACTION_CONFIG_MAP, STATUS_ICONS } from '../../utils/nodeLogic.js'
+import { NODE_CONFIG_MAP, ACTION_CONFIG_MAP, STATUS_ICONS } from '../../utils/nodeLogic'
 
 const props = defineProps({
   id: { type: String, required: true },

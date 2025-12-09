@@ -9,7 +9,7 @@ import FocusTab from './NodeDetailsPanels/FocusTab.vue'
 import RecognitionTab from './NodeDetailsPanels/RecognitionTab.vue'
 import ActionTab from './NodeDetailsPanels/ActionTab.vue'
 import JsonPreviewTab from './NodeDetailsPanels/JsonPreviewTab.vue'
-import { useNodeForm, recognitionTypes, actionTypes } from '../../utils/nodeLogic.js'
+import { useNodeForm, recognitionTypes, actionTypes } from '../../utils/nodeLogic'
 
 const props = defineProps({
   visible: Boolean,

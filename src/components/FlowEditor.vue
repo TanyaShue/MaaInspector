@@ -10,8 +10,8 @@ import NodeSearch from './Flow/NodeSearch.vue'
 import NodeDebugPanel from './Flow/NodeDebugPanel.vue'
 import SaveConfirmModal from './Flow/Modals/SaveConfirmModal.vue'
 import DeleteImagesConfirmModal from './Flow/Modals/DeleteImagesConfirmModal.vue'
-import { useFlowGraph } from '../utils/useFlowGraph.js'
-import { resourceApi ,debugApi} from '../services/api.js'
+import { useFlowGraph } from '../utils/useFlowGraph'
+import { resourceApi ,debugApi} from '../services/api'
 
 const {
   nodes, edges, nodeTypes, currentEdgeType, currentSpacing, isDirty, currentFilename, currentSource,

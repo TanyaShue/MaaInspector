@@ -3,7 +3,7 @@ import {ref} from 'vue'
 import {
   Crop, Crosshair, ChevronDown, Image as ImageIcon, ScanText
 } from 'lucide-vue-next'
-import { orderByOptions, detectorOptions } from '../../../utils/nodeLogic.js'
+import { orderByOptions, detectorOptions } from '../../../utils/nodeLogic'
 
 const props = defineProps({
   currentType: String,

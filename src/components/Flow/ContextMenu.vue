@@ -4,8 +4,8 @@ import {
   Trash2, Copy, Edit, PlusCircle, RefreshCw, XCircle, ChevronRight,
   Check, Bug, Scissors, Search, FolderClosed, Repeat, ArrowRightCircle, Move
 } from 'lucide-vue-next'
-import { recognitionMenuOptions } from '../../utils/nodeLogic.js'
-import { EDGE_TYPE_OPTIONS, SPACING_TYPE_OPTIONS } from '../../utils/flowOptions.js'
+import { recognitionMenuOptions } from '../../utils/nodeLogic'
+import { EDGE_TYPE_OPTIONS, SPACING_TYPE_OPTIONS } from '../../utils/flowOptions'
 
 const props = defineProps({
   x: {type: Number, required: true},
