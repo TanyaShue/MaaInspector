@@ -1,4 +1,5 @@
 import { Activity, Move } from 'lucide-vue-next'
+import { SPACING_OPTIONS } from './useLayout.js'
 
 // 画布连线类型选项（用于菜单与状态保持）
 export const EDGE_TYPE_OPTIONS = [
@@ -14,9 +15,5 @@ export const SPACING_TYPE_OPTIONS = [
 ]
 
 // Dagre 布局所需的间距配置
-export const SPACING_OPTIONS = {
-  compact: { ranksep: 40, nodesep: 30 },
-  normal: { ranksep: 80, nodesep: 60 },
-  loose: { ranksep: 120, nodesep: 150 }
-}
+export { SPACING_OPTIONS }
 

@@ -529,12 +529,17 @@ def debug_node():
     print(node)
     print(data.get("debug_mode"))
     print(maafw.run_task(id, node))
-    return _json_response(True, "debug_return Succest",{})
+    return _json_response(True, "debug_return",{})
 
 @app.route("/debug/stop", methods=["POST"])
 def debug_stop():
     maafw.stop_task()
-    return _json_response(True, "debug_return Succest",{})
+    return _json_response(True, "debug_return",{})
+
+@app.route("/debug/status", methods=["POST"])
+def debug_status():
+    running=maafw.tasker.running
+    return _json_response(True, "debug_return_running", {"running":running})
 
 
 if __name__ == "__main__":

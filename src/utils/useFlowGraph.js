@@ -23,7 +23,10 @@ export function useFlowGraph() {
   }
 
   const { addEdges, removeEdges, findNode, fitView } = useVueFlow()
-  const { layout } = useLayout()
+  const {
+    layout, layoutWithSpacing, applyLayoutOnRefs,
+    applyOrderedChainLayout, getSpacingConfig
+  } = useLayout()
 
   // --- Helpers ---
 
@@ -72,8 +75,8 @@ export function useFlowGraph() {
   const onValidateConnection = (connection) => {
     if (connection.source === connection.target) return false
     if (connection.sourceHandle === 'in') return false
-    if (connection.targetHandle !== 'in') return false
-    return true
+    return connection.targetHandle === 'in';
+
   }
 
   // --- 核心逻辑 2: 创建节点 ---
@@ -366,7 +369,7 @@ export function useFlowGraph() {
       })
     }
 
-    const layoutedNodes = layout(newNodes, newEdges, SPACING_OPTIONS[currentSpacing.value])
+    const layoutedNodes = layoutWithSpacing(newNodes, newEdges, getSpacingConfig())
     nodes.value = layoutedNodes
     edges.value = newEdges
 
@@ -377,92 +380,12 @@ export function useFlowGraph() {
     setTimeout(() => fitView({ padding: 0.2, duration: 800 }), 50)
   }
 
-  /**
-   * 以指定节点为根重新布局任务链
-   * 1) 仅依据 next/on_error 顺序逐层铺开
-   * 2) 链上节点优先布局；其余节点单独布局后右移放置
-   */
   const layoutTaskChain = (rootId) => {
-    if (!rootId) return
-    const root = findNode(rootId)
-    if (!root) return
+    const result = applyOrderedChainLayout(nodes, edges, rootId, currentSpacing.value)
+    if (!result) return
 
-    const spacing = SPACING_OPTIONS[currentSpacing.value] || { ranksep: 80, nodesep: 140 }
-    const normalizeTargets = (val) => {
-      if (!val && val !== 0) return []
-      const list = Array.isArray(val) ? val : [val]
-      return list
-        .map(v => (typeof v === 'string' && v.startsWith('[JumpBack]')) ? v.replace('[JumpBack]', '') : v)
-        .filter(Boolean)
-    }
-
-    // 收集链上节点（按层级保持顺序）
-    const visited = new Set()
-    const levels = []
-    let currentLevel = [rootId]
-    visited.add(rootId)
-
-    while (currentLevel.length) {
-      levels.push(currentLevel)
-      const nextLevel = []
-
-      currentLevel.forEach(nodeId => {
-        const node = findNode(nodeId)
-        const data = node?.data?.data || {}
-        const orderedChildren = [
-          ...normalizeTargets(data.next),
-          ...normalizeTargets(data.on_error)
-        ]
-
-        orderedChildren.forEach(childId => {
-          if (visited.has(childId)) return
-          visited.add(childId)
-          nextLevel.push(childId)
-        })
-      })
-
-      currentLevel = nextLevel
-    }
-
-    // 给链上节点按层级与顺序放置位置
-    const chainPositions = {}
-    levels.forEach((levelNodes, depth) => {
-      const count = levelNodes.length || 1
-      const totalWidth = (count - 1) * spacing.nodesep
-      const startX = -totalWidth / 2
-      levelNodes.forEach((nodeId, index) => {
-        chainPositions[nodeId] = {
-          x: startX + index * spacing.nodesep,
-          y: depth * spacing.ranksep
-        }
-      })
-    })
-
-    // 其余节点单独布局后整体右移，避免遮挡链
-    const remainingNodes = nodes.value.filter(n => !visited.has(n.id))
-    let remainingPositions = {}
-    if (remainingNodes.length) {
-      const remainingIds = new Set(remainingNodes.map(n => n.id))
-      const remainingEdges = edges.value.filter(e => remainingIds.has(e.source) && remainingIds.has(e.target))
-      const layouted = layout(remainingNodes, remainingEdges, spacing)
-      const chainXs = Object.values(chainPositions).map(p => p.x)
-      const offsetX = (chainXs.length ? Math.max(...chainXs) : 0) + spacing.nodesep * 2
-      layouted.forEach(n => {
-        remainingPositions[n.id] = {
-          x: (n.position?.x || 0) + offsetX,
-          y: n.position?.y || 0
-        }
-      })
-    }
-
-    // 应用新坐标
-    nodes.value = nodes.value.map(n => {
-      if (chainPositions[n.id]) return { ...n, position: chainPositions[n.id] }
-      if (remainingPositions[n.id]) return { ...n, position: remainingPositions[n.id] }
-      return n
-    })
-
-    setTimeout(() => fitView({ padding: 0.25, duration: 600 }), 50)
+    const { chainIds } = result
+    setTimeout(() => fitView({ nodes: Array.from(chainIds), padding: 0.25, duration: 600 }), 50)
   }
 
   const getImageData = () => {
@@ -489,75 +412,12 @@ export function useFlowGraph() {
     nodes.value = [...nodes.value]
   }
 
-  const normalizeId = (raw) => {
-    if (typeof raw !== 'string') return raw
-    return raw.startsWith('[JumpBack]') ? raw.replace('[JumpBack]', '') : raw
-  }
-
-  const getOrderedChildren = (nodeId) => {
-    const node = findNode(nodeId)
-    if (!node || !node.data?.data) return []
-    const data = node.data.data
-    const toArray = (val) => Array.isArray(val) ? val : (val ? [val] : [])
-    const nextList = toArray(data.next)
-    const onErrorList = toArray(data.on_error)
-    const merged = [...nextList, ...onErrorList].map(normalizeId).filter(Boolean)
-    const dedup = []
-    merged.forEach(id => { if (!dedup.includes(id)) dedup.push(id) })
-    return dedup
-  }
-
-  const buildComponentSet = (startId) => {
-    const component = new Set()
-    const queue = [startId]
-    const adjacency = {}
-    edges.value.forEach(e => {
-      if (!adjacency[e.source]) adjacency[e.source] = new Set()
-      if (!adjacency[e.target]) adjacency[e.target] = new Set()
-      adjacency[e.source].add(e.target)
-      adjacency[e.target].add(e.source)
-    })
-
-    while (queue.length) {
-      const id = queue.shift()
-      if (component.has(id)) continue
-      component.add(id)
-      const neighbours = adjacency[id]
-      if (neighbours) {
-        neighbours.forEach(n => { if (!component.has(n)) queue.push(n) })
-      }
-    }
-    return component
-  }
-
   const layoutChainFromNode = (startId, spacingKey = currentSpacing.value) => {
-    if (!startId) return
-    const targetNode = findNode(startId)
-    if (!targetNode) return
+    const result = applyOrderedChainLayout(nodes, edges, startId, spacingKey)
+    if (!result) return
 
-    const spacing = SPACING_OPTIONS[spacingKey] || SPACING_OPTIONS.normal || { ranksep: 80, nodesep: 60 }
-    const component = buildComponentSet(startId)
-
-    // 只布局与起点同组件的节点，保持与全局自动布局一致的间距配置
-    const componentNodes = nodes.value.filter(n => component.has(n.id))
-    const componentEdges = edges.value.filter(e => component.has(e.source) && component.has(e.target))
-    const laidOut = layout(componentNodes, componentEdges, spacing)
-
-    const positions = {}
-    const rootPos = targetNode.position || { x: 0, y: 0 }
-    const rootLayoutPos = laidOut.find(n => n.id === startId)?.position || { x: 0, y: 0 }
-    const offsetX = rootPos.x - rootLayoutPos.x
-    const offsetY = rootPos.y - rootLayoutPos.y
-
-    laidOut.forEach(n => {
-      positions[n.id] = {
-        x: (n.position?.x || 0) + offsetX,
-        y: (n.position?.y || 0) + offsetY
-      }
-    })
-
-    nodes.value = nodes.value.map(node => positions[node.id] ? { ...node, position: positions[node.id] } : node)
-    setTimeout(() => fitView({ nodes: Array.from(component), padding: 0.2, duration: 600 }), 50)
+    const { chainIds } = result
+    setTimeout(() => fitView({ nodes: Array.from(chainIds), padding: 0.25, duration: 600 }), 50)
   }
 
   return {
@@ -566,7 +426,7 @@ export function useFlowGraph() {
     loadNodes, getNodesData, getImageData, clearTempImageData,
     setEdgeJumpBack, layoutTaskChain,
     clearDirty: () => originalDataSnapshot.value = JSON.stringify(getNodesData()),
-    layout, applyLayout: (k) => { nodes.value = layout(nodes.value, edges.value, SPACING_OPTIONS[k]); setTimeout(() => fitView({ padding: 0.2, duration: 500 }), 50) },
+    layout, applyLayout: (k) => { applyLayoutOnRefs(nodes, edges, k || currentSpacing.value); setTimeout(() => fitView({ padding: 0.2, duration: 500 }), 50) },
     layoutChainFromNode
   }
 }
