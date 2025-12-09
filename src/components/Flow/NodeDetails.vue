@@ -347,6 +347,7 @@ watch(() => props.visible, (val) => {
             :action-types="actionTypes"
             :current-action="currentAction"
             :is-action-dropdown-open="dropdownStates.action"
+            :form="formMethods"
             @update:editingId="handleUpdateEditingId"
             @confirm-id-change="confirmIdChange"
             @toggle-dropdown="toggleDropdown"

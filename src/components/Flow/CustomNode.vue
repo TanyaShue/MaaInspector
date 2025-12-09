@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, inject, watch, type Ref } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
+import { Anchor as AnchorIcon } from 'lucide-vue-next'
 import NodeDetails from './NodeDetails.vue'
 import { NODE_CONFIG_MAP, ACTION_CONFIG_MAP, STATUS_ICONS } from '../../utils/nodeLogic'
 import type { FlowBusinessData, FlowNodeMeta, TemplateImage, NodeUpdatePayload } from '../../utils/flowTypes'
@@ -20,6 +21,7 @@ const config = computed(() => NODE_CONFIG_MAP[props.data.type] || NODE_CONFIG_MA
 const availableTypes = Object.keys(NODE_CONFIG_MAP).filter(t => t !== 'Unknown')
 
 const businessData = computed<FlowBusinessData>(() => (props.data.data || {}) as FlowBusinessData)
+const isAnchor = computed(() => !!businessData.value.anchor)
 
 const currentActionConfig = computed(() => {
   const actionKey = businessData.value.action as string | undefined
@@ -113,7 +115,10 @@ const contentHeightClass = computed(() => {
           <component v-if="config.icon" :is="config.icon" :size="18"/>
         </div>
         <div>
-          <div class="font-bold text-slate-700 text-sm truncate max-w-[150px]" :title="data.id">{{ data.id }}</div>
+          <div class="font-bold text-slate-700 text-sm truncate max-w-[160px] flex items-center gap-1" :title="data.id">
+            <span class="truncate">{{ data.id }}</span>
+            <AnchorIcon v-if="isAnchor" :size="12" class="text-amber-500 shrink-0" title="锚点节点" />
+          </div>
           <div class="text-[10px] text-slate-400 font-mono flex items-center gap-1">{{ config.label }}</div>
         </div>
       </div>

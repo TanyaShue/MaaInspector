@@ -43,15 +43,6 @@ const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.
       <label class="inline-flex items-center gap-1.5 cursor-pointer group">
         <input
           type="checkbox"
-          :checked="getValue('is_sub', false)"
-          @change="setValue('is_sub', getChecked($event))"
-          class="w-3.5 h-3.5 rounded text-indigo-600"
-        />
-        <span class="text-[11px] text-slate-600">子节点</span>
-      </label>
-      <label class="inline-flex items-center gap-1.5 cursor-pointer group">
-        <input
-          type="checkbox"
           :checked="getValue('inverse', false)"
           @change="setValue('inverse', getChecked($event))"
           class="w-3.5 h-3.5 rounded text-indigo-600"

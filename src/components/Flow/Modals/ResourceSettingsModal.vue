@@ -134,7 +134,8 @@ const save = () => {
             <div
                 class="flex-1 overflow-y-auto border border-slate-200 rounded-lg bg-slate-50 p-1 space-y-1 custom-scrollbar">
               <div v-for="(path, pIdx) in editingProfiles[editProfIndex].paths" :key="pIdx"
-                   class="flex items-center gap-2 bg-white p-2 rounded shadow-sm border border-slate-100 group">
+                   class="flex items-center gap-2 bg-white p-2 rounded shadow-sm border border-slate-100 group"
+                   :title="path">
                 <span class="text-[10px] font-mono text-slate-400 w-4 text-center">{{ pIdx + 1 }}</span>
                 <input v-model="editingProfiles[editProfIndex].paths[pIdx]"
                        class="flex-1 text-xs border-none outline-none p-0 text-slate-600 placeholder:text-slate-300"

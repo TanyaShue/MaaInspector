@@ -21,6 +21,7 @@ export interface FlowBusinessData {
   on_error?: string | string[]
   timeout_next?: string | string[]
   template?: string | string[]
+  anchor?: boolean
   [key: string]: unknown
 }
 

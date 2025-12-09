@@ -142,12 +142,14 @@ export const focusEventTypes: string[] = [
 
 export const DEFAULTS: FlowBusinessData = {
   recognition: 'DirectHit', action: 'DoNothing', next: [], on_error: [],
-  is_sub: false, rate_limit: 1000, timeout: 20000, inverse: false, enabled: true,
+  rate_limit: 1000, timeout: 20000, inverse: false, enabled: true, anchor: false,
   pre_delay: 200, post_delay: 200, pre_wait_freezes: 0, post_wait_freezes: 0,
   roi: [0, 0, 0, 0], roi_offset: [0, 0, 0, 0], index: 0, order_by: 'Horizontal',
   threshold: 0.7, method: 5, count: 4, detector: 'SIFT', ratio: 0.6,
   connected: false, only_rec: false, green_mask: false, target: true, duration: 200, contact: 0
 }
+
+
 
 export function useNodeForm(props: UseNodeFormProps, emit: UseNodeFormEmit) {
   const formData = ref<FlowBusinessData>({})

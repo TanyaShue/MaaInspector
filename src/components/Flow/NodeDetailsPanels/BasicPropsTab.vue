@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ChevronDown, Check, Settings } from 'lucide-vue-next'
-import type { ActionType, RecognitionType, SelectOption } from '../../../utils/nodeLogic'
+import type { ActionType, NodeFormMethods, RecognitionType, SelectOption } from '../../../utils/nodeLogic'
 
 type DropdownKey = 'recognition' | 'action' | string
 
@@ -15,6 +15,7 @@ const props = defineProps<{
   actionTypes: SelectOption<string>[]
   currentAction: ActionType | string
   isActionDropdownOpen: boolean
+  form: NodeFormMethods
 }>()
 
 const emit = defineEmits<{
@@ -25,6 +26,9 @@ const emit = defineEmits<{
   (e: 'select-action', value: ActionType | string): void
   (e: 'jump-to-settings', key: 'recognition' | 'action'): void
 }>()
+
+const { getValue, setValue } = props.form
+const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.checked ?? false
 
 const toggleDropdown = (key: DropdownKey) => {
   emit('toggle-dropdown', key)
@@ -162,6 +166,18 @@ const toggleDropdown = (key: DropdownKey) => {
           <Settings :size="14" />
         </button>
       </div>
+    </div>
+
+    <div class="flex flex-wrap gap-3 pt-1">
+      <label class="inline-flex items-center gap-1.5 cursor-pointer">
+        <input
+          type="checkbox"
+          :checked="getValue('anchor', false)"
+          @change="setValue('anchor', getChecked($event))"
+          class="w-3.5 h-3.5 rounded text-indigo-600"
+        />
+        <span class="text-[11px] text-slate-600">锚点节点</span>
+      </label>
     </div>
   </div>
 </template>
