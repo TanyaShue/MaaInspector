@@ -8,7 +8,7 @@ import {
   Loader2, AlertCircle, Ban, CheckCircle2
 } from 'lucide-vue-next'
 
-interface ConfigItem {
+export interface ConfigItem {
   key: string
   label: string
   icon: Component
@@ -17,21 +17,21 @@ interface ConfigItem {
   border?: string
 }
 
-interface StatusIcon {
+export interface StatusIcon {
   icon?: Component
   color?: string
   spin?: boolean
   headerClass?: string
 }
 
-interface SelectOption<TValue = string> {
+export interface SelectOption<TValue = string> {
   value: TValue
   label: string
   icon?: Component
   color?: string
 }
 
-interface UseNodeFormProps {
+export interface UseNodeFormProps {
   visible: boolean
   nodeData?: {
     data?: FlowBusinessData
@@ -40,7 +40,7 @@ interface UseNodeFormProps {
   }
 }
 
-type UseNodeFormEmit = (event: 'update-data', payload: FlowBusinessData) => void
+export type UseNodeFormEmit = (event: 'update-data', payload: FlowBusinessData) => void
 
 export const RECOGNITION_CONFIG: ConfigItem[] = [
   { key: 'DirectHit', label: '直接命中', icon: Target, color: 'text-blue-600', bg: 'bg-blue-500', border: 'border-blue-200' },
@@ -74,6 +74,8 @@ export const recognitionMenuOptions: SelectOption<string>[] = RECOGNITION_CONFIG
   icon: t.icon,
   color: t.color.replace('600', '500')
 }))
+
+export type RecognitionType = (typeof recognitionTypes)[number]['value']
 
 export const ACTION_CONFIG: ConfigItem[] = [
   { key: 'DoNothing', label: '无动作', icon: Square, color: 'text-slate-400', bg: 'bg-slate-50' },
@@ -109,6 +111,8 @@ export const actionTypes: SelectOption<string>[] = ACTION_CONFIG.map(t => ({
   icon: t.icon,
   color: t.color
 }))
+
+export type ActionType = (typeof actionTypes)[number]['value']
 
 export const STATUS_ICONS: Record<string, StatusIcon> = {
   running: { icon: Loader2, color: 'text-blue-500', spin: true, headerClass: 'bg-blue-100 border-blue-200' },
@@ -302,4 +306,6 @@ export function useNodeForm(props: UseNodeFormProps, emit: UseNodeFormEmit) {
     focusData, availableFocusEvents, addFocusParam, removeFocusParam, updateFocusParam
   }
 }
+
+export type NodeFormMethods = ReturnType<typeof useNodeForm>
 

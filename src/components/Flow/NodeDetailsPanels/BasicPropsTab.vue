@@ -1,29 +1,32 @@
-<script setup>
+<script setup lang="ts">
 import { ChevronDown, Check, Settings } from 'lucide-vue-next'
+import type { ActionType, RecognitionType, SelectOption } from '../../../utils/nodeLogic'
 
-const props = defineProps({
-  nodeId: String,
-  editingId: String,
-  recognitionConfig: Object,
-  recognitionTypes: Array,
-  currentRecognition: String,
-  isRecognitionDropdownOpen: Boolean,
-  actionConfig: Object,
-  actionTypes: Array,
-  currentAction: String,
-  isActionDropdownOpen: Boolean,
-})
+type DropdownKey = 'recognition' | 'action' | string
 
-const emit = defineEmits([
-  'update:editingId',
-  'confirm-id-change',
-  'toggle-dropdown',
-  'select-recognition',
-  'select-action',
-  'jump-to-settings',
-])
+const props = defineProps<{
+  nodeId?: string
+  editingId: string
+  recognitionConfig?: SelectOption<string>
+  recognitionTypes: SelectOption<string>[]
+  currentRecognition: RecognitionType | string
+  isRecognitionDropdownOpen: boolean
+  actionConfig?: SelectOption<string>
+  actionTypes: SelectOption<string>[]
+  currentAction: ActionType | string
+  isActionDropdownOpen: boolean
+}>()
 
-const toggleDropdown = (key) => {
+const emit = defineEmits<{
+  (e: 'update:editingId', payload: string): void
+  (e: 'confirm-id-change'): void
+  (e: 'toggle-dropdown', key: DropdownKey): void
+  (e: 'select-recognition', value: RecognitionType | string): void
+  (e: 'select-action', value: ActionType | string): void
+  (e: 'jump-to-settings', key: 'recognition' | 'action'): void
+}>()
+
+const toggleDropdown = (key: DropdownKey) => {
   emit('toggle-dropdown', key)
 }
 </script>
@@ -35,7 +38,7 @@ const toggleDropdown = (key) => {
       <div class="flex gap-1.5">
         <input
           :value="editingId"
-          @input="emit('update:editingId', $event.target.value)"
+          @input="emit('update:editingId', ($event.target as HTMLInputElement | null)?.value ?? '')"
           class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 font-mono"
         />
         <button

@@ -1,34 +1,63 @@
-<script setup>
-import {ref, watch} from 'vue'
-import {Database, Plus, ArrowUp, ArrowDown, Trash2, X, Save} from 'lucide-vue-next'
+<script setup lang="ts">
+import { ref, watch } from 'vue'
+import { Database, Plus, ArrowUp, ArrowDown, Trash2, X, Save } from 'lucide-vue-next'
+import type { ResourceProfile } from '../../../services/api'
 
-const props = defineProps({
-  visible: Boolean,
-  profiles: Array,
-  currentIndex: Number
+type EditableProfile = ResourceProfile & { paths: string[] }
+
+interface ResourceSettingsProps {
+  visible: boolean
+  profiles: EditableProfile[]
+  currentIndex: number
+}
+
+const props = withDefaults(defineProps<ResourceSettingsProps>(), {
+  visible: false,
+  profiles: () => [],
+  currentIndex: 0
 })
 
-const emit = defineEmits(['close', 'save'])
+const emit = defineEmits<{
+  (e: 'close'): void
+  (e: 'save', payload: { profiles: EditableProfile[]; index: number }): void
+}>()
 
-const editingProfiles = ref([])
-const editProfIndex = ref(0)
+const editingProfiles = ref<EditableProfile[]>([])
+const editProfIndex = ref<number>(0)
 
-watch(() => props.visible, (val) => {
+const cloneProfiles = (profiles: EditableProfile[]): EditableProfile[] =>
+  JSON.parse(JSON.stringify(profiles || [])) as EditableProfile[]
+
+const normalizeProfiles = (profiles: EditableProfile[]): EditableProfile[] =>
+  profiles.map((prof) => ({
+    ...prof,
+    name: prof.name ?? 'New Profile',
+    paths: Array.isArray(prof.paths) ? [...prof.paths] : []
+  }))
+
+watch(() => props.visible, (val: boolean) => {
   if (val) {
-    editingProfiles.value = JSON.parse(JSON.stringify(props.profiles))
+    editingProfiles.value = normalizeProfiles(cloneProfiles(props.profiles))
     editProfIndex.value = props.currentIndex || 0
   }
 })
 
 const addPathToProfile = () => {
-  if (!editingProfiles.value[editProfIndex.value]) return
-  editingProfiles.value[editProfIndex.value].paths.push("D:/New/Path")
+  const current = editingProfiles.value[editProfIndex.value]
+  if (!current) return
+  current.paths.push('D:/New/Path')
 }
-const removePath = (pIndex) => {
-  editingProfiles.value[editProfIndex.value].paths.splice(pIndex, 1)
+
+const removePath = (pIndex: number) => {
+  const current = editingProfiles.value[editProfIndex.value]
+  if (!current) return
+  current.paths.splice(pIndex, 1)
 }
-const movePath = (pIndex, direction) => {
-  const paths = editingProfiles.value[editProfIndex.value].paths
+
+const movePath = (pIndex: number, direction: -1 | 1) => {
+  const current = editingProfiles.value[editProfIndex.value]
+  if (!current) return
+  const paths = current.paths
   if (direction === -1 && pIndex > 0) {
     [paths[pIndex], paths[pIndex - 1]] = [paths[pIndex - 1], paths[pIndex]]
   } else if (direction === 1 && pIndex < paths.length - 1) {
@@ -36,8 +65,18 @@ const movePath = (pIndex, direction) => {
   }
 }
 
+const removeProfile = () => {
+  editingProfiles.value.splice(editProfIndex.value, 1)
+  editProfIndex.value = Math.max(0, editingProfiles.value.length - 1)
+}
+
+const addProfile = () => {
+  editingProfiles.value.push({ name: 'New Profile', paths: [] })
+  editProfIndex.value = editingProfiles.value.length - 1
+}
+
 const save = () => {
-  emit('save', {profiles: editingProfiles.value, index: editProfIndex.value})
+  emit('save', { profiles: editingProfiles.value, index: editProfIndex.value })
 }
 </script>
 
@@ -56,7 +95,7 @@ const save = () => {
         </div>
         <div class="p-2 border-t border-slate-100">
           <button
-              @click="editingProfiles.push({name:'New Profile', paths:[]}); editProfIndex = editingProfiles.length-1"
+              @click="addProfile"
               class="border border-dashed border-slate-300 rounded-lg py-1.5 text-xs text-slate-500 hover:text-indigo-600 hover:border-indigo-300 hover:bg-white transition-colors flex items-center justify-center gap-1 w-full">
             <Plus :size="12"/>
             新建配置
@@ -124,7 +163,7 @@ const save = () => {
 
           <div class="border-t border-slate-100 pt-2 flex justify-between">
             <button
-                @click="editingProfiles.splice(editProfIndex, 1); editProfIndex = Math.max(0, editingProfiles.length-1)"
+                @click="removeProfile"
                 class="text-xs text-red-500 hover:underline">删除此配置
             </button>
           </div>

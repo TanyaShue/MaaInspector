@@ -1,12 +1,17 @@
-<script setup>
+<script setup lang="ts">
+import { toRefs } from 'vue'
 import { AlertCircle } from 'lucide-vue-next'
 
-const props = defineProps({
-  jsonStr: String,
-  jsonError: String,
-})
+const props = defineProps<{
+  jsonStr?: string
+  jsonError?: string
+}>()
 
-const emit = defineEmits(['input'])
+const { jsonStr, jsonError } = toRefs(props)
+
+const emit = defineEmits<{
+  (e: 'input', value: string): void
+}>()
 </script>
 
 <template>
@@ -15,7 +20,7 @@ const emit = defineEmits(['input'])
       <textarea
         class="w-full h-full bg-transparent text-[10px] font-mono text-green-400 p-3 outline-none resize-none custom-scrollbar-dark"
         :value="jsonStr"
-        @input="emit('input', $event.target.value)"
+        @input="emit('input', ( $event.target as HTMLTextAreaElement | null)?.value ?? '' )"
         spellcheck="false"
       ></textarea>
       <div

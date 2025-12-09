@@ -1,18 +1,32 @@
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 import { AlertTriangle, Trash2, X, Image as ImageIcon, FileWarning } from 'lucide-vue-next'
 
-const props = defineProps({
-  visible: { type: Boolean, default: false },
-  unusedImages: { type: Array, default: () => [] },  // 未被引用的图片路径
-  usedImages: { type: Array, default: () => [] },    // 被其他文件引用的图片 [{path, used_by}]
-  isProcessing: { type: Boolean, default: false }
+interface UsedImageInfo {
+  path: string
+  used_by: string[]
+}
+
+const props = withDefaults(defineProps<{
+  visible: boolean
+  unusedImages: string[]
+  usedImages: UsedImageInfo[]
+  isProcessing: boolean
+}>(), {
+  visible: false,
+  unusedImages: () => [],
+  usedImages: () => [],
+  isProcessing: false
 })
 
-const emit = defineEmits(['cancel', 'confirm', 'skip'])
+const emit = defineEmits<{
+  (e: 'cancel'): void
+  (e: 'confirm'): void
+  (e: 'skip'): void
+}>()
 
-const hasUnused = computed(() => props.unusedImages.length > 0)
-const hasUsed = computed(() => props.usedImages.length > 0)
+const hasUnused = computed<boolean>(() => props.unusedImages.length > 0)
+const hasUsed = computed<boolean>(() => props.usedImages.length > 0)
 </script>
 
 <template>

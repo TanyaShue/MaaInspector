@@ -1,15 +1,21 @@
-<script setup>
+<script setup lang="ts">
 import { Crop, Crosshair } from 'lucide-vue-next'
+import type { ActionType, NodeFormMethods, SelectOption } from '../../../utils/nodeLogic'
 
-const props = defineProps({
-  currentAction: String,
-  actionConfig: Object,
-  form: Object,
-})
+const emit = defineEmits<{
+  (e: 'open-picker', field: string, referenceField: string | null, referenceLabel?: string): void
+}>()
 
-const emit = defineEmits(['open-picker'])
+const props = defineProps<{
+  currentAction: ActionType | string
+  actionConfig?: SelectOption<string>
+  form: NodeFormMethods
+}>()
 
 const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTargetValue } = props.form
+
+const getInputValue = (event: Event) => (event.target as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? ''
+const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.checked ?? false
 </script>
 
 <template>
@@ -34,7 +40,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
             <div class="flex gap-1">
               <input
                 :value="getTargetValue('target')"
-                @input="setTargetValue('target', $event.target.value)"
+                @input="setTargetValue('target', getInputValue($event))"
                 class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono min-w-0"
                 placeholder="留空默认自身, 或输入节点名/[x,y,w,h]"
               />
@@ -51,7 +57,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
             <div class="flex gap-1">
               <input
                 :value="getJsonValue('target_offset')"
-                @input="setJsonValue('target_offset', $event.target.value)"
+                @input="setJsonValue('target_offset', getInputValue($event))"
                 class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono min-w-0"
                 placeholder="[x,y,w,h]"
               />
@@ -69,7 +75,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
               <input
                 type="number"
                 :value="getValue('contact', 0)"
-                @input="setValue('contact', parseInt($event.target.value) || 0)"
+                @input="setValue('contact', parseInt(getInputValue($event)) || 0)"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
               />
             </div>
@@ -78,7 +84,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
               <input
                 type="number"
                 :value="getValue('pressure', 0)"
-                @input="setValue('pressure', parseInt($event.target.value) || 0)"
+                @input="setValue('pressure', parseInt(getInputValue($event)) || 0)"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
               />
             </div>
@@ -95,7 +101,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
               <div class="flex gap-1">
                 <input
                   :value="getTargetValue('begin')"
-                  @input="setTargetValue('begin', $event.target.value)"
+                  @input="setTargetValue('begin', getInputValue($event))"
                   class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0"
                 />
                 <button
@@ -111,7 +117,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
               <div class="flex gap-1">
                 <input
                   :value="getJsonValue('begin_offset')"
-                  @input="setJsonValue('begin_offset', $event.target.value)"
+                  @input="setJsonValue('begin_offset', getInputValue($event))"
                   class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0"
                 />
                 <button
@@ -127,7 +133,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
               <div class="flex gap-1">
                 <input
                   :value="getTargetValue('end')"
-                  @input="setTargetValue('end', $event.target.value)"
+                  @input="setTargetValue('end', getInputValue($event))"
                   class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0"
                 />
                 <button
@@ -143,7 +149,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
               <div class="flex gap-1">
                 <input
                   :value="getJsonValue('end_offset')"
-                  @input="setJsonValue('end_offset', $event.target.value)"
+                  @input="setJsonValue('end_offset', getInputValue($event))"
                   class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0"
                 />
                 <button
@@ -160,7 +166,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
               <label class="text-[10px] font-semibold text-slate-500 uppercase">持续 (ms)</label>
               <input
                 :value="getJsonValue('duration')"
-                @input="setJsonValue('duration', $event.target.value)"
+                @input="setJsonValue('duration', getInputValue($event))"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
               />
             </div>
@@ -168,7 +174,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
               <label class="text-[10px] font-semibold text-slate-500 uppercase">保持 (ms)</label>
               <input
                 :value="getJsonValue('end_hold')"
-                @input="setJsonValue('end_hold', $event.target.value)"
+                @input="setJsonValue('end_hold', getInputValue($event))"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
               />
             </div>
@@ -178,7 +184,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
               <input
                 type="checkbox"
                 :checked="getValue('only_hover', false)"
-                @change="setValue('only_hover', $event.target.checked)"
+                @change="setValue('only_hover', getChecked($event))"
                 class="w-3.5 h-3.5 rounded text-indigo-600"
               />
               <span class="text-[11px] text-slate-600">仅悬停 (Only Hover)</span>
@@ -191,7 +197,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
             <label class="text-[10px] font-semibold text-slate-500 uppercase">按键码 (Key)</label>
             <input
               :value="getJsonValue('key')"
-              @input="setJsonValue('key', $event.target.value)"
+              @input="setJsonValue('key', getInputValue($event))"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono"
               placeholder="25 或 [25, 26]"
             />
@@ -205,7 +211,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
               <input
                 type="number"
                 :value="getValue('dx', 0)"
-                @input="setValue('dx', parseInt($event.target.value) || 0)"
+              @input="setValue('dx', parseInt(getInputValue($event)) || 0)"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
               />
             </div>
@@ -214,7 +220,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
               <input
                 type="number"
                 :value="getValue('dy', 0)"
-                @input="setValue('dy', parseInt($event.target.value) || 0)"
+              @input="setValue('dy', parseInt(getInputValue($event)) || 0)"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
               />
             </div>
@@ -226,7 +232,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
             <label class="text-[10px] font-semibold text-slate-500 uppercase">输入文本</label>
             <input
               :value="getValue('input_text', '')"
-              @input="setValue('input_text', $event.target.value)"
+              @input="setValue('input_text', getInputValue($event))"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
             />
           </div>
@@ -237,7 +243,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
             <label class="text-[10px] font-semibold text-slate-500 uppercase">应用包名</label>
             <input
               :value="getValue('package', '')"
-              @input="setValue('package', $event.target.value)"
+              @input="setValue('package', getInputValue($event))"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono"
               placeholder="com.example.app"
             />
@@ -250,7 +256,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
             <input
               type="number"
               :value="getValue('duration', 1000)"
-              @input="setValue('duration', parseInt($event.target.value) || 1000)"
+              @input="setValue('duration', parseInt(getInputValue($event)) || 1000)"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
             />
           </div>
@@ -261,7 +267,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
             <label class="text-[10px] font-semibold text-slate-500 uppercase">执行程序</label>
             <input
               :value="getValue('exec', '')"
-              @input="setValue('exec', $event.target.value)"
+              @input="setValue('exec', getInputValue($event))"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono"
             />
           </div>
@@ -269,7 +275,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
             <label class="text-[10px] font-semibold text-slate-500 uppercase">参数</label>
             <input
               :value="getJsonValue('args')"
-              @input="setJsonValue('args', $event.target.value)"
+              @input="setJsonValue('args', getInputValue($event))"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono"
               placeholder='["arg1"]'
             />
@@ -278,7 +284,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
             <input
               type="checkbox"
               :checked="getValue('detach', false)"
-              @change="setValue('detach', $event.target.checked)"
+              @change="setValue('detach', getChecked($event))"
               class="w-3.5 h-3.5 rounded text-indigo-600"
             />
             <span class="text-[11px] text-slate-600">分离进程</span>
@@ -290,7 +296,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
             <label class="text-[10px] font-semibold text-slate-500 uppercase">自定义动作名</label>
             <input
               :value="getValue('custom_action', '')"
-              @input="setValue('custom_action', $event.target.value)"
+              @input="setValue('custom_action', getInputValue($event))"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
             />
           </div>
@@ -298,7 +304,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
             <label class="text-[10px] font-semibold text-slate-500 uppercase">自定义参数</label>
             <textarea
               :value="getJsonValue('custom_action_param')"
-              @input="setJsonValue('custom_action_param', $event.target.value)"
+              @input="setJsonValue('custom_action_param', getInputValue($event))"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono h-14 resize-none"
               placeholder="JSON"
             ></textarea>

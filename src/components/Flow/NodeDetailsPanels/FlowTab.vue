@@ -1,25 +1,28 @@
-<script setup>
-import { computed, ref } from 'vue'
+<script setup lang="ts">
+import { computed, ref, type Ref } from 'vue'
 import { ChevronDown, ChevronUp, GitBranch, X } from 'lucide-vue-next'
 
-const props = defineProps({
-  nextList: {
-    type: Array,
-    default: () => [],
-  },
-  onErrorList: {
-    type: Array,
-    default: () => [],
-  },
+type LinkKey = 'next' | 'on_error'
+
+const props = withDefaults(defineProps<{
+  nextList: string[]
+  onErrorList: string[]
+}>(), {
+  nextList: () => [],
+  onErrorList: () => []
 })
 
-const emit = defineEmits(['add-link', 'remove-link', 'move-link'])
+const emit = defineEmits<{
+  (e: 'add-link', payload: { key: LinkKey; value: Ref<string> }): void
+  (e: 'remove-link', payload: { key: LinkKey; index: number }): void
+  (e: 'move-link', payload: { key: LinkKey; index: number; direction: number }): void
+}>()
 
-const newNextLink = ref('')
-const newErrorLink = ref('')
+const newNextLink = ref<string>('')
+const newErrorLink = ref<string>('')
 
-const hasNext = computed(() => props.nextList?.length > 0)
-const hasError = computed(() => props.onErrorList?.length > 0)
+const hasNext = computed(() => props.nextList.length > 0)
+const hasError = computed(() => props.onErrorList.length > 0)
 
 const addNext = () => emit('add-link', { key: 'next', value: newNextLink })
 const addError = () => emit('add-link', { key: 'on_error', value: newErrorLink })

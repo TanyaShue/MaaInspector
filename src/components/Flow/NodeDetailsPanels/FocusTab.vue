@@ -1,24 +1,26 @@
-<script setup>
+<script setup lang="ts">
 import { Plus, Info, X } from 'lucide-vue-next'
 
-const props = defineProps({
-  focusData: {
-    type: Object,
-    default: () => ({}),
-  },
-  availableFocusEvents: {
-    type: Array,
-    default: () => [],
-  },
-  isDropdownOpen: Boolean,
+type FocusRecord = Record<string, string>
+
+const props = withDefaults(defineProps<{
+  focusData: FocusRecord
+  availableFocusEvents: string[]
+  isDropdownOpen: boolean
+}>(), {
+  focusData: () => ({}),
+  availableFocusEvents: () => [],
+  isDropdownOpen: false
 })
 
-const emit = defineEmits([
-  'toggle-dropdown',
-  'add-focus',
-  'remove-focus',
-  'update-focus',
-])
+const emit = defineEmits<{
+  (e: 'toggle-dropdown'): void
+  (e: 'add-focus', type: string): void
+  (e: 'remove-focus', key: string): void
+  (e: 'update-focus', payload: { key: string; value: string }): void
+}>()
+
+const getInputValue = (event: Event) => (event.target as HTMLInputElement | null)?.value ?? ''
 </script>
 
 <template>
@@ -38,7 +40,7 @@ const emit = defineEmits([
       </div>
       <input
         :value="msg"
-        @input="emit('update-focus', { key, value: $event.target.value })"
+        @input="emit('update-focus', { key, value: getInputValue($event) })"
         class="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs focus:border-pink-300 outline-none"
         placeholder="消息模板..."
       />

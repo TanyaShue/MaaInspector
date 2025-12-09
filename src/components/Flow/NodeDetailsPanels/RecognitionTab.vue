@@ -1,27 +1,34 @@
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue'
 import { Crop, Crosshair, ChevronDown, Image as ImageIcon, ScanText } from 'lucide-vue-next'
 import { orderByOptions, detectorOptions } from '../../../utils/nodeLogic'
+import type { NodeFormMethods, RecognitionType, SelectOption } from '../../../utils/nodeLogic'
 
-const props = defineProps({
-  currentRecognition: String,
-  recognitionConfig: Object,
-  form: Object,
-})
+const props = defineProps<{
+  currentRecognition: RecognitionType | string
+  recognitionConfig?: SelectOption<string>
+  form: NodeFormMethods
+}>()
 
-const emit = defineEmits(['open-picker', 'open-image-manager'])
+const emit = defineEmits<{
+  (e: 'open-picker', field: string, referenceField?: string | null, referenceLabel?: string): void
+  (e: 'open-image-manager'): void
+}>()
 
 const { getValue, setValue, getJsonValue, setJsonValue } = props.form
+
+const getInputValue = (event: Event) => (event.target as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? ''
+const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.checked ?? false
 
 const isOrderByDropdownOpen = ref(false)
 const isDetectorDropdownOpen = ref(false)
 
-const selectOrderBy = (val) => {
+const selectOrderBy = (val: string) => {
   setValue('order_by', val)
   isOrderByDropdownOpen.value = false
 }
 
-const selectDetector = (val) => {
+const selectDetector = (val: string) => {
   setValue('detector', val)
   isDetectorDropdownOpen.value = false
 }
@@ -46,7 +53,7 @@ const selectDetector = (val) => {
             <div class="flex gap-1">
               <input
                 :value="getJsonValue('roi')"
-                @input="setJsonValue('roi', $event.target.value)"
+                @input="setJsonValue('roi', getInputValue($event))"
                 class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono min-w-0"
                 placeholder="[x,y,w,h]"
               />
@@ -63,7 +70,7 @@ const selectDetector = (val) => {
             <div class="flex gap-1">
               <input
                 :value="getJsonValue('roi_offset')"
-                @input="setJsonValue('roi_offset', $event.target.value)"
+                @input="setJsonValue('roi_offset', getInputValue($event))"
                 class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono min-w-0"
                 placeholder="[x,y,w,h]"
               />
@@ -107,7 +114,7 @@ const selectDetector = (val) => {
             <input
               type="number"
               :value="getValue('index', 0)"
-              @input="setValue('index', parseInt($event.target.value) || 0)"
+              @input="setValue('index', parseInt(getInputValue($event)) || 0)"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400"
             />
           </div>
@@ -119,7 +126,7 @@ const selectDetector = (val) => {
             <div class="flex gap-1">
               <input
                 :value="getValue('template', '')"
-                @input="setValue('template', $event.target.value)"
+                @input="setValue('template', getInputValue($event))"
                 class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono min-w-0"
                 placeholder="image/..."
               />
@@ -136,7 +143,7 @@ const selectDetector = (val) => {
             <input
               type="checkbox"
               :checked="getValue('green_mask', false)"
-              @change="setValue('green_mask', $event.target.checked)"
+              @change="setValue('green_mask', getChecked($event))"
               class="w-3.5 h-3.5 rounded text-indigo-600"
             />
             <span class="text-[11px] text-slate-600">绿色掩码 (忽略绿色部分)</span>
@@ -149,7 +156,7 @@ const selectDetector = (val) => {
               <label class="text-[10px] font-semibold text-slate-500 uppercase">匹配阈值</label>
               <input
                 :value="getJsonValue('threshold')"
-                @input="setJsonValue('threshold', $event.target.value)"
+              @input="setJsonValue('threshold', getInputValue($event))"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
                 placeholder="0.7 或 [0.7, 0.8]"
               />
@@ -162,7 +169,7 @@ const selectDetector = (val) => {
                 max="5"
                 step="2"
                 :value="getValue('method', 5)"
-                @input="setValue('method', parseInt($event.target.value) || 5)"
+              @input="setValue('method', parseInt(getInputValue($event)) || 5)"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
               />
             </div>
@@ -177,7 +184,7 @@ const selectDetector = (val) => {
                 type="number"
                 min="1"
                 :value="getValue('count', 4)"
-                @input="setValue('count', parseInt($event.target.value) || 4)"
+              @input="setValue('count', parseInt(getInputValue($event)) || 4)"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
               />
             </div>
@@ -213,7 +220,7 @@ const selectDetector = (val) => {
                 min="0"
                 max="1"
                 :value="getValue('ratio', 0.6)"
-                @input="setValue('ratio', parseFloat($event.target.value) || 0.6)"
+              @input="setValue('ratio', parseFloat(getInputValue($event)) || 0.6)"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
               />
             </div>
@@ -226,7 +233,7 @@ const selectDetector = (val) => {
               <label class="text-[10px] font-semibold text-slate-500 uppercase">颜色下限</label>
               <input
                 :value="getJsonValue('lower')"
-                @input="setJsonValue('lower', $event.target.value)"
+                @input="setJsonValue('lower', getInputValue($event))"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono"
                 placeholder="[R,G,B]"
               />
@@ -235,7 +242,7 @@ const selectDetector = (val) => {
               <label class="text-[10px] font-semibold text-slate-500 uppercase">颜色上限</label>
               <input
                 :value="getJsonValue('upper')"
-                @input="setJsonValue('upper', $event.target.value)"
+                @input="setJsonValue('upper', getInputValue($event))"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono"
                 placeholder="[R,G,B]"
               />
@@ -245,7 +252,7 @@ const selectDetector = (val) => {
               <input
                 type="number"
                 :value="getValue('method', 4)"
-                @input="setValue('method', parseInt($event.target.value) || 4)"
+                @input="setValue('method', parseInt(getInputValue($event)) || 4)"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
               />
             </div>
@@ -255,7 +262,7 @@ const selectDetector = (val) => {
                 type="number"
                 min="1"
                 :value="getValue('count', 1)"
-                @input="setValue('count', parseInt($event.target.value) || 1)"
+                @input="setValue('count', parseInt(getInputValue($event)) || 1)"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
               />
             </div>
@@ -264,7 +271,7 @@ const selectDetector = (val) => {
             <input
               type="checkbox"
               :checked="getValue('connected', false)"
-              @change="setValue('connected', $event.target.checked)"
+              @change="setValue('connected', getChecked($event))"
               class="w-3.5 h-3.5 rounded text-indigo-600"
             />
             <span class="text-[11px] text-slate-600">要求像素相连</span>
@@ -277,7 +284,7 @@ const selectDetector = (val) => {
             <div class="flex gap-1">
               <input
                 :value="getJsonValue('expected')"
-                @input="setJsonValue('expected', $event.target.value)"
+                @input="setJsonValue('expected', getInputValue($event))"
                 class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
                 placeholder="期望文本或正则"
               />
@@ -299,7 +306,7 @@ const selectDetector = (val) => {
                 min="0"
                 max="1"
                 :value="getValue('threshold', 0.3)"
-                @input="setValue('threshold', parseFloat($event.target.value) || 0.3)"
+                @input="setValue('threshold', parseFloat(getInputValue($event)) || 0.3)"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
               />
             </div>
@@ -307,7 +314,7 @@ const selectDetector = (val) => {
               <label class="text-[10px] font-semibold text-slate-500 uppercase">模型路径</label>
               <input
                 :value="getValue('model', '')"
-                @input="setValue('model', $event.target.value)"
+                @input="setValue('model', getInputValue($event))"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono"
                 placeholder="model/ocr/"
               />
@@ -317,7 +324,7 @@ const selectDetector = (val) => {
             <label class="text-[10px] font-semibold text-slate-500 uppercase">文本替换</label>
             <input
               :value="getJsonValue('replace')"
-              @input="setJsonValue('replace', $event.target.value)"
+                @input="setJsonValue('replace', getInputValue($event))"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono"
               placeholder='[["原","替"]]'
             />
@@ -326,7 +333,7 @@ const selectDetector = (val) => {
             <input
               type="checkbox"
               :checked="getValue('only_rec', false)"
-              @change="setValue('only_rec', $event.target.checked)"
+              @change="setValue('only_rec', getChecked($event))"
               class="w-3.5 h-3.5 rounded text-indigo-600"
             />
             <span class="text-[11px] text-slate-600">仅识别</span>
@@ -338,7 +345,7 @@ const selectDetector = (val) => {
             <label class="text-[10px] font-semibold text-slate-500 uppercase">模型路径</label>
             <input
               :value="getValue('model', '')"
-              @input="setValue('model', $event.target.value)"
+                @input="setValue('model', getInputValue($event))"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono"
               :placeholder="currentRecognition === 'NeuralNetworkClassify' ? 'model/classify/' : 'model/detect/'"
             />
@@ -348,7 +355,7 @@ const selectDetector = (val) => {
               <label class="text-[10px] font-semibold text-slate-500 uppercase">期望标签 ID</label>
               <input
                 :value="getJsonValue('expected')"
-                @input="setJsonValue('expected', $event.target.value)"
+                @input="setJsonValue('expected', getInputValue($event))"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono"
                 placeholder="0 或 [0,1,2]"
               />
@@ -357,7 +364,7 @@ const selectDetector = (val) => {
               <label class="text-[10px] font-semibold text-slate-500 uppercase">匹配阈值</label>
               <input
                 :value="getJsonValue('threshold')"
-                @input="setJsonValue('threshold', $event.target.value)"
+                @input="setJsonValue('threshold', getInputValue($event))"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
                 placeholder="0.3 或 [0.5, 0.6]"
               />
@@ -367,7 +374,7 @@ const selectDetector = (val) => {
             <label class="text-[10px] font-semibold text-slate-500 uppercase">标签列表 (Labels)</label>
             <input
               :value="getJsonValue('labels')"
-              @input="setJsonValue('labels', $event.target.value)"
+                @input="setJsonValue('labels', getInputValue($event))"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono"
               placeholder='["Cat","Dog"]'
             />
@@ -379,7 +386,7 @@ const selectDetector = (val) => {
             <label class="text-[10px] font-semibold text-slate-500 uppercase">自定义识别名</label>
             <input
               :value="getValue('custom_recognition', '')"
-              @input="setValue('custom_recognition', $event.target.value)"
+                @input="setValue('custom_recognition', getInputValue($event))"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
             />
           </div>
@@ -387,7 +394,7 @@ const selectDetector = (val) => {
             <label class="text-[10px] font-semibold text-slate-500 uppercase">自定义参数</label>
             <textarea
               :value="getJsonValue('custom_recognition_param')"
-              @input="setJsonValue('custom_recognition_param', $event.target.value)"
+                @input="setJsonValue('custom_recognition_param', getInputValue($event))"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono h-14 resize-none"
               placeholder="JSON"
             ></textarea>

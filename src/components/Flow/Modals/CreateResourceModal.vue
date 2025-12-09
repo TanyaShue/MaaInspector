@@ -1,20 +1,28 @@
-<script setup>
-import {ref, watch, computed} from 'vue'
-import {FilePlus, Folder, Save, X, AlertCircle} from 'lucide-vue-next'
+<script setup lang="ts">
+import { ref, watch } from 'vue'
+import { FilePlus, Folder, Save, X, AlertCircle } from 'lucide-vue-next'
 
-const props = defineProps({
-  visible: Boolean,
-  paths: Array // 当前配置下的所有路径选项
+interface CreateResourceModalProps {
+  visible: boolean
+  paths: string[]
+}
+
+const props = withDefaults(defineProps<CreateResourceModalProps>(), {
+  visible: false,
+  paths: () => []
 })
 
-const emit = defineEmits(['close', 'create'])
+const emit = defineEmits<{
+  (e: 'close'): void
+  (e: 'create', payload: { path: string; filename: string }): void
+}>()
 
-const filename = ref('')
-const selectedPathIndex = ref(0)
-const errorMsg = ref('')
+const filename = ref<string>('')
+const selectedPathIndex = ref<number>(0)
+const errorMsg = ref<string>('')
 
 // 当 Modal 打开时重置状态
-watch(() => props.visible, (val) => {
+watch(() => props.visible, (val: boolean) => {
   if (val) {
     filename.value = ''
     selectedPathIndex.value = 0
@@ -23,25 +31,26 @@ watch(() => props.visible, (val) => {
 })
 
 const handleCreate = () => {
-  if (!filename.value.trim()) {
-    errorMsg.value = "请输入文件名"
+  const trimmed = filename.value.trim()
+  if (!trimmed) {
+    errorMsg.value = '请输入文件名'
     return
   }
   // 简单的文件名校验
-  if (filename.value.match(/[<>:"/\\|?*]/)) {
-    errorMsg.value = "文件名包含非法字符"
+  if (trimmed.match(/[<>:"/\\|?*]/)) {
+    errorMsg.value = '文件名包含非法字符'
     return
   }
 
   const targetPath = props.paths[selectedPathIndex.value]
   if (!targetPath) {
-    errorMsg.value = "无效的路径"
+    errorMsg.value = '无效的路径'
     return
   }
 
   emit('create', {
     path: targetPath,
-    filename: filename.value.trim()
+    filename: trimmed
   })
 }
 </script>

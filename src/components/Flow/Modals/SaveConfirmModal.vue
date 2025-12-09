@@ -1,13 +1,21 @@
-<script setup>
-import {Loader2, Save, AlertTriangle} from 'lucide-vue-next'
+<script setup lang="ts">
+import { Loader2, Save, AlertTriangle } from 'lucide-vue-next'
 
-defineProps({
-  visible: {type: Boolean, required: true},
-  filename: {type: String, default: 'Unknown'},
-  isSaving: {type: Boolean, default: false}
+const props = withDefaults(defineProps<{
+  visible: boolean
+  filename: string
+  isSaving: boolean
+}>(), {
+  visible: false,
+  filename: 'Unknown',
+  isSaving: false
 })
 
-const emit = defineEmits(['cancel', 'discard', 'save'])
+const emit = defineEmits<{
+  (e: 'cancel'): void
+  (e: 'discard'): void
+  (e: 'save'): void
+}>()
 </script>
 
 <template>

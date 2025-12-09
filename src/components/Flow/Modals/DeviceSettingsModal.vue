@@ -1,23 +1,49 @@
-<script setup>
-import {ref, watch} from 'vue'
-import {Plus, Radar, Loader2, Edit3, X, Save} from 'lucide-vue-next'
-import {systemApi} from '../../../services/api' // Adjust path
+<script setup lang="ts">
+import { ref, watch } from 'vue'
+import { Plus, Radar, Loader2, Edit3, X, Save } from 'lucide-vue-next'
+import { systemApi } from '../../../services/api'
+import type { ApiResponse, DeviceInfo } from '../../../services/api'
 
-const props = defineProps({
-  visible: Boolean,
-  devices: Array,
-  currentIndex: Number
+type EditableDevice = DeviceInfo & {
+  address?: string
+  config?: Record<string, unknown>
+}
+
+interface DeviceSettingsProps {
+  visible: boolean
+  devices: EditableDevice[]
+  currentIndex: number
+}
+
+const props = withDefaults(defineProps<DeviceSettingsProps>(), {
+  visible: false,
+  devices: () => [],
+  currentIndex: 0
 })
 
-const emit = defineEmits(['close', 'save'])
+const emit = defineEmits<{
+  (e: 'close'): void
+  (e: 'save', payload: { devices: EditableDevice[]; index: number }): void
+}>()
 
-const editingDevices = ref([])
-const editDevIndex = ref(0)
-const isSearching = ref(false)
+const editingDevices = ref<EditableDevice[]>([])
+const editDevIndex = ref<number>(0)
+const isSearching = ref<boolean>(false)
 
-watch(() => props.visible, (val) => {
+const cloneDevices = (devices: EditableDevice[]): EditableDevice[] =>
+  JSON.parse(JSON.stringify(devices || [])) as EditableDevice[]
+
+const normalizeDevices = (devices: EditableDevice[]): EditableDevice[] =>
+  devices.map((dev) => ({
+    name: dev.name ?? 'New Device',
+    address: dev.address ?? '',
+    config: dev.config ?? {},
+    ...dev
+  }))
+
+watch(() => props.visible, (val: boolean) => {
   if (val) {
-    editingDevices.value = JSON.parse(JSON.stringify(props.devices))
+    editingDevices.value = normalizeDevices(cloneDevices(props.devices))
     editDevIndex.value = props.currentIndex || 0
   }
 })
@@ -25,26 +51,51 @@ watch(() => props.visible, (val) => {
 const handleSearch = async () => {
   isSearching.value = true
   try {
-    const res = await systemApi.searchDevices()
-    if (res.devices) {
-      let count = 0
-      res.devices.forEach(d => {
-        if (!editingDevices.value.find(ed => ed.address === d.address)) {
-          editingDevices.value.push(d)
-          count++
+    const res = await systemApi.searchDevices() as ApiResponse<{ devices?: DeviceInfo[] }> & { devices?: DeviceInfo[] }
+    const found = (res.data?.devices ?? res.devices ?? []) as DeviceInfo[]
+    if (found.length) {
+      let added = 0
+      found.forEach((d) => {
+        const address = typeof (d as any).address === 'string' ? (d as any).address : ''
+        const config = typeof (d as any).config === 'object' && (d as any).config !== null ? (d as any).config as Record<string, unknown> : {}
+        if (!editingDevices.value.find((ed) => ed.address === address)) {
+          editingDevices.value.push({ ...d, address, config })
+          added++
         }
       })
-      if (count > 0) editDevIndex.value = editingDevices.value.length - 1
+      if (added > 0) editDevIndex.value = editingDevices.value.length - 1
     }
-  } catch (e) {
-    alert(e.message)
+  } catch (e: unknown) {
+    const err = e as { message?: string }
+    alert(err?.message || '搜索设备失败')
   } finally {
     isSearching.value = false
   }
 }
 
+const handleAddDevice = () => {
+  editingDevices.value.push({ name: 'New Device', address: '', config: {} })
+  editDevIndex.value = editingDevices.value.length - 1
+}
+
+const handleConfigInput = (event: Event) => {
+  const target = event.target as HTMLTextAreaElement | null
+  const current = editingDevices.value[editDevIndex.value]
+  if (!target || !current) return
+  try {
+    current.config = JSON.parse(target.value || '{}')
+  } catch {
+    // ignore invalid JSON while typing
+  }
+}
+
+const handleRemoveDevice = () => {
+  editingDevices.value.splice(editDevIndex.value, 1)
+  editDevIndex.value = Math.max(0, editingDevices.value.length - 1)
+}
+
 const save = () => {
-  emit('save', {devices: editingDevices.value, index: editDevIndex.value})
+  emit('save', { devices: editingDevices.value, index: editDevIndex.value })
 }
 </script>
 
@@ -62,7 +113,7 @@ const save = () => {
           </div>
         </div>
         <div class="p-2 border-t border-slate-100 flex flex-col gap-2">
-          <button @click="editingDevices.push({name:'New Device', address:'', config:{}})"
+          <button @click="handleAddDevice"
                   class="border border-dashed border-slate-300 rounded-lg py-1.5 text-xs text-slate-500 hover:text-indigo-600 hover:border-indigo-300 hover:bg-white transition-colors flex items-center justify-center gap-1">
             <Plus :size="12"/>
             手动添加
@@ -95,10 +146,10 @@ const save = () => {
           </div>
           <div class="space-y-1 flex-1 flex flex-col"><label class="text-[10px] font-bold text-slate-400 uppercase">Config</label><textarea
               :value="JSON.stringify(editingDevices[editDevIndex].config, null, 2)"
-              @input="e => { try{editingDevices[editDevIndex].config = JSON.parse(e.target.value)}catch(err){} }"
+              @input="handleConfigInput"
               class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-indigo-200 resize-none flex-1"></textarea>
           </div>
-          <button @click="editingDevices.splice(editDevIndex, 1); editDevIndex = Math.max(0, editingDevices.length-1)"
+          <button @click="handleRemoveDevice"
                   class="text-xs text-red-500 hover:underline">删除设备
           </button>
         </div>
