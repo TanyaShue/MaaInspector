@@ -276,10 +276,7 @@ const handleDebugNode = async (nodeId: string, mode: DebugMode = 'standard') => 
     }
 
     // 4. 调用接口
-    const res = await debugApi.runNode(debugPayload)
-
-    // 5. 将完整返回结果写入 _result（状态由 SSE 更新）
-    node.data._result = res
+    await debugApi.runNode(debugPayload)
 
   } catch (error: unknown) {
     const err = error as { message?: string }

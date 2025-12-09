@@ -54,6 +54,8 @@ class MaaFW:
     controller: Union[AdbController, Win32Controller, None]
     tasker: Optional[Tasker]
     agent: Optional[AgentClient]
+    context_sink=False
+    tasker_sink=False
 
     def __init__(self):
         Toolkit.init_option("./")
@@ -138,7 +140,13 @@ class MaaFW:
         ret = self.agent.connect()
         if not ret:
             return (None, "Failed to connect agent")
-        return (True, None)
+        return True, None
+
+    def disconnect_adb(self):
+        if self.controller:
+            self.controller=None
+            self.tasker.controller=None
+        return True
 
     def run_task(
             self, entry: str, pipeline_override: dict = {}
@@ -153,8 +161,12 @@ class MaaFW:
         self.tasker.bind(self.resource, self.controller)
         if not self.tasker.inited:
             return (False, "Failed to init MaaFramework tasker")
-        if self.tasker._sink_holder == {}:
+        if not self.context_sink:
             self.tasker.add_context_sink(MyNotificationHandler(debug_broker))
+            self.context_sink=True
+        if not self.tasker_sink:
+            self.tasker.add_sink(NotificationHandler(debug_broker))
+            self.tasker_sink=True
         self.tasker.post_task(entry, pipeline_override)
 
         return None
@@ -184,10 +196,23 @@ class MaaFW:
         return self.controller.post_click(x, y).wait().succeeded
 
     def get_reco_detail(self, reco_id: int) -> Optional[RecognitionDetail]:
+        """根据 reco_id 获取识别详情，并预先将绘制结果转换为 PIL Image"""
         if not self.tasker:
             return None
+        detail = self.tasker.get_recognition_detail(reco_id)
+        if not detail:
+            return None
+        print(f"识别详情为:{detail}")
+        try:
+            if getattr(detail, "raw_image", None) is not None and not isinstance(detail.raw_image, Image.Image):
+                detail.raw_image = cvmat_to_image(detail.raw_image)
+            if getattr(detail, "draw_images", None):
+                detail.draw_images = [cvmat_to_image(img) for img in detail.draw_images if img is not None]
+        except Exception:
+            # 转换失败不影响后续流程
+            pass
 
-        return self.tasker.get_recognition_detail(reco_id)
+        return detail
 
     def clear_cache(self) -> bool:
         if not self.tasker:
@@ -267,6 +292,18 @@ class MyNotificationHandler(ContextEventSink):
             print(f"当前识别失败的节点的名称为:{detail.name},识别id为:{detail.reco_id}")
 
         self.broker.publish(payload)
+
+class NotificationHandler(TaskerEventSink):
+    def __init__(self, broker: DebugStreamBroker) -> None:
+        super().__init__()
+        self.broker = broker
+
+    def on_tasker_task(self, tasker: Tasker, noti_type: NotificationType, detail: TaskerEventSink.TaskerTaskDetail):
+        if noti_type == NotificationType.Starting:
+            print(f"当前开始的节点的名称为:{detail.entry},完整参数为:{detail}")
+        if noti_type != NotificationType.Starting:
+            print(f"当前结束节点的名称为:{detail.entry},完整参数为:{detail}")
+
 
 def cvmat_to_image(cvmat: ndarray) -> Image.Image:
     pil = Image.fromarray(cvmat)

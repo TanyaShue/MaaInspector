@@ -4,6 +4,8 @@ import json
 import base64
 import mimetypes
 import time
+import numpy as np
+from types import MappingProxyType
 from io import BytesIO
 from queue import Empty
 from typing import Any, Dict, List, Optional
@@ -16,7 +18,7 @@ from maa.resource import Resource
 # 假设这些模块依然存在
 from maa.toolkit import Toolkit
 from backend.untils import ResourcesManager
-from backend.untils.maafw import maafw, debug_broker
+from backend.untils.maafw import maafw, debug_broker, cvmat_to_image
 
 app = Flask(__name__)
 CORS(app)
@@ -160,14 +162,17 @@ def resource_load():
         payload = payload["path"]
 
     paths = payload.get("paths", []) or []
-    print(paths)
-    r=maafw.load_resource(paths)
-    print(r)
-
+    r, message = maafw.load_resource(paths)
     manager = ResourcesManager(paths)
-    results = manager.list_all_files()
+    results = manager.list_all_files() if r else []
 
-    return jsonify({"message": "Loaded", "list": results})
+    # r: 是否加载成功；message: 具体信息
+    return jsonify({
+        "r": bool(r),
+        "success": bool(r),
+        "message": message or ("Loaded" if r else "Load failed"),
+        "list": results
+    })
 
 
 @app.route("/resource/file/nodes", methods=["POST"])
@@ -439,9 +444,6 @@ def process_images():
     return _json_response(True, "Processed", results)
 
 
-# ---------------------------
-# 设备接口
-# ---------------------------
 @app.route("/device/connect", methods=["POST"])
 def device_connect():
     info = request.get_json(force=True, silent=True) or {}
@@ -457,11 +459,6 @@ def device_connect():
         return _json_response(False, str(e), status=500)
 
 
-@app.route("/device/disconnect", methods=["POST"])
-def device_disconnect():
-    return _json_response(True, "Device Offline")
-
-
 @app.route("/device/screenshot", methods=["GET"])
 def device_screenshot():
     b64=None
@@ -473,21 +470,15 @@ def device_screenshot():
     return _json_response(False, "No image", status=404)
 
 
-# ---------------------------
-# Agent 接口
-# ---------------------------
 @app.route("/agent/connect", methods=["POST"])
 def agent_connect():
-    time.sleep(0.2)
-    socket_id = (request.get_json(force=True, silent=True) or {}).get("socket_id")
-    states["agent"]["connected"] = True
+    # time.sleep(0.2)
+    socket_id = (request.get_json(force=True, silent=True) or {}).get("socket_id")["socket_id"]
+    print(socket_id)
+    # states["agent"]["connected"] = True
+    maafw.create_agent(socket_id)
+    r,message=maafw.connect_agent()
     return _json_response(True, "Agent Linked", {"info": {"Socket": socket_id}})
-
-
-@app.route("/agent/disconnect", methods=["POST"])
-def agent_disconnect():
-    states["agent"]["connected"] = False
-    return _json_response(True, "Agent Stopped")
 
 
 @app.route("/debug/stream", methods=["GET"])
@@ -522,13 +513,15 @@ def debug_stream():
 def debug_node():
     data = request.get_json()
     node=data.get("node")
-    # node["next"] = []
+    node_id = node.get("id")
+    node["next"] = []
     node["on_error"] = []
-    id=node.get("id")
+    node["action"] = "DoNothing"
     node=convert_node(node)
-    print(node)
-    print(data.get("debug_mode"))
-    print(maafw.run_task(id, node))
+    if data.get("debug_mode") == "recognition_only":
+        maafw.run_task(node_id, node)
+    else:
+        maafw.run_task(node_id, node)
     return _json_response(True, "debug_return",{})
 
 @app.route("/debug/stop", methods=["POST"])
@@ -541,6 +534,77 @@ def debug_status():
     running=maafw.tasker.running
     return _json_response(True, "debug_return_running", {"running":running})
 
+@app.route("/debug/ocr_text", methods=["POST"])
+def debug_ocr_text():
+    """对指定 ROI 进行 OCR，并返回识别文本。"""
+    data = request.get_json(force=True, silent=True) or {}
+    roi = data.get("roi")  # 形如 [x, y, w, h]
+    if not roi or not isinstance(roi, list) or len(roi) != 4:
+        return _json_response(False, "Missing or invalid roi", status=400)
+
+    print(roi)
+    task_payload = {"debug_ocr_text": {"roi": roi, "next": "", "on_error": ""}}
+    r = maafw.run_task("debug_ocr_text", task_payload)
+    print(r)
+    text = getattr(getattr(r, "beast", None), "text", "") or ""
+    return _json_response(True, "OK", {"text": text})
+
+
+@app.route("/debug/get_reco_details", methods=["POST"])
+def get_reco_details():
+    data = request.get_json(force=True, silent=True) or {}
+    reco_id = data.get("reco_id")
+    if reco_id is None:
+        return _json_response(False, "Missing reco_id", status=400)
+
+    try:
+        detail = maafw.get_reco_detail(reco_id)
+        if detail is None:
+            return _json_response(False, "No detail", {"detail": None}, status=404)
+
+        def _box_score_to_dict(item):
+            if not item:
+                return None
+            return {
+                "box": list(getattr(item, "box", []) or []),
+                "score": getattr(item, "score", None),
+            }
+
+        def _image_to_b64(img: Image.Image) -> Optional[str]:
+            if not isinstance(img, Image.Image):
+                return None
+            return encode_pil_image_to_base64(img)
+
+        algorithm = getattr(detail, "algorithm", None)
+        algorithm_value = None
+        if algorithm is not None:
+            algorithm_value = getattr(algorithm, "value", None) or str(algorithm)
+
+        raw_image_b64 = _image_to_b64(getattr(detail, "raw_image", None))
+        draw_images_b64 = []
+        for img in getattr(detail, "draw_images", []) or []:
+            b64 = _image_to_b64(img)
+            if b64:
+                draw_images_b64.append(b64)
+
+        payload = {
+            "reco_id": getattr(detail, "reco_id", None),
+            "name": getattr(detail, "name", None),
+            "algorithm": algorithm_value,
+            "hit": bool(getattr(detail, "hit", False)),
+            "box": getattr(detail, "box"),
+            "all_results": getattr(detail, "all_results", []),
+            "filtered_results":getattr(detail, "filtered_results", []),
+            "best_result": getattr(detail, "best_result", None),
+            "raw_detail": getattr(detail, "raw_detail", None),
+            "raw_image": raw_image_b64,
+            "draw_images": draw_images_b64,
+        }
+
+        return _json_response(True, "detail", {"detail": payload})
+    except Exception as e:
+        return _json_response(False, str(e), status=500)
+
 
 if __name__ == "__main__":
-    app.run(port=5001, debug=True)
+    app.run(port=5000, debug=True)

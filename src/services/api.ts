@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://127.0.0.1:5001'
+const API_BASE_URL = 'http://127.0.0.1:5000'
 
 type JsonHeaders = Record<string, string>
 
@@ -30,6 +30,11 @@ export interface ResourceFileInfo {
   label: string
   value: string
   source: string
+}
+
+export interface ResourceLoadResponse extends ApiResponse {
+  r?: boolean
+  list?: ResourceFileInfo[]
 }
 
 export interface SystemState {
@@ -74,6 +79,10 @@ export interface DebugRunResponse {
   success?: boolean
   error?: string
   [key: string]: unknown
+}
+
+export interface RecoDetailResponse extends ApiResponse {
+  detail?: unknown
 }
 
 export interface DebugStreamPayload {
@@ -122,13 +131,21 @@ export const systemApi = {
 export const deviceApi = {
   connect: (deviceData: DeviceInfo) =>
     request<ApiResponse>('/device/connect', { method: 'POST', body: JSON.stringify(deviceData) }),
-  disconnect: () => request<ApiResponse>('/device/disconnect', { method: 'POST' }),
   getScreenshot: () => request<ApiResponse<string>>('/device/screenshot', { method: 'GET' })
 }
 
 export const resourceApi = {
-  load: (path: string) =>
-    request<ApiResponse<ResourceFileInfo[]>>('/resource/load', { method: 'POST', body: JSON.stringify({ path }) }),
+  load: (profile: ResourceProfile | { paths?: string[] } | string) => {
+    const paths = typeof profile === 'string'
+      ? [profile]
+      : Array.isArray((profile as ResourceProfile)?.paths)
+        ? (profile as ResourceProfile).paths
+        : (profile as { paths?: string[] })?.paths || []
+    return request<ResourceLoadResponse>('/resource/load', {
+      method: 'POST',
+      body: JSON.stringify({ paths })
+    })
+  },
   getFileNodes: <TNodes = Record<string, unknown>>(source: string, filename: string) =>
     request<FileNodesResponse<TNodes>>('/resource/file/nodes', { method: 'POST', body: JSON.stringify({ source, filename }) }),
   getTemplateImages: (source: string, filename: string) =>
@@ -147,14 +164,17 @@ export const resourceApi = {
 
 export const agentApi = {
   connect: (socketId: string) =>
-    request<ApiResponse>('/agent/connect', { method: 'POST', body: JSON.stringify({ socket_id: socketId }) }),
-  disconnect: () => request<ApiResponse>('/agent/disconnect', { method: 'POST' })
+    request<ApiResponse>('/agent/connect', { method: 'POST', body: JSON.stringify({ socket_id: socketId }) })
 }
 
 export const debugApi = {
   runNode: (payload: Record<string, unknown>) =>
     request<DebugRunResponse>('/debug/node', { method: 'POST', body: JSON.stringify(payload) }),
   stop: () => request<ApiResponse>('/debug/stop', { method: 'POST' }),
+  getRecoDetails: (recoId: string | number) =>
+    request<RecoDetailResponse>('/debug/get_reco_details', { method: 'POST', body: JSON.stringify({ reco_id: recoId }) }),
+  ocrText: (roi: number[]) =>
+    request<ApiResponse<{ text?: string }>>('/debug/ocr_text', { method: 'POST', body: JSON.stringify({ roi }) }),
   subscribeNodeStream: (onData: (data: DebugStreamPayload) => void) => {
     if (typeof onData !== 'function') return () => {}
 

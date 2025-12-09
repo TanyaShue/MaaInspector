@@ -83,9 +83,18 @@ const isStreamRunning = ref(false)
 const selectedDetail = ref<{
   record: DebugEventRecord
   child: NextChild
-  image: string
-  fields: Array<{ label: string; value: string }>
+  mainImage: string
+  drawImages: string[]
+  fields: Array<{ label: string; text: string; raw: any }>
+  results: Array<{ label: string; text: string; raw: any; flags?: string[] }>
+  meta?: {
+    algorithm?: string | null
+    hit?: boolean
+    box?: Record<string, unknown> | null
+  }
 } | null>(null)
+const activeThumbIdx = ref<number | null>(null)
+const fullImagePreview = ref<{ visible: boolean; src: string }>({ visible: false, src: '' })
 
 let stopStream: (() => void) | null = null
 let previewTimer: ReturnType<typeof setInterval> | null = null
@@ -194,13 +203,35 @@ const normalizeDetailFields = (child: any) => {
   if (!child) return []
   if (Array.isArray(child.detailList)) return child.detailList
   if (Array.isArray(child.details)) return child.details
-  const skipKeys = ['name', 'status', 'jump_back', 'debug_image', 'image', 'screenshot']
+  const skipKeys = [
+    'name',
+    'status',
+    'jump_back',
+    'debug_image',
+    'image',
+    'screenshot',
+    'draw_images',
+    'raw_image',
+    'raw_detail',
+    'all_results',
+    'filtered_results',
+    'best_result'
+  ]
   return Object.entries(child)
       .filter(([k]) => !skipKeys.includes(k))
-      .map(([label, value]) => ({
-        label,
-        value: typeof value === 'object' ? JSON.stringify(value) : String(value ?? '')
-      }))
+      .map(([label, value]) => {
+        let text = ''
+        if (typeof value === 'object') {
+          try {
+            text = JSON.stringify(value, null, 2)
+          } catch (_) {
+            text = String(value ?? '')
+          }
+        } else {
+          text = String(value ?? '')
+        }
+        return { label, text, raw: value }
+      })
 }
 
 const applyRecognition = (payload: RecognitionPayload) => {
@@ -320,26 +351,136 @@ const handlePauseDebug = async () => {
   }
 }
 
-const handleChildClick = (child: NextChild, item: DebugEventRecord) => {
+const handleChildClick = async (child: NextChild, item: DebugEventRecord) => {
   if (child.status !== STATUS.SUCCEEDED && child.status !== STATUS.FAILED) return
-  if (child.reco_id !== undefined) {
-    console.log('当前节点 reco_id:', child.reco_id)
-  }
-  const image =
+  let mainImage =
     (typeof (child as any).debug_image === 'string' && (child as any).debug_image) ||
     (typeof (child as any).image === 'string' && (child as any).image) ||
     (typeof (child as any).screenshot === 'string' && (child as any).screenshot) ||
     ''
+  let drawImages: string[] = []
+  let fields = normalizeDetailFields(child)
+  let meta: { algorithm?: string; hit?: boolean; box?: any } | undefined
+  let results: Array<{ label: string; text: string; raw: any; flags?: string[] }> = []
+
+  // 若有 reco_id，调用后端接口获取识别详情
+  if (child.reco_id !== undefined && child.reco_id !== null) {
+    try {
+      const res = await debugApi.getRecoDetails(child.reco_id)
+      const detail = (res as any)?.detail
+      if (detail) {
+        const rawImage = typeof (detail as any).raw_image === 'string' ? (detail as any).raw_image : ''
+        const debugImage = typeof (detail as any).debug_image === 'string' ? (detail as any).debug_image : ''
+        const imageField = typeof (detail as any).image === 'string' ? (detail as any).image : ''
+        const fallback = mainImage
+        mainImage = rawImage || debugImage || imageField || fallback
+        if (Array.isArray((detail as any).draw_images)) {
+          drawImages = (detail as any).draw_images.filter((x: any) => typeof x === 'string')
+          if (!mainImage && drawImages.length) mainImage = drawImages[0]
+        }
+        meta = {
+          algorithm: (detail as any).algorithm ?? undefined,
+          hit: typeof (detail as any).hit === 'boolean' ? (detail as any).hit : undefined,
+          box: (detail as any).box ?? undefined
+        }
+        const detailFields = normalizeDetailFields(detail)
+        if (detailFields.length) {
+          fields = [...fields, ...detailFields]
+        }
+
+        // 合并 all / filtered / best 并标记
+        const allList = Array.isArray((detail as any).all_results) ? (detail as any).all_results : []
+        const filteredList = Array.isArray((detail as any).filtered_results) ? (detail as any).filtered_results : []
+        const bestItem = (detail as any).best_result
+
+        const keyOf = (item: any) => {
+          try {
+            return JSON.stringify(item)
+          } catch (_) {
+            return String(item)
+          }
+        }
+
+        const filteredSet = new Set(filteredList.map(keyOf))
+        const bestKey = bestItem ? keyOf(bestItem) : null
+
+        const markFlags = (item: any) => {
+          const k = keyOf(item)
+          const flags: string[] = []
+          if (bestKey && k === bestKey) flags.push('best')
+          if (filteredSet.has(k)) flags.push('filtered')
+          return flags
+        }
+
+        const merged = allList.length ? allList : (bestItem ? [bestItem] : filteredList)
+        merged.forEach((item: any, idx: number) => {
+          const flags = markFlags(item)
+          const label = `all[${idx}]`
+          let text = ''
+          try {
+            text = JSON.stringify(item, null, 2)
+          } catch (_) {
+            text = String(item)
+          }
+          results.push({ label, text, raw: item, flags })
+        })
+
+        // 如果 best 不在 all（安全兜底），单独补充
+        if (bestItem && !allList.length && merged.indexOf(bestItem) === -1) {
+          let text = ''
+          try {
+            text = JSON.stringify(bestItem, null, 2)
+          } catch (_) {
+            text = String(bestItem)
+          }
+          results.push({ label: 'best_result', text, raw: bestItem, flags: ['best'] })
+        }
+      }
+    } catch (err) {
+      console.warn('[DebugPanel] 获取识别详情失败', err)
+    }
+  }
+
   selectedDetail.value = {
     record: item,
     child,
-    image,
-    fields: normalizeDetailFields(child)
+    mainImage,
+    drawImages,
+    fields,
+    results,
+    meta
   }
+  activeThumbIdx.value = null
 }
 
 const handleDetailClose = () => {
   selectedDetail.value = null
+  activeThumbIdx.value = null
+  closeImagePreview()
+}
+
+const handleThumbClick = (img: string, idx: number) => {
+  if (!selectedDetail.value) return
+  selectedDetail.value = { ...selectedDetail.value, mainImage: img }
+  activeThumbIdx.value = idx
+}
+
+const openImagePreview = (src: string) => {
+  if (!src) return
+  fullImagePreview.value = { visible: true, src }
+}
+
+const closeImagePreview = () => {
+  fullImagePreview.value = { visible: false, src: '' }
+}
+
+const copyText = async (text: string) => {
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch (e) {
+    console.warn('[DebugPanel] 复制失败', e)
+  }
 }
 
 const handleOptionSelect = (opt: { id: string }) => {
@@ -404,7 +545,7 @@ onUnmounted(() => {
   >
     <div
         v-if="visible"
-        class="fixed z-[120] w-[900px] h-[520px] bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden select-none flex flex-col"
+        class="fixed z-[120] w-[1024px] h-[620px] bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden select-none flex flex-col"
         :style="{ left: `${position.x}px`, top: `${position.y}px` }"
         @mousedown.stop
     >
@@ -434,7 +575,7 @@ onUnmounted(() => {
       <div class="flex flex-1 min-h-0">
         <div
             v-if="showPreviewPanel"
-            class="w-[240px] bg-slate-50 border-r border-slate-200 p-3 flex flex-col gap-3"
+            class="w-[260px] bg-slate-50 border-r border-slate-200 p-3 flex flex-col gap-3"
         >
           <div class="text-xs text-slate-500 font-semibold flex items-center gap-2">
             <Terminal :size="14" class="text-amber-500"/> 设备预览
@@ -594,6 +735,18 @@ onUnmounted(() => {
               <div class="flex flex-col">
                 <span class="text-sm font-semibold text-slate-700">{{ selectedDetail.child.name }}</span>
                 <span class="text-[11px] text-slate-500">任务 #{{ selectedDetail.record.taskId }}</span>
+                <div v-if="selectedDetail.meta" class="flex items-center gap-2 pt-1">
+                  <span v-if="selectedDetail.meta.algorithm" class="px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-100 text-[11px]">
+                    算法 {{ selectedDetail.meta.algorithm }}
+                  </span>
+                  <span
+                      v-if="selectedDetail.meta.hit !== undefined"
+                      class="px-2 py-0.5 rounded text-[11px] border"
+                      :class="selectedDetail.meta.hit ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'"
+                  >
+                    {{ selectedDetail.meta.hit ? '命中' : '未命中' }}
+                  </span>
+                </div>
               </div>
               <button
                   class="px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-100"
@@ -607,11 +760,18 @@ onUnmounted(() => {
               <div class="p-3 space-y-3">
                 <div class="text-xs text-slate-500 font-semibold flex items-center gap-2">
                   <Activity :size="14" class="text-amber-500"/> 调试快照
+                  <span v-if="selectedDetail.meta?.box" class="text-[11px] text-slate-400">
+                    Box: {{ JSON.stringify(selectedDetail.meta.box) }}
+                  </span>
                 </div>
-                <div class="relative w-full aspect-[4/5] bg-slate-50 border border-dashed border-slate-200 rounded-lg overflow-hidden flex items-center justify-center">
+                <div
+                    class="relative w-full aspect-[4/5] bg-slate-50 border border-dashed border-slate-200 rounded-lg overflow-hidden flex items-center justify-center"
+                    :class="selectedDetail.mainImage ? 'cursor-zoom-in' : ''"
+                    @click="selectedDetail.mainImage && openImagePreview(selectedDetail.mainImage)"
+                >
                   <img
-                      v-if="selectedDetail.image"
-                      :src="selectedDetail.image"
+                      v-if="selectedDetail.mainImage"
+                      :src="selectedDetail.mainImage"
                       alt="debug detail"
                       class="w-full h-full object-contain"
                   />
@@ -620,24 +780,133 @@ onUnmounted(() => {
                     <span>暂无调试截图</span>
                   </div>
                 </div>
+                <div v-if="selectedDetail.drawImages && selectedDetail.drawImages.length" class="grid grid-cols-3 gap-2">
+                  <div
+                      v-for="(img, idx) in selectedDetail.drawImages"
+                      :key="idx"
+                      class="relative overflow-hidden rounded border bg-slate-50 h-20 flex items-center justify-center cursor-pointer transition"
+                      :class="activeThumbIdx === idx ? 'border-amber-300 ring-2 ring-amber-100' : 'border-slate-200 hover:border-amber-200'"
+                      @click="handleThumbClick(img, idx)"
+                  >
+                    <img :src="img" class="w-full h-full object-contain" :alt="`draw-${idx}`"/>
+                  </div>
+                </div>
 
                 <div class="text-xs text-slate-500 font-semibold flex items-center gap-2 pt-2">
                   <Terminal :size="14" class="text-amber-500"/> 调试结果
                 </div>
-                <div class="grid gap-2" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));">
+                <div class="grid gap-2" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
                   <div
                       v-for="(field, idx) in selectedDetail.fields"
                       :key="idx"
-                      class="p-2 rounded border border-slate-200 bg-slate-50"
+                      class="p-2 rounded border border-slate-200 bg-white shadow-sm group relative"
                   >
-                    <div class="text-[11px] text-slate-500 truncate">{{ field.label }}</div>
-                    <div class="text-sm text-slate-700 break-words">{{ field.value || '—' }}</div>
+                    <div class="flex items-center justify-between gap-2">
+                      <div class="text-[11px] text-slate-500 truncate">{{ field.label }}</div>
+                      <button
+                          class="text-[11px] text-amber-600 opacity-0 group-hover:opacity-100 transition"
+                          @click.stop="copyText(field.text || '')"
+                      >复制</button>
+                    </div>
+                    <div
+                        v-if="field.raw && typeof field.raw === 'object'"
+                        class="space-y-1 text-[12px] text-slate-700"
+                    >
+                      <div
+                          v-for="(val, key) in field.raw"
+                          :key="String(key)"
+                          class="flex items-start gap-2"
+                      >
+                        <span class="text-slate-500">{{ key }}:</span>
+                        <span class="font-mono break-all whitespace-pre-wrap text-slate-800">
+                          {{ typeof val === 'object' ? JSON.stringify(val) : String(val) }}
+                        </span>
+                        <button
+                            class="text-[10px] text-amber-600 opacity-0 group-hover:opacity-100 transition ml-auto"
+                            @click.stop="copyText(typeof val === 'object' ? JSON.stringify(val) : String(val))"
+                        >复制</button>
+                      </div>
+                    </div>
+                    <div
+                        v-else
+                        class="text-sm text-slate-700 break-words whitespace-pre-wrap flex items-start gap-2"
+                    >
+                      <span class="font-mono break-all">{{ field.text || '—' }}</span>
+                      <button
+                          class="text-[11px] text-amber-600 opacity-0 group-hover:opacity-100 transition ml-auto"
+                          @click.stop="copyText(field.text || '')"
+                      >复制</button>
+                    </div>
                   </div>
                   <div
                       v-if="!selectedDetail.fields || selectedDetail.fields.length === 0"
                       class="text-xs text-slate-400"
                   >
                     暂无可显示的调试结果。
+                  </div>
+                </div>
+
+                <div v-if="selectedDetail.results && selectedDetail.results.length" class="pt-3 space-y-3">
+                  <div class="text-xs text-slate-500 font-semibold flex items-center gap-2">
+                    <Activity :size="14" class="text-amber-500"/> 识别结果列表
+                  </div>
+                  <div class="grid gap-2" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
+                    <div
+                        v-for="(res, idx) in selectedDetail.results"
+                        :key="idx"
+                        class="p-3 rounded border border-slate-200 bg-white shadow-sm group"
+                    >
+                      <div class="flex items-center justify-between gap-2 mb-2">
+                        <div class="flex items-center gap-2 overflow-hidden">
+                          <span class="text-[12px] font-semibold text-slate-700 truncate">{{ res.label }}</span>
+                          <div class="flex items-center gap-1">
+                            <span
+                                v-for="flag in res.flags || []"
+                                :key="flag"
+                                class="px-2 py-0.5 rounded-full border text-[11px] font-semibold whitespace-nowrap"
+                                :class="flag === 'best'
+                                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                  : 'bg-sky-50 text-sky-700 border-sky-200'"
+                            >
+                              {{ flag }}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                            class="text-[11px] text-amber-600 opacity-0 group-hover:opacity-100 transition"
+                            @click.stop="copyText(res.text || '')"
+                        >复制</button>
+                      </div>
+                      <div
+                          v-if="res.raw && typeof res.raw === 'object'"
+                          class="space-y-1 text-[12px] text-slate-700"
+                      >
+                        <div
+                            v-for="(val, key) in res.raw"
+                            :key="String(key)"
+                            class="flex items-start gap-2"
+                        >
+                          <span class="text-slate-500">{{ key }}:</span>
+                          <span class="font-mono break-all whitespace-pre-wrap text-slate-800">
+                            {{ typeof val === 'object' ? JSON.stringify(val) : String(val) }}
+                          </span>
+                          <button
+                              class="text-[10px] text-amber-600 opacity-0 group-hover:opacity-100 transition ml-auto"
+                              @click.stop="copyText(typeof val === 'object' ? JSON.stringify(val) : String(val))"
+                          >复制</button>
+                        </div>
+                      </div>
+                      <pre
+                          v-else
+                          class="text-[12px] text-slate-800 font-mono whitespace-pre-wrap break-words bg-slate-50 border border-slate-200 rounded p-2 flex items-start gap-2"
+                      >
+                        <span>{{ res.text || '—' }}</span>
+                        <button
+                            class="text-[11px] text-amber-600 opacity-0 group-hover:opacity-100 transition ml-auto"
+                            @click.stop="copyText(res.text || '')"
+                        >复制</button>
+                      </pre>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -647,6 +916,27 @@ onUnmounted(() => {
       </div>
     </div>
   </transition>
+
+  <div
+      v-if="fullImagePreview.visible"
+      class="fixed inset-0 z-[140] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6"
+      @click="closeImagePreview"
+  >
+    <div class="relative max-w-[90vw] max-h-[90vh]">
+      <button
+          class="absolute -top-10 right-0 px-3 py-1 rounded bg-white/90 text-slate-700 text-sm shadow hover:bg-white"
+          @click.stop="closeImagePreview"
+      >
+        关闭
+      </button>
+      <img
+          :src="fullImagePreview.src"
+          alt="full-preview"
+          class="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+          @click.stop
+      />
+    </div>
+  </div>
 </template>
 
 <style scoped>

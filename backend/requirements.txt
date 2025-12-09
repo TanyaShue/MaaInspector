@@ -1,4 +1,4 @@
 Flask
 Flask-Cors
-maafw >= 5.1.0
+maafw >= 5.2.0
 pillow

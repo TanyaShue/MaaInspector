@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { RefreshCw, Crosshair, Check, ZoomIn, Mouse } from 'lucide-vue-next'
-import { deviceApi } from '../../services/api.ts'
+import { deviceApi, debugApi } from '../../services/api.ts'
 import DeviceScreenCanvas from './DeviceScreensModals/DeviceScreenCanvas.vue'
 import DeviceScreenSidebar from './DeviceScreensModals/DeviceScreenSidebar.vue'
 import type { TemplateImage } from '../../utils/flowTypes'
@@ -205,11 +205,21 @@ const handlePreviewGenerated = (base64: string) => {
 }
 
 const handleOcr = async () => {
-  if (selection.w === 0) return
+  if (selection.w <= 0 || selection.h <= 0) return
   isOcrLoading.value = true
   try {
-    await new Promise(resolve => setTimeout(resolve, 800))
-    ocrResult.value = "这是识别结果"
+    const roi = [
+      Math.round(selection.x),
+      Math.round(selection.y),
+      Math.round(selection.w),
+      Math.round(selection.h)
+    ]
+    const res = await debugApi.ocrText(roi)
+    const text = (res as any)?.text ?? (res as any)?.data?.text ?? ''
+    if (res && (res as any).success === false) {
+      throw new Error((res as any).message || 'OCR failed')
+    }
+    ocrResult.value = text || '识别失败'
   } catch (e: unknown) {
     console.error("OCR 失败", e)
     ocrResult.value = "识别失败"

@@ -97,13 +97,24 @@ function useStatusModule(api: any, label: string) {
     try {
       const method = api.load ? api.load : api.connect
       const res = await method(payload)
+      const ok = typeof (res as any)?.r === 'boolean'
+        ? (res as any).r
+        : ((res as any)?.success ?? true)
+      const msg = (res as any)?.message || (ok ? '已就绪' : '加载失败')
+
+      if (!ok) {
+        status.value = 'failed'
+        message.value = msg
+        throw new Error(msg)
+      }
+
       status.value = 'connected'
-      message.value = (res as any).message || '已就绪'
+      message.value = msg
       if ((res as any).info) info.value = (res as any).info
       return res
     } catch (e: any) {
       status.value = 'failed'
-      message.value = '失败: ' + (e?.message || '未知错误')
+      message.value = (e?.message ? '失败: ' + e.message : '失败: 未知错误')
       setTimeout(() => {
         if (status.value === 'failed') status.value = 'disconnected'
       }, 3000)
@@ -222,14 +233,16 @@ const handleDeviceConnect = async () => {
     emit('device-connected', false)
   }
 }
-const handleDeviceDisconnect = async () => {
-  await deviceCtrl.disconnect()
-  emit('device-connected', false)
-}
 const handleResourceLoad = async () => {
   try {
     const res = await resourceCtrl.connect(currentProfile.value)
-    if (res.list) {
+    const ok = (res as any)?.r ?? (res as any)?.success ?? true
+    if (!ok) {
+      resourceCtrl.message = (res as any)?.message || '资源加载失败'
+      return
+    }
+
+    if ((res as any).list) {
       availableFiles.value = res.list
       // 使用唯一 ID 检查文件是否仍然存在
       let fileStillExists = selectedResourceFile.value ? getFileObjById(selectedResourceFile.value) : null
@@ -283,6 +296,18 @@ const handleCreateFile = async ({path, filename}: { path: string; filename: stri
 }
 const handleProfileSwitch = () => handleResourceLoad()
 const handleAgentConnect = () => agentCtrl.connect({socket_id: currentAgentSocket.value})
+
+const deviceButtonLabel = computed(() => deviceCtrl.status === 'connected' ? '重新连接' : '连接设备')
+const agentButtonLabel = computed(() => agentCtrl.status === 'connected' ? '重新连接 Agent' : '启动 Agent')
+
+// 设备切换时重置连接状态，避免显示“已连接”状态遗留
+watch(selectedDeviceIndex, (nv, ov) => {
+  if (nv === ov || isInit) return
+  deviceCtrl.status = 'disconnected'
+  deviceCtrl.message = '设备未连接'
+  deviceCtrl.info = {}
+  emit('device-connected', false)
+})
 
 // --- 初始化 ---
 let isInit = true
@@ -455,11 +480,13 @@ const saveResourceSettings = (data: { profiles: ResourceProfile[]; index?: numbe
             </div>
             <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-3 shadow-sm"
                  :class="{'!bg-indigo-50/30 !border-indigo-100': deviceCtrl.status === 'connected'}">
-              <div v-if="deviceCtrl.status !== 'connected'" class="relative">
+              <div class="relative">
                 <div class="absolute left-3 top-2.5 text-slate-400 pointer-events-none">
                   <Server :size="14"/>
                 </div>
-                <select v-model="selectedDeviceIndex" class="input-base pl-10 appearance-none cursor-pointer">
+                <select v-model="selectedDeviceIndex"
+                        class="input-base pl-10 appearance-none cursor-pointer"
+                        :disabled="availableDevices.length === 0 || deviceCtrl.status === 'connecting'">
                   <option v-for="(dev, index) in availableDevices" :key="index" :value="index">{{ dev.name }}
                     ({{ dev.address }})
                   </option>
@@ -469,24 +496,26 @@ const saveResourceSettings = (data: { profiles: ResourceProfile[]; index?: numbe
                   <ChevronDown :size="14"/>
                 </div>
               </div>
-              <div v-else
-                   class="flex items-center justify-between bg-white border border-indigo-100 rounded-lg p-2 shadow-sm">
-                <div class="flex flex-col overflow-hidden"><span
-                    class="text-xs font-bold text-indigo-700 truncate">{{ currentDevice.name }}</span><span
-                    class="text-[10px] font-mono text-slate-500 truncate">{{ currentDevice.address }}</span></div>
-                <div class="px-2 py-0.5 bg-green-100 text-green-600 text-[10px] rounded font-bold">LINKED</div>
+              <div
+                  class="flex items-center justify-between bg-white border border-slate-200 rounded-lg p-2 shadow-sm"
+                  :class="{'!bg-indigo-50/40 !border-indigo-100': deviceCtrl.status === 'connected'}">
+                <div class="flex flex-col overflow-hidden">
+                  <span class="text-xs font-bold text-indigo-700 truncate">{{ currentDevice.name || '未选择设备' }}</span>
+                  <span class="text-[10px] font-mono text-slate-500 truncate">{{ currentDevice.address || '--' }}</span>
+                </div>
+                <div class="px-2 py-0.5 rounded text-[10px] font-bold"
+                     :class="deviceCtrl.status === 'connected' ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-400'">
+                  {{ deviceCtrl.status === 'connected' ? '已连接' : '未连接' }}
+                </div>
               </div>
 
               <div class="flex gap-2">
-                <button v-if="deviceCtrl.status !== 'connected'" @click="handleDeviceConnect"
+                <button @click="handleDeviceConnect"
                         :disabled="deviceCtrl.status === 'connecting' || availableDevices.length === 0"
                         class="btn-primary flex-1 bg-indigo-500 shadow-indigo-100">
-                  <Power :size="14"/>
-                  连接
-                </button>
-                <button v-else @click="handleDeviceDisconnect" class="btn-danger flex-1">
-                  <Power :size="14"/>
-                  断开
+                  <component :is="deviceCtrl.status === 'connecting' ? Loader2 : Power" :size="14"
+                             :class="{'animate-spin': deviceCtrl.status === 'connecting'}"/>
+                  {{ deviceButtonLabel }}
                 </button>
                 <button @click="showDeviceSettings = true" class="btn-icon">
                   <Settings :size="16"/>
@@ -573,11 +602,13 @@ const saveResourceSettings = (data: { profiles: ResourceProfile[]; index?: numbe
                        class="input-base pl-10 focus:border-violet-500 focus:ring-violet-100"
                        @keyup.enter="handleAgentConnect"/>
               </div>
-              <button v-if="agentCtrl.status !== 'connected'" @click="handleAgentConnect"
+              <button @click="handleAgentConnect"
                       :disabled="agentCtrl.status === 'connecting'"
-                      class="w-full btn-primary bg-violet-500 shadow-violet-100">启动 Agent
+                      class="w-full btn-primary bg-violet-500 shadow-violet-100">
+                <component :is="agentCtrl.status === 'connecting' ? Loader2 : Bot" :size="14"
+                           :class="{'animate-spin': agentCtrl.status === 'connecting'}"/>
+                {{ agentButtonLabel }}
               </button>
-              <button v-else @click="agentCtrl.disconnect()" class="w-full btn-danger">停止 Agent</button>
             </div>
           </section>
         </div>
