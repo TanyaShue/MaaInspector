@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { FileJson, GitBranch, Info, MessageSquare, Play, Settings, X, Zap } from 'lucide-vue-next'
 import DeviceScreen from './DeviceScreen.vue'
@@ -10,19 +10,27 @@ import RecognitionTab from './NodeDetailsPanels/RecognitionTab.vue'
 import ActionTab from './NodeDetailsPanels/ActionTab.vue'
 import JsonPreviewTab from './NodeDetailsPanels/JsonPreviewTab.vue'
 import { useNodeForm, recognitionTypes, actionTypes } from '../../utils/nodeLogic'
+import type { FlowBusinessData, FlowNodeMeta } from '../../utils/flowTypes'
 
-const props = defineProps({
-  visible: Boolean,
-  nodeId: String,
-  nodeData: Object,
-  nodeType: String,
-  availableTypes: Array,
-  typeConfig: Object,
-  currentFilename: String // 当前打开的文件名
-})
-const emit = defineEmits(['close', 'update-id', 'update-type', 'update-data'])
+type DevicePickerMode = 'coordinate' | 'ocr' | 'image_manager'
 
-const formMethods = useNodeForm(props, emit)
+const props = defineProps<{
+  visible: boolean
+  nodeId?: string
+  nodeData?: FlowNodeMeta
+  nodeType?: string
+  availableTypes?: string[]
+  typeConfig?: Record<string, unknown>
+  currentFilename?: string
+}>()
+const emit = defineEmits<{
+  (e: 'close'): void
+  (e: 'update-id', payload: { oldId?: string; newId: string }): void
+  (e: 'update-type', newType: string): void
+  (e: 'update-data', payload: FlowBusinessData & { _action?: string } & Record<string, unknown>): void
+}>()
+
+const formMethods = useNodeForm(props as any, emit as any)
 const {
   formData, jsonStr, jsonError, getValue, setValue,
   getArrayList, setArrayList, updateJsonFromForm, handleJsonInput,
@@ -49,22 +57,36 @@ const dropdownStates = reactive({
 })
 
 const anyDropdownOpen = computed(() => dropdownStates.recognition || dropdownStates.action || dropdownStates.focus)
-const toggleDropdown = (key) => {
-  Object.keys(dropdownStates).forEach(k => {
+const toggleDropdown = (key: keyof typeof dropdownStates | string) => {
+  (Object.keys(dropdownStates) as Array<keyof typeof dropdownStates>).forEach(k => {
     dropdownStates[k] = k === key ? !dropdownStates[k] : false
   })
 }
 const closeAllDropdowns = () => {
-  Object.keys(dropdownStates).forEach(k => dropdownStates[k] = false)
+  (Object.keys(dropdownStates) as Array<keyof typeof dropdownStates>).forEach(k => dropdownStates[k] = false)
 }
 watch(activeTab, closeAllDropdowns)
 
 // Device Screen 状态
 const showDeviceScreen = ref(false)
-const deviceScreenConfig = reactive({
+const deviceScreenConfig = reactive<{
+  targetField: string
+  referenceField: string | null
+  referenceRect: number[] | null
+  initialRect: number[] | null
+  referenceLabel: string
+  title: string
+  mode: DevicePickerMode
+  imageList: unknown[]
+  tempImageList: unknown[]
+  deletedImageList: unknown[]
+  filename: string
+  nodeId: string
+}>({
   targetField: '',
   referenceField: '',
   referenceRect: null,
+  initialRect: null,
   referenceLabel: '',
   title: '区域选择',
   mode: 'coordinate',
@@ -88,23 +110,23 @@ const confirmIdChange = () => {
   }
 }
 
-const selectRecognitionType = (newType) => {
+const selectRecognitionType = (newType: string) => {
   setValue('recognition', newType)
   emit('update-type', newType)
   dropdownStates.recognition = false
 }
 
-const selectActionType = (newAction) => {
+const selectActionType = (newAction: string) => {
   setValue('action', newAction)
   dropdownStates.action = false
 }
 
-const jumpToSettings = (type) => {
+const jumpToSettings = (type: string) => {
   activeTab.value = type
   nextTick(closeAllDropdowns)
 }
 
-const parseRect = (val) => {
+const parseRect = (val: unknown) => {
   if (Array.isArray(val) && val.length === 4) return val
   if (typeof val === 'string') {
     try {
@@ -118,15 +140,30 @@ const parseRect = (val) => {
   return null
 }
 
-const openDevicePicker = (field, referenceField = null, mode = 'coordinate', refLabel = null) => {
+const openDevicePicker = (field: string, referenceField: string | null = null, mode: DevicePickerMode = 'coordinate', refLabel: string | null = null) => {
+  const refRect = referenceField ? parseRect(getValue(referenceField)) : null
+  const currentRect = parseRect(getValue(field))
+  deviceScreenConfig.initialRect = (() => {
+    if (field.includes('offset') && refRect && currentRect) {
+      return [
+        refRect[0] + currentRect[0],
+        refRect[1] + currentRect[1],
+        refRect[2] + currentRect[2],
+        refRect[3] + currentRect[3]
+      ]
+    }
+    if (currentRect) return currentRect
+    if (refRect && mode !== 'image_manager') return refRect
+    return null
+  })()
+
   deviceScreenConfig.targetField = field
   deviceScreenConfig.referenceField = referenceField
-  deviceScreenConfig.referenceRect = null
+  deviceScreenConfig.referenceRect = refRect
   deviceScreenConfig.mode = mode
   deviceScreenConfig.referenceLabel = refLabel || referenceField || '参考区域'
   deviceScreenConfig.title = mode === 'ocr' ? 'OCR 区域识别' : (field.includes('offset') ? `设置偏移 (${field})` : `选取区域 (${field})`)
   deviceScreenConfig.imageList = []
-  if (referenceField) deviceScreenConfig.referenceRect = parseRect(getValue(referenceField))
   showDeviceScreen.value = true
 }
 
@@ -135,6 +172,7 @@ const openImageManager = () => {
   deviceScreenConfig.title = '模板图片管理'
   deviceScreenConfig.targetField = 'template'
   deviceScreenConfig.referenceRect = parseRect(getValue('roi'))
+  deviceScreenConfig.initialRect = deviceScreenConfig.referenceRect
   deviceScreenConfig.referenceLabel = 'roi'
   deviceScreenConfig.imageList = props.nodeData?._images || []
   deviceScreenConfig.tempImageList = props.nodeData?._temp_images || []
@@ -144,7 +182,7 @@ const openImageManager = () => {
   showDeviceScreen.value = true
 }
 
-const handleDevicePick = (result) => {
+const handleDevicePick = (result: any) => {
   if (deviceScreenConfig.mode === 'image_manager') {
     if (result.type === 'save_image_changes') {
       emit('update-data', {
@@ -180,11 +218,11 @@ const handleDevicePick = (result) => {
   }
 }
 
-const handleImageDelete = (imageName) => {
+const handleImageDelete = (imageName: string) => {
   emit('update-data', { _action: 'delete_image', name: imageName })
 }
 
-const handleAddLink = ({ key, value }) => {
+const handleAddLink = ({ key, value }: { key: string; value: { value?: string } }) => {
   const val = value?.value?.trim()
   if (!val) return
   const current = getArrayList(key)
@@ -192,16 +230,16 @@ const handleAddLink = ({ key, value }) => {
     current.push(val)
     setArrayList(key, current)
   }
-  value.value = ''
+  if (value && typeof value.value === 'string') value.value = ''
 }
 
-const handleRemoveLink = ({ key, index }) => {
+const handleRemoveLink = ({ key, index }: { key: string; index: number }) => {
   const current = getArrayList(key)
   current.splice(index, 1)
   setArrayList(key, current)
 }
 
-const handleMoveLink = ({ key, index, direction }) => {
+const handleMoveLink = ({ key, index, direction }: { key: string; index: number; direction: number }) => {
   const current = getArrayList(key)
   const targetIndex = index + direction
   if (targetIndex < 0 || targetIndex >= current.length) return
@@ -210,13 +248,17 @@ const handleMoveLink = ({ key, index, direction }) => {
   setArrayList(key, current)
 }
 
-const handleJsonTextInput = (val) => {
-  handleJsonInput({ target: { value: val } })
+const handleJsonTextInput = (val: string) => {
+  handleJsonInput({ target: { value: val } } as unknown as Event)
+}
+
+const handleUpdateEditingId = (val: string) => {
+  editingId.value = val
 }
 
 watch(() => props.visible, (val) => {
   if (val) {
-    editingId.value = props.nodeId
+    editingId.value = props.nodeId || ''
     closeAllDropdowns()
   }
 }, { immediate: true })
@@ -281,7 +323,7 @@ watch(() => props.visible, (val) => {
             :action-types="actionTypes"
             :current-action="currentAction"
             :is-action-dropdown-open="dropdownStates.action"
-            @update:editingId="val => editingId.value = val"
+            @update:editingId="handleUpdateEditingId"
             @confirm-id-change="confirmIdChange"
             @toggle-dropdown="toggleDropdown"
             @select-recognition="selectRecognitionType"
@@ -312,7 +354,7 @@ watch(() => props.visible, (val) => {
             @toggle-dropdown="() => toggleDropdown('focus')"
             @add-focus="addFocusParam"
             @remove-focus="removeFocusParam"
-            @update-focus="({ key, value }) => updateFocusParam(key, value)"
+            @update-focus="({ key, value }: { key: string; value: string }) => updateFocusParam(key, value)"
           />
         </div>
 
@@ -357,6 +399,7 @@ watch(() => props.visible, (val) => {
         :deleted-image-list="deviceScreenConfig.deletedImageList"
         :filename="deviceScreenConfig.filename"
         :node-id="deviceScreenConfig.nodeId"
+        :initial-rect="deviceScreenConfig.initialRect"
         @confirm="handleDevicePick"
         @close="showDeviceScreen = false"
         @delete-image="handleImageDelete"

@@ -1,25 +1,38 @@
-<script setup>
+<script setup lang="ts">
 import {ref, computed, watch, onMounted, onUnmounted} from 'vue'
-import {X, Search, MapPin, Regex, FileJson, Loader2, ArrowRightCircle, FolderOpen} from 'lucide-vue-next'
-import {resourceApi} from '../../services/api'
+import {X, Search, MapPin, Regex, FileJson, Loader2, ArrowRightCircle} from 'lucide-vue-next'
+import {resourceApi} from '../../services/api.ts'
+import type { FlowNode } from '../../utils/flowTypes'
 
-const props = defineProps({
-  visible: {type: Boolean, default: false},
-  nodes: {type: Array, default: () => []},
-  currentFilename: {type: String, default: ''}, // 当前文件名（用于排除）
-  currentSource: {type: String, default: ''}    // 当前资源路径（用于排除）
-})
+interface RemoteResult {
+  node_id: string
+  filename: string
+  source: string
+  display_id: string
+  [key: string]: unknown
+}
 
-const emit = defineEmits(['close', 'locate-node', 'switch-file'])
+const props = defineProps<{
+  visible?: boolean
+  nodes?: FlowNode[]
+  currentFilename?: string
+  currentSource?: string
+}>()
+
+const emit = defineEmits<{
+  (e: 'close'): void
+  (e: 'locate-node', id: string): void
+  (e: 'switch-file', payload: { filename: string; source: string; nodeId: string }): void
+}>()
 
 // 搜索状态
-const searchQuery = ref('')
-const useRegex = ref(false)
-const inputRef = ref(null)
-const isSearchingRemote = ref(false)
+const searchQuery = ref<string>('')
+const useRegex = ref<boolean>(false)
+const inputRef = ref<HTMLInputElement | null>(null)
+const isSearchingRemote = ref<boolean>(false)
 
 // 结果集
-const otherFileResults = ref([]) // 远程结果
+const otherFileResults = ref<RemoteResult[]>([]) // 远程结果
 
 // 拖动状态
 const position = ref({x: 100, y: 100})
@@ -28,7 +41,8 @@ const dragOffset = ref({x: 0, y: 0})
 
 // --- 1. 本地搜索逻辑 ---
 const localResults = computed(() => {
-  let filtered = props.nodes
+  const nodeList = props.nodes || []
+  let filtered = nodeList
   
   if (searchQuery.value.trim()) {
     const query = searchQuery.value
@@ -42,7 +56,7 @@ const localResults = computed(() => {
       }
     }
 
-    filtered = props.nodes.filter(node => {
+    filtered = nodeList.filter(node => {
       const displayId = node.data?.data?.id || node.id
       const rawId = node.id
 
@@ -58,8 +72,8 @@ const localResults = computed(() => {
   // 按节点名称排序
   return [...filtered]
     .sort((a, b) => {
-      const aId = (a.data?.data?.id || a.id).toLowerCase()
-      const bId = (b.data?.data?.id || b.id).toLowerCase()
+      const aId = ((a as any).data?.data?.id || a.id).toLowerCase()
+      const bId = ((b as any).data?.data?.id || b.id).toLowerCase()
       return aId.localeCompare(bId)
     })
     .slice(0, 15)
@@ -69,7 +83,7 @@ const localResults = computed(() => {
 const groupedRemoteResults = computed(() => {
   if (!otherFileResults.value.length) return []
   
-  const groups = {}
+  const groups: Record<string, { key: string; source: string; filename: string; items: RemoteResult[] }> = {}
   
   otherFileResults.value.forEach(item => {
     // 创建唯一的分组Key (路径 + 文件名)
@@ -91,7 +105,7 @@ const groupedRemoteResults = computed(() => {
 })
 
 // --- 3. 远程搜索逻辑 (防抖) ---
-let debounceTimer = null
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 const performRemoteSearch = async () => {
   if (!searchQuery.value.trim()) {
@@ -104,10 +118,10 @@ const performRemoteSearch = async () => {
     const res = await resourceApi.searchGlobalNodes(
         searchQuery.value,
         useRegex.value,
-        props.currentFilename,
-        props.currentSource
+        props.currentFilename || '',
+        props.currentSource || ''
     )
-    otherFileResults.value = res.results || []
+    otherFileResults.value = (res as any).results || []
   } catch (e) {
     console.error("Remote search failed", e)
     otherFileResults.value = []
@@ -128,8 +142,8 @@ watch([searchQuery, useRegex], () => {
 
 
 // --- 辅助函数 ---
-const getNodeDisplayId = (node) => node.data?.data?.id || node.id
-const getNodeTypeLabel = (type) => {
+const getNodeDisplayId = (node: FlowNode) => (node as any).data?.data?.id || node.id
+const getNodeTypeLabel = (type?: string) => {
   const typeMap = {
     'DirectHit': '通用匹配',
     'TemplateMatch': '模板匹配',
@@ -141,10 +155,10 @@ const getNodeTypeLabel = (type) => {
     'Custom': '自定义',
     'Unknown': '未知'
   }
-  return typeMap[type] || type || '未知'
+  return typeMap[type as keyof typeof typeMap] || type || '未知'
 }
 
-const shortenPath = (fullPath, maxLen = 35) => {
+const shortenPath = (fullPath: string, maxLen = 35) => {
   if (!fullPath) return ''
   const normalized = fullPath.replace(/\\/g, '/')
   const parts = normalized.split('/').filter(Boolean)
@@ -159,11 +173,11 @@ const shortenPath = (fullPath, maxLen = 35) => {
 }
 
 // --- 交互 ---
-const locateLocalNode = (node) => {
+const locateLocalNode = (node: FlowNode) => {
   emit('locate-node', node.id)
 }
 
-const switchToRemoteNode = (result) => {
+const switchToRemoteNode = (result: RemoteResult) => {
   emit('switch-file', {
     filename: result.filename,
     source: result.source,
@@ -172,14 +186,15 @@ const switchToRemoteNode = (result) => {
 }
 
 // 拖动逻辑
-const startDrag = (e) => {
-  if (e.target.closest('input') || e.target.closest('.search-results') || e.target.closest('button')) return
+const startDrag = (e: MouseEvent) => {
+  const target = e.target as HTMLElement | null
+  if (target && (target.closest('input') || target.closest('.search-results') || target.closest('button'))) return
   isDragging.value = true
   dragOffset.value = {x: e.clientX - position.value.x, y: e.clientY - position.value.y}
   document.addEventListener('mousemove', onDrag)
   document.addEventListener('mouseup', stopDrag)
 }
-const onDrag = (e) => {
+const onDrag = (e: MouseEvent) => {
   if (!isDragging.value) return
   position.value = {x: e.clientX - dragOffset.value.x, y: e.clientY - dragOffset.value.y}
 }
@@ -198,7 +213,7 @@ watch(() => props.visible, (val) => {
   }
 })
 
-const handleKeydown = (e) => {
+const handleKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Escape') emit('close')
 }
 onMounted(() => document.addEventListener('keydown', handleKeydown))

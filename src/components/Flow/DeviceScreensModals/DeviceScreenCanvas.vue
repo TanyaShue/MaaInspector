@@ -1,21 +1,27 @@
-<script setup>
+<script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { Smartphone, RefreshCw, RotateCcw } from 'lucide-vue-next'
 
-const props = defineProps({
-  imageUrl: String,
-  isLoading: Boolean,
-  referenceRect: Array, // [x, y, w, h]
-  referenceLabel: String,
-  mode: String,
-  // 外部传入初始选区
-  initialSelection: { type: Object, default: () => ({ x:0, y:0, w:0, h:0 }) }
-})
+type ModeType = 'coordinate' | 'ocr' | 'image_manager'
+interface Selection { x: number; y: number; w: number; h: number }
 
-const emit = defineEmits(['refresh', 'selection-change', 'preview-generated'])
+const props = defineProps<{
+  imageUrl?: string
+  isLoading?: boolean
+  referenceRect?: number[] | null
+  referenceLabel?: string
+  mode?: ModeType
+  initialSelection?: Selection
+}>()
 
-const containerRef = ref(null)
-const contentRef = ref(null)
+const emit = defineEmits<{
+  (e: 'refresh'): void
+  (e: 'selection-change', payload: Selection): void
+  (e: 'preview-generated', payload: string): void
+}>()
+
+const containerRef = ref<HTMLDivElement | null>(null)
+const contentRef = ref<HTMLDivElement | null>(null)
 
 const BASE_WIDTH = 1280
 const BASE_HEIGHT = 720
@@ -23,7 +29,7 @@ const BASE_HEIGHT = 720
 // 本地状态
 const isDragging = ref(false)
 const isPanning = ref(false)
-const selection = reactive({ x: 0, y: 0, w: 0, h: 0 })
+const selection = reactive<Selection>({ x: 0, y: 0, w: 0, h: 0 })
 const viewState = reactive({ scale: 1, x: 0, y: 0 })
 const startPos = reactive({ x: 0, y: 0 })
 const mouseStart = reactive({ x: 0, y: 0 })
@@ -40,7 +46,7 @@ watch(() => props.initialSelection, (val) => {
 }, { deep: true, immediate: true })
 
 // 样式计算
-const getRectStyle = (rect) => {
+const getRectStyle = (rect: number[]) => {
   if (!rect || rect[2] <= 0 || rect[3] <= 0) return { display: 'none' }
   return {
     left: `${(rect[0] / BASE_WIDTH) * 100}%`,
@@ -71,6 +77,10 @@ const generatePreviewSnapshot = () => {
   img.onload = () => {
     const canvas = document.createElement('canvas')
     const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      emit('preview-generated', '')
+      return
+    }
     const scaleX = img.naturalWidth / BASE_WIDTH
     const scaleY = img.naturalHeight / BASE_HEIGHT
     const destW = selection.w * scaleX
@@ -94,7 +104,7 @@ const resetView = () => {
   viewState.y = 0
 }
 
-const handleWheel = (e) => {
+const handleWheel = (e: WheelEvent) => {
   e.preventDefault()
   const delta = e.deltaY > 0 ? 0.9 : 1.1
   let newScale = viewState.scale * delta
@@ -103,7 +113,7 @@ const handleWheel = (e) => {
 }
 
 // 坐标转换
-const getLogicalPos = (clientX, clientY) => {
+const getLogicalPos = (clientX: number, clientY: number) => {
   if (!contentRef.value) return { x: 0, y: 0 }
   const rect = contentRef.value.getBoundingClientRect()
   const scaleX = BASE_WIDTH / rect.width
@@ -115,7 +125,7 @@ const getLogicalPos = (clientX, clientY) => {
   return { x, y }
 }
 
-const handleMouseDown = (e) => {
+const handleMouseDown = (e: MouseEvent) => {
   if (!props.imageUrl || !contentRef.value) return
   if (e.button === 2) {
     isPanning.value = true
@@ -139,7 +149,7 @@ const handleMouseDown = (e) => {
   }
 }
 
-const handleGlobalMouseMove = (e) => {
+const handleGlobalMouseMove = (e: MouseEvent) => {
   if (isPanning.value) {
     const dx = e.clientX - mouseStart.x
     const dy = e.clientY - mouseStart.y

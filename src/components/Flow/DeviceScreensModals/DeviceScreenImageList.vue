@@ -1,13 +1,23 @@
-<script setup>
+<script setup lang="ts">
+import { computed } from 'vue'
 import { ImageIcon, Trash2, RotateCw } from 'lucide-vue-next'
+import type { TemplateImage } from '../../../utils/flowTypes'
 
-const props = defineProps({
-  localImages: { type: Array, default: () => [] },
-  localTempImages: { type: Array, default: () => [] },
-  localDeletedImages: { type: Array, default: () => [] }
-})
+const props = defineProps<{
+  localImages?: TemplateImage[]
+  localTempImages?: TemplateImage[]
+  localDeletedImages?: TemplateImage[]
+}>()
 
-const emit = defineEmits(['delete-image', 'delete-temp', 'restore'])
+const emit = defineEmits<{
+  (e: 'delete-image', path: string): void
+  (e: 'delete-temp', path: string): void
+  (e: 'restore', path: string): void
+}>()
+
+const localImages = computed(() => props.localImages ?? [])
+const localTempImages = computed(() => props.localTempImages ?? [])
+const localDeletedImages = computed(() => props.localDeletedImages ?? [])
 </script>
 
 <template>

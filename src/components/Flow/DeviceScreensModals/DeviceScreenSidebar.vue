@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 import {
   Crosshair, Check, X, MousePointer2, ScanText, Loader2, ImageIcon,
@@ -6,33 +6,46 @@ import {
 } from 'lucide-vue-next'
 import DeviceScreenImageList from './DeviceScreenImageList.vue'
 
-const props = defineProps({
-  mode: String,
-  title: String,
-  selection: Object, // {x,y,w,h}
-  ocrResult: String,
-  isOcrLoading: Boolean,
-  previewUrl: String,
-  saveImagePath: String,
-  guideList: Array,
-  offsetInfo: Array,
-  referenceRect: Array,
-  referenceLabel: String,
-  hasTemplateChanged: Boolean,
+type ModeType = 'coordinate' | 'ocr' | 'image_manager'
+interface Selection { x: number; y: number; w: number; h: number }
+interface GuideItem { icon: any; text: string }
+import type { TemplateImage } from '../../../utils/flowTypes'
 
-  // 图片列表数据
-  localImages: Array,
-  localTempImages: Array,
-  localDeletedImages: Array
-})
+const props = defineProps<{
+  mode?: ModeType
+  title?: string
+  selection: Selection
+  ocrResult?: string
+  isOcrLoading?: boolean
+  previewUrl?: string
+  saveImagePath?: string
+  guideList?: GuideItem[]
+  offsetInfo?: number[] | null
+  referenceRect?: number[] | null
+  referenceLabel?: string
+  hasTemplateChanged?: boolean
+  localImages?: TemplateImage[]
+  localTempImages?: TemplateImage[]
+  localDeletedImages?: TemplateImage[]
+}>()
 
-const emit = defineEmits([
-  'close', 'confirm', 'ocr-start', 'update:ocrResult',
-  'update:saveImagePath', 'save-temp-image', 'save-image-changes',
-  'delete-image', 'delete-temp', 'restore-image'
-])
+const emit = defineEmits<{
+  (e: 'close'): void
+  (e: 'confirm'): void
+  (e: 'ocr-start'): void
+  (e: 'update:ocrResult', val: string): void
+  (e: 'update:saveImagePath', val: string): void
+  (e: 'save-temp-image'): void
+  (e: 'save-image-changes'): void
+  (e: 'delete-image', path: string): void
+  (e: 'delete-temp', path: string): void
+  (e: 'restore-image', path: string): void
+}>()
 
 // 复制选区数据
+const safeOcrResult = computed(() => props.ocrResult ?? '')
+const safeSaveImagePath = computed(() => props.saveImagePath ?? '')
+
 const copySelection = () => {
   if (!props.selection) return
   const { x, y, w, h } = props.selection
@@ -78,8 +91,8 @@ const handleConfirm = () => {
             <div class="space-y-1">
               <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">识别结果(取最高评分)</label>
               <textarea
-                :value="ocrResult"
-                @input="$emit('update:ocrResult', $event.target.value)"
+                :value="safeOcrResult"
+                @input="(e) => $emit('update:ocrResult', (e.target as HTMLTextAreaElement | null)?.value || '')"
                 rows="1"
                 class="w-full px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 resize-none font-mono h-9"
                 placeholder="等待识别...">
@@ -105,14 +118,14 @@ const handleConfirm = () => {
             <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">保存路径</label>
             <div class="flex gap-1">
               <input
-                :value="saveImagePath"
-                @input="$emit('update:saveImagePath', $event.target.value)"
+                :value="safeSaveImagePath"
+                @input="(e) => $emit('update:saveImagePath', (e.target as HTMLInputElement | null)?.value || '')"
                 type="text"
                 class="flex-1 px-2 py-1.5 bg-white border border-slate-200 rounded text-[11px] text-slate-700 font-mono outline-none focus:border-emerald-400"
                 placeholder="文件名.png"/>
               <button
                 @click="emit('save-temp-image')"
-                :disabled="!previewUrl || !saveImagePath.trim()"
+                :disabled="!previewUrl || !safeSaveImagePath.trim()"
                 class="px-2.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded text-[11px] font-bold disabled:opacity-50">
                 保存
               </button>

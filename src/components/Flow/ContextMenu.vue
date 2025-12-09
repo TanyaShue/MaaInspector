@@ -1,80 +1,110 @@
-<script setup>
+<script setup lang="ts">
 import {computed, ref} from 'vue' // computed 仅用于 menuItems
 import {
-  Trash2, Copy, Edit, PlusCircle, RefreshCw, XCircle, ChevronRight,
+  Trash2, Copy, PlusCircle, RefreshCw, XCircle, ChevronRight,
   Check, Bug, Scissors, Search, FolderClosed, Repeat, ArrowRightCircle, Move
 } from 'lucide-vue-next'
 import { recognitionMenuOptions } from '../../utils/nodeLogic'
-import { EDGE_TYPE_OPTIONS, SPACING_TYPE_OPTIONS } from '../../utils/flowOptions'
+import { EDGE_TYPE_OPTIONS, SPACING_TYPE_OPTIONS, type EdgeType, type OptionItem } from '../../utils/flowOptions'
+import type { SpacingKey } from '../../utils/flowTypes'
 
-const props = defineProps({
-  x: {type: Number, required: true},
-  y: {type: Number, required: true},
-  type: {type: String, required: true}, // 'node' | 'edge' | 'pane'
-  data: {type: Object, default: null},
-  currentEdgeType: {type: String, default: 'smoothstep'},
-  currentSpacing: {type: String, default: 'normal'},
-  debugPanelVisible: {type: Boolean, default: false},
-  searchVisible: {type: Boolean, default: false}
-})
+type MenuType = 'node' | 'edge' | 'pane'
 
-const emit = defineEmits(['close', 'action'])
-const showSubmenu = ref(null)
+type SubmenuItem = OptionItem<string | EdgeType | SpacingKey> & { color?: string }
 
-const handleAction = (action, payload = null) => {
-  emit('action', {action, type: props.type, data: props.data, payload})
+type MenuItem =
+  | { type: 'divider'; key?: string }
+  | {
+      type: 'item'
+      key?: string
+      label: string
+      action: string
+      icon?: any
+      color?: string
+      submenu?: SubmenuItem[]
+      submenuAction?: string
+    }
+
+interface EdgeData {
+  sourceHandle?: string
+  data?: { isJumpBack?: boolean }
+  label?: string
+}
+
+const props = defineProps<{
+  x: number
+  y: number
+  type: MenuType
+  data?: EdgeData | Record<string, unknown> | null
+  currentEdgeType?: EdgeType
+  currentSpacing?: SpacingKey
+  debugPanelVisible?: boolean
+  searchVisible?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'close'): void
+  (e: 'action', payload: { action: string; type: MenuType; data: unknown; payload?: string | EdgeType | SpacingKey | null }): void
+}>()
+
+const showSubmenu = ref<string | null>(null)
+
+const handleAction = (action: string, payload: string | EdgeType | SpacingKey | null = null) => {
+  emit('action', {action, type: props.type, data: props.data ?? null, payload})
   emit('close')
 }
 
 // --- 简单的交互逻辑：纯靠 CSS 桥接维持状态 ---
-const handleMouseEnter = (key) => {
-  showSubmenu.value = key
+const handleMouseEnter = (key?: string) => {
+  showSubmenu.value = key ?? null
 }
 
 const handleMouseLeave = () => {
   showSubmenu.value = null
 }
 
-const menuItems = computed(() => {
+const menuItems = computed<MenuItem[]>(() => {
   if (props.type === 'node') {
     return [
-      {label: '调试该节点', action: 'debug_this_node', icon: Bug, color: 'text-amber-600'},
-      {label: '仅识别该节点', action: 'debug_this_node_reco', icon: Bug, color: 'text-amber-600'},
-      {label: '在调试窗口中调试', action: 'debug_in_panel', icon: Bug, color: 'text-amber-700'},
-      {label: '重新布局任务链', action: 'layout_chain', icon: Move, color: 'text-indigo-600'},
+      {type: 'item', label: '调试该节点', action: 'debug_this_node', icon: Bug, color: 'text-amber-600'},
+      {type: 'item', label: '仅识别该节点', action: 'debug_this_node_reco', icon: Bug, color: 'text-amber-600'},
+      {type: 'item', label: '在调试窗口中调试', action: 'debug_in_panel', icon: Bug, color: 'text-amber-700'},
+      {type: 'item', label: '重新布局任务链', action: 'layout_chain', icon: Move, color: 'text-indigo-600'},
       {type: 'divider'},
-      {label: '复制节点', action: 'duplicate', icon: Copy, color: 'text-slate-600'},
+      {type: 'item', label: '复制节点', action: 'duplicate', icon: Copy, color: 'text-slate-600'},
       {type: 'divider'},
-      {label: '删除节点', action: 'delete', icon: Trash2, color: 'text-red-500'},
+      {type: 'item', label: '删除节点', action: 'delete', icon: Trash2, color: 'text-red-500'},
     ]
   } else if (props.type === 'edge') {
-    const items = []
+    const items: MenuItem[] = []
 
     // 仅当 sourceHandle 为 Next (source-a) 或 Error (source-c) 时显示 JumpBack 选项
-    if (props.data && (props.data.sourceHandle === 'source-a' || props.data.sourceHandle === 'source-c')) {
-        const isJumpBack = props.data.data?.isJumpBack
+    const edgeData = props.data as EdgeData | undefined
+    if (edgeData && edgeData.sourceHandle && (edgeData.sourceHandle === 'source-a' || edgeData.sourceHandle === 'source-c')) {
+        const isJumpBack = edgeData.data?.isJumpBack
 
         if (isJumpBack) {
-            items.push({label: '设为普通连线', action: 'setNormalLink', icon: ArrowRightCircle, color: 'text-blue-600'})
+            items.push({type: 'item', label: '设为普通连线', action: 'setNormalLink', icon: ArrowRightCircle, color: 'text-blue-600'})
         } else {
-            items.push({label: '设为 JumpBack 连线', action: 'setJumpBack', icon: Repeat, color: 'text-purple-600'})
+            items.push({type: 'item', label: '设为 JumpBack 连线', action: 'setJumpBack', icon: Repeat, color: 'text-purple-600'})
         }
         items.push({type: 'divider'})
     }
 
-    items.push({label: '断开连接', action: 'delete', icon: Scissors, color: 'text-red-500'})
+    items.push({type: 'item', label: '断开连接', action: 'delete', icon: Scissors, color: 'text-red-500'})
     return items
 
   } else {
-    const searchMenuItem = props.searchVisible
-        ? {label: '关闭搜索窗口', action: 'closeSearch', icon: Search, color: 'text-emerald-600'}
-        : {label: '搜索节点', action: 'search', icon: Search, color: 'text-emerald-600'}
-    const debugMenuItem = props.debugPanelVisible
-        ? {label: '关闭调试窗口', action: 'closeDebugPanel', icon: Bug, color: 'text-amber-600'}
-        : {label: '打开调试窗口', action: 'openDebugPanel', icon: Bug, color: 'text-amber-600'}
+    const searchMenuItem: MenuItem = props.searchVisible
+        ? {type: 'item', label: '关闭搜索窗口', action: 'closeSearch', icon: Search, color: 'text-emerald-600'}
+        : {type: 'item', label: '搜索节点', action: 'search', icon: Search, color: 'text-emerald-600'}
+    const debugMenuItem: MenuItem = props.debugPanelVisible
+        ? {type: 'item', label: '关闭调试窗口', action: 'closeDebugPanel', icon: Bug, color: 'text-amber-600'}
+        : {type: 'item', label: '打开调试窗口', action: 'openDebugPanel', icon: Bug, color: 'text-amber-600'}
 
     return [
       {
+        type: 'item',
         key: 'add-node',
         label: '添加节点',
         action: 'add',
@@ -86,33 +116,38 @@ const menuItems = computed(() => {
       {type: 'divider'},
       searchMenuItem,
       debugMenuItem,
-      {label: '关闭所有节点面板', action: 'closeAllDetails', icon: FolderClosed, color: 'text-slate-600'},
+      {type: 'item', label: '关闭所有节点面板', action: 'closeAllDetails', icon: FolderClosed, color: 'text-slate-600'},
       {type: 'divider'},
       {
+        type: 'item',
         label: '自动布局 (Dagre)',
         action: 'layout',
         icon: Move,
         color: 'text-indigo-600'
       },
       {
+        type: 'item',
         key: 'layout-spacing',
         label: '布局间距',
         icon: SPACING_TYPE_OPTIONS[0]?.icon,
         color: 'text-slate-600',
+        action: 'changeSpacing',
         submenu: SPACING_TYPE_OPTIONS,
         submenuAction: 'changeSpacing'
       },
       {
+        type: 'item',
         key: 'edge-type',
         label: '连线类型',
         icon: EDGE_TYPE_OPTIONS[0]?.icon,
         color: 'text-slate-600',
+        action: 'changeEdgeType',
         submenu: EDGE_TYPE_OPTIONS,
         submenuAction: 'changeEdgeType'
       },
       {type: 'divider'},
-      {label: '重置视图', action: 'reset', icon: RefreshCw, color: 'text-slate-600'},
-      {label: '清除画布', action: 'clear', icon: XCircle, color: 'text-red-500'},
+      {type: 'item', label: '重置视图', action: 'reset', icon: RefreshCw, color: 'text-slate-600'},
+      {type: 'item', label: '清除画布', action: 'clear', icon: XCircle, color: 'text-red-500'},
     ]
   }
 })
@@ -126,11 +161,11 @@ const menuItems = computed(() => {
   >
     <div v-if="type === 'node'" class="px-3 py-2 bg-slate-50 border-b border-slate-100">
       <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Node ID</div>
-      <div class="font-mono text-xs text-slate-600 truncate">#{{ data.id }}</div>
+      <div class="font-mono text-xs text-slate-600 truncate">#{{ (data as any)?.id ?? '-' }}</div>
     </div>
     <div v-if="type === 'edge'" class="px-3 py-2 bg-slate-50 border-b border-slate-100">
       <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Link</div>
-      <div class="font-mono text-xs text-slate-600 truncate">{{ data.label || 'Edge' }}</div>
+      <div class="font-mono text-xs text-slate-600 truncate">{{ (data as EdgeData | undefined)?.label || 'Edge' }}</div>
     </div>
 
     <ul class="py-1 m-0 list-none">
@@ -138,7 +173,7 @@ const menuItems = computed(() => {
         <li v-if="item.type === 'divider'" class="h-px bg-slate-100 my-1 mx-2"></li>
 
         <li
-            v-else
+            v-else-if="item.type === 'item'"
             class="relative group"
             @mouseenter="item.submenu ? handleMouseEnter(item.key) : null"
             @mouseleave="handleMouseLeave()"
@@ -164,9 +199,9 @@ const menuItems = computed(() => {
             <ul class="py-1">
               <li
                   v-for="sub in item.submenu"
-                  :key="sub.value"
+                  :key="sub.value as string"
                   class="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-slate-50"
-                  @click.stop="handleAction(item.submenuAction, sub.value)"
+                  @click.stop="handleAction(item.submenuAction || '', sub.value as string | EdgeType | SpacingKey)"
               >
                 <div class="flex items-center gap-2">
                   <component v-if="sub.icon" :is="sub.icon" :size="14" :class="sub.color || 'text-slate-500'"/>

@@ -1,28 +1,36 @@
-<script setup>
-import {computed, ref, reactive, onMounted, defineComponent, h, watch, defineExpose} from 'vue'
+<script setup lang="ts">
+import {computed, ref, reactive, onMounted, defineComponent, h, watch} from 'vue'
 import {
   Server, Database, Bot, Power, Settings, RefreshCw, CheckCircle2, XCircle, Loader2, HardDrive,
   FolderInput, Link, ChevronDown, Minimize2, Maximize2, Smartphone, FileText, Circle,
   FilePlus, Save
 } from 'lucide-vue-next'
 import {useVueFlow} from '@vue-flow/core'
-import {deviceApi, resourceApi, agentApi, systemApi} from '../../services/api'
+import {deviceApi, resourceApi, agentApi, systemApi} from '../../services/api.ts'
+import type { DeviceInfo, ResourceProfile, ResourceFileInfo } from '../../services/api.ts'
 import DeviceSettingsModal from './Modals/DeviceSettingsModal.vue'
 import ResourceSettingsModal from './Modals/ResourceSettingsModal.vue'
 import CreateResourceModal from './Modals/CreateResourceModal.vue'
 
 // --- Props & Emits ---
-const props = defineProps({
-  nodeCount: {type: Number, default: 0},
-  edgeCount: {type: Number, default: 0},
-  isDirty: {type: Boolean, default: false},
-  currentFilename: {type: String, default: ''},
-  edgeType: {type: String, default: 'smoothstep'},  // 连线类型
-  spacing: {type: String, default: 'normal'}         // 布局间隔
-})
+const props = defineProps<{
+  nodeCount?: number
+  edgeCount?: number
+  isDirty?: boolean
+  currentFilename?: string
+  edgeType?: string
+  spacing?: string
+}>()
 
 // [核心] 增加 request-switch-file 和 update-canvas-config 事件
-const emit = defineEmits(['load-nodes', 'load-images', 'save-nodes', 'device-connected', 'request-switch-file', 'update-canvas-config'])
+const emit = defineEmits<{
+  (e: 'load-nodes', payload: { filename: string; source: string; nodes: Record<string, unknown> }): void
+  (e: 'load-images', payload: Record<string, unknown>): void
+  (e: 'save-nodes', payload: { source: string; filename: string }): void
+  (e: 'device-connected', status: boolean): void
+  (e: 'request-switch-file', payload: { filename: string; source: string }): void
+  (e: 'update-canvas-config', payload: { edgeType?: string; spacing?: string }): void
+}>()
 
 // --- 内部组件 ---
 const StatusIndicator = defineComponent({
@@ -52,37 +60,37 @@ const showResourceSettings = ref(false)
 const showCreateFileModal = ref(false)
 
 // --- 全局数据源 ---
-const availableDevices = ref([])
-const resourceProfiles = ref([])
-const currentAgentSocket = ref('')
-const systemStatus = ref('disconnected')
+const availableDevices = ref<DeviceInfo[]>([])
+const resourceProfiles = ref<ResourceProfile[]>([])
+const currentAgentSocket = ref<string>('')
+const systemStatus = ref<'connected' | 'loading' | 'error' | 'disconnected'>('disconnected')
 
 // --- 选中状态 ---
 const selectedDeviceIndex = ref(0)
 const selectedProfileIndex = ref(0)
 const selectedResourceFile = ref('')  // 存储唯一ID: source|filename
-const availableFiles = ref([])
+const availableFiles = ref<ResourceFileInfo[]>([])
 
 // --- 工具函数：生成和解析唯一ID ---
-const makeFileId = (source, filename) => `${source}|${filename}`
-const parseFileId = (id) => {
+const makeFileId = (source: string, filename: string) => `${source}|${filename}`
+const parseFileId = (id: string) => {
   if (!id) return { source: '', filename: '' }
   const sepIndex = id.lastIndexOf('|')
   if (sepIndex === -1) return { source: '', filename: id }
   return { source: id.slice(0, sepIndex), filename: id.slice(sepIndex + 1) }
 }
-const getFileObjById = (id) => availableFiles.value.find(f => makeFileId(f.source, f.value) === id)
+const getFileObjById = (id: string) => availableFiles.value.find((f: ResourceFileInfo) => makeFileId(f.source, f.value) === id)
 
 // --- 保存状态 ---
 const isSaving = ref(false)
 
 // --- 控制器逻辑封装 ---
-function useStatusModule(api, label) {
-  const status = ref('disconnected')
+function useStatusModule(api: any, label: string) {
+  const status = ref<'disconnected' | 'connecting' | 'connected' | 'failed' | 'disconnecting'>('disconnected')
   const message = ref(`${label}未连接`)
-  const info = ref({})
+  const info = ref<Record<string, unknown>>({})
 
-  const connect = async (payload) => {
+  const connect = async (payload?: any) => {
     if (status.value === 'connecting') return
     status.value = 'connecting'
     message.value = '处理中...'
@@ -90,12 +98,12 @@ function useStatusModule(api, label) {
       const method = api.load ? api.load : api.connect
       const res = await method(payload)
       status.value = 'connected'
-      message.value = res.message || '已就绪'
-      if (res.info) info.value = res.info
+      message.value = (res as any).message || '已就绪'
+      if ((res as any).info) info.value = (res as any).info
       return res
-    } catch (e) {
+    } catch (e: any) {
       status.value = 'failed'
-      message.value = '失败: ' + (e.message || '未知错误')
+      message.value = '失败: ' + (e?.message || '未知错误')
       setTimeout(() => {
         if (status.value === 'failed') status.value = 'disconnected'
       }, 3000)
@@ -126,8 +134,8 @@ const resourceCtrl = useStatusModule(resourceApi, '资源')
 const agentCtrl = useStatusModule(agentApi, 'Agent')
 
 // --- 计算属性 ---
-const currentDevice = computed(() => availableDevices.value[selectedDeviceIndex.value] || {})
-const currentProfile = computed(() => resourceProfiles.value[selectedProfileIndex.value] || {name: 'None', paths: []})
+const currentDevice = computed<DeviceInfo | Record<string, unknown>>(() => availableDevices.value[selectedDeviceIndex.value] || {})
+const currentProfile = computed<ResourceProfile | { name: string; paths: string[] }>(() => resourceProfiles.value[selectedProfileIndex.value] || {name: 'None', paths: []})
 
 const fetchAndEmitNodes = async () => {
   if (!selectedResourceFile.value) return
@@ -136,7 +144,7 @@ const fetchAndEmitNodes = async () => {
 
   try {
     resourceCtrl.message = '加载节点中...'
-    const res = await resourceApi.getFileNodes(fileObj.source, fileObj.value)
+    const res = await resourceApi.getFileNodes<Record<string, unknown>>(fileObj.source, fileObj.value)
     const nodes = res.nodes || {}
 
     // 传递 source 到 load-nodes 事件
@@ -150,7 +158,7 @@ const fetchAndEmitNodes = async () => {
       console.warn("图片加载失败", imgError)
     }
 
-  } catch (e) {
+  } catch (e: any) {
     console.error("加载节点失败", e)
     resourceCtrl.message = '节点加载失败'
   }
@@ -163,7 +171,7 @@ const handleSaveNodes = async () => {
     const fileObj = getFileObjById(selectedResourceFile.value)
     if (!fileObj) throw new Error('未找到当前文件')
     emit('save-nodes', {source: fileObj.source, filename: fileObj.value})
-  } catch (e) {
+  } catch (e: any) {
     console.error('保存失败', e)
     alert('保存失败: ' + (e.message || '未知错误'))
     throw e
@@ -172,9 +180,9 @@ const handleSaveNodes = async () => {
   }
 }
 
-const executeFileSwitch = async (filename, source) => {
+const executeFileSwitch = async (filename: string, source?: string) => {
   const normSource = source ? source.replace(/\\/g, '/').toLowerCase() : ''
-  let target = availableFiles.value.find(f => {
+  let target = availableFiles.value.find((f: ResourceFileInfo) => {
     const fSource = f.source ? f.source.replace(/\\/g, '/').toLowerCase() : ''
     if (source) {
       return f.value === filename && fSource === normSource
@@ -194,7 +202,7 @@ const executeFileSwitch = async (filename, source) => {
 defineExpose({executeFileSwitch, handleSaveNodes})
 
 // [交互] 下拉框变化 -> 通知父组件处理 (newFileId 是唯一ID: source|filename)
-const handleFileSelectChange = (newFileId) => {
+const handleFileSelectChange = (newFileId: string) => {
   if (newFileId === selectedResourceFile.value) return
   const fileObj = getFileObjById(newFileId)
   if (!fileObj) return
@@ -246,11 +254,11 @@ const handleResourceLoad = async () => {
         await fetchAndEmitNodes()
       }
     }
-  } catch (e) {
+  } catch (e: any) {
     console.error("资源加载流程异常", e)
   }
 }
-const handleCreateFile = async ({path, filename}) => {
+const handleCreateFile = async ({path, filename}: { path: string; filename: string }) => {
   try {
     resourceCtrl.message = '创建文件中...'
     await resourceApi.createFile(path, filename)
@@ -267,7 +275,7 @@ const handleCreateFile = async ({path, filename}) => {
       await executeFileSwitch(newFileObj.value, newFileObj.source)
       resourceCtrl.message = '新建成功并已加载'
     }
-  } catch (e) {
+  } catch (e: any) {
     console.error(e)
     alert(`创建失败: ${e.message || '未知错误'}`)
     resourceCtrl.message = '创建失败'
@@ -287,8 +295,8 @@ const fetchSystemState = async () => {
     if (data.devices) availableDevices.value = data.devices
     if (data.resource_profiles) resourceProfiles.value = data.resource_profiles
     const state = data.current_state || {}
-    if (availableDevices.value[state.device_index]) selectedDeviceIndex.value = state.device_index
-    if (resourceProfiles.value[state.resource_profile_index]) selectedProfileIndex.value = state.resource_profile_index
+    if (state.device_index !== undefined && availableDevices.value[state.device_index]) selectedDeviceIndex.value = state.device_index
+    if (state.resource_profile_index !== undefined && resourceProfiles.value[state.resource_profile_index]) selectedProfileIndex.value = state.resource_profile_index
     // 使用 source 和 filename 生成唯一 ID
     if (state.resource_file && state.resource_source) {
       selectedResourceFile.value = makeFileId(state.resource_source, state.resource_file)
@@ -308,7 +316,7 @@ const fetchSystemState = async () => {
     }
 
     systemStatus.value = 'connected'
-  } catch (e) {
+  } catch (e: any) {
     console.error("Init failed", e)
     systemStatus.value = 'error'
   } finally {
@@ -349,14 +357,14 @@ watch([selectedDeviceIndex, selectedProfileIndex, selectedResourceFile, currentA
 // 监听画布配置变化
 watch(() => [props.edgeType, props.spacing], () => saveAllConfig(), {deep: false})
 
-const saveDeviceSettings = (data) => {
+const saveDeviceSettings = (data: { devices: DeviceInfo[]; index?: number }) => {
   availableDevices.value = data.devices
   if (selectedDeviceIndex.value >= availableDevices.value.length) selectedDeviceIndex.value = 0
   if (data.index !== undefined) selectedDeviceIndex.value = data.index
   showDeviceSettings.value = false
   saveAllConfig()
 }
-const saveResourceSettings = (data) => {
+const saveResourceSettings = (data: { profiles: ResourceProfile[]; index?: number }) => {
   resourceProfiles.value = data.profiles
   if (selectedProfileIndex.value >= resourceProfiles.value.length) selectedProfileIndex.value = 0
   if (data.index !== undefined) selectedProfileIndex.value = data.index
@@ -384,7 +392,7 @@ const saveResourceSettings = (data) => {
             <div v-if="props.isDirty" class="w-2 h-2 rounded-full bg-amber-500 animate-pulse" title="文件已修改"></div>
             <select
                 :value="selectedResourceFile"
-                @change="handleFileSelectChange($event.target.value)"
+                @change="(e) => handleFileSelectChange((e.target as HTMLSelectElement | null)?.value || '')"
                 class="appearance-none bg-transparent text-xs font-mono text-slate-600 outline-none w-[100px] truncate cursor-pointer hover:text-indigo-600 transition-colors pr-3"
                 :class="{'!text-amber-600 font-bold': props.isDirty}"
                 :disabled="resourceCtrl.status !== 'connected' || availableFiles.length === 0"
@@ -531,7 +539,7 @@ const saveResourceSettings = (data) => {
                   <div class="absolute left-3 top-2.5 text-emerald-600 pointer-events-none">
                     <FileText :size="14"/>
                   </div>
-                  <select :value="selectedResourceFile" @change="handleFileSelectChange($event.target.value)"
+                  <select :value="selectedResourceFile" @change="(e) => handleFileSelectChange((e.target as HTMLSelectElement | null)?.value || '')"
                           class="input-base pl-10 border-emerald-200 focus:ring-emerald-100 appearance-none cursor-pointer"
                           :class="{'!border-amber-300 !ring-amber-100': props.isDirty}">
                     <option v-for="file in availableFiles" :key="makeFileId(file.source, file.value)" :value="makeFileId(file.source, file.value)">{{

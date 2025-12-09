@@ -1,46 +1,61 @@
-<script setup>
+<script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick } from 'vue'
-import {
-  Smartphone, RefreshCw, Crosshair, Check, X, MousePointer2,
-  ZoomIn, RotateCcw, ScanText, Loader2, Image as ImageIcon, Trash2, Mouse,
-  Maximize, ArrowLeftRight, Copy, RotateCw
-} from 'lucide-vue-next'
-import { deviceApi } from '../../services/api'
+import { RefreshCw, Crosshair, Check, ZoomIn, Mouse } from 'lucide-vue-next'
+import { deviceApi } from '../../services/api.ts'
 import DeviceScreenCanvas from './DeviceScreensModals/DeviceScreenCanvas.vue'
 import DeviceScreenSidebar from './DeviceScreensModals/DeviceScreenSidebar.vue'
+import type { TemplateImage } from '../../utils/flowTypes'
 
-const props = defineProps({
-  visible: Boolean,
-  mode: {type: String, default: 'coordinate'},
-  referenceRect: {type: Array, default: null}, // 格式: [x, y, w, h]
-  referenceLabel: {type: String, default: '参考区域'},
-  initialRect: {type: Array, default: null},
-  title: {type: String, default: '设备屏幕选取'},
-  imageList: {type: Array, default: () => []},
-  tempImageList: {type: Array, default: () => []}, // 临时图片列表 (_temp_images)
-  deletedImageList: {type: Array, default: () => []}, // 已删除的图片列表
-  filename: {type: String, default: ''}, // 当前文件名
-  nodeId: {type: String, default: ''} // 当前节点ID
-})
+type ModeType = 'coordinate' | 'ocr' | 'image_manager'
 
-const emit = defineEmits(['close', 'confirm', 'delete-image', 'save-with-deletions'])
+interface Selection {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+interface ImageItem extends TemplateImage {
+  _source?: 'images' | 'temp' | string
+}
+
+const props = defineProps<{
+  visible: boolean
+  mode?: ModeType
+  referenceRect?: number[] | null
+  referenceLabel?: string
+  initialRect?: number[] | null
+  title?: string
+  imageList?: ImageItem[]
+  tempImageList?: ImageItem[]
+  deletedImageList?: ImageItem[]
+  filename?: string
+  nodeId?: string
+}>()
+
+const emit = defineEmits<{
+  (e: 'close'): void
+  (e: 'confirm', payload: unknown): void
+  (e: 'delete-image', path: string): void
+  (e: 'save-with-deletions'): void
+}>()
 
 // 状态
-const saveImagePath = ref('')
-const imageCounter = ref(1)
-const localImages = ref([])
-const localTempImages = ref([])
-const localDeletedImages = ref([])
-const originalTemplatePaths = ref([])
+const saveImagePath = ref<string>('')
+const imageCounter = ref<number>(1)
+const localImages = ref<ImageItem[]>([])
+const localTempImages = ref<ImageItem[]>([])
+const localDeletedImages = ref<ImageItem[]>([])
+const originalTemplatePaths = ref<string[]>([])
 const isLoading = ref(false)
 const isOcrLoading = ref(false)
-const imageUrl = ref('')
-const previewUrl = ref('')
-const ocrResult = ref('')
-const canvasRef = ref(null)
+const imageUrl = ref<string>('')
+const previewUrl = ref<string>('')
+const ocrResult = ref<string>('')
+const canvasRef = ref<InstanceType<typeof DeviceScreenCanvas> | null>(null)
 
 // 选区状态 (共享给 Sidebar 和 Canvas)
-const selection = reactive({x: 0, y: 0, w: 0, h: 0})
+const selection = reactive<Selection>({x: 0, y: 0, w: 0, h: 0})
 
 // --- 计算属性：相对偏移量 ---
 const offsetInfo = computed(() => {
@@ -81,7 +96,7 @@ const generateDefaultSavePath = () => {
   const nodeId = props.nodeId || 'node'
   const usedPaths = new Set()
 
-  const collectPaths = (list) => {
+  const collectPaths = (list?: ImageItem[]) => {
     if (!list) return
     list.forEach(img => {
       if (img && img.path) usedPaths.add(img.path)
@@ -105,7 +120,7 @@ const generateDefaultSavePath = () => {
 }
 
 const currentTemplatePaths = computed(() => {
-  const paths = []
+  const paths: string[] = []
   localImages.value.forEach(img => paths.push(img.path))
   localTempImages.value.forEach(img => paths.push(img.path))
   return paths.sort()
@@ -118,7 +133,7 @@ const hasTemplateChanged = computed(() => {
 })
 
 // --- 初始化与监听 ---
-watch(() => props.visible, async (val) => {
+watch(() => props.visible, async (val: boolean) => {
   if (val) {
     if (canvasRef.value) canvasRef.value.resetView()
     ocrResult.value = ''
@@ -161,15 +176,16 @@ const fetchScreenshot = async () => {
   isLoading.value = true
   try {
     const res = await deviceApi.getScreenshot()
-    if (res.success && res.image) {
-      imageUrl.value = res.image
+    const img = (res as any)?.image ?? (res as any)?.data
+    if (img && typeof img === 'string') {
+      imageUrl.value = img
       if (selection.w > 0) {
         setTimeout(() => {
           if(canvasRef.value) canvasRef.value.generatePreviewSnapshot()
         }, 100)
       }
     }
-  } catch (e) {
+  } catch (e: unknown) {
     console.error("获取截图失败", e)
   } finally {
     isLoading.value = false
@@ -177,14 +193,14 @@ const fetchScreenshot = async () => {
 }
 
 // --- 事件处理 ---
-const handleSelectionChange = (newSelection) => {
+const handleSelectionChange = (newSelection: Selection) => {
   selection.x = newSelection.x
   selection.y = newSelection.y
   selection.w = newSelection.w
   selection.h = newSelection.h
 }
 
-const handlePreviewGenerated = (base64) => {
+const handlePreviewGenerated = (base64: string) => {
   previewUrl.value = base64
 }
 
@@ -194,7 +210,7 @@ const handleOcr = async () => {
   try {
     await new Promise(resolve => setTimeout(resolve, 800))
     ocrResult.value = "这是识别结果"
-  } catch (e) {
+  } catch (e: unknown) {
     console.error("OCR 失败", e)
     ocrResult.value = "识别失败"
   } finally {
@@ -236,7 +252,7 @@ const handleImageManagerSave = () => {
 }
 
 // --- 图片管理逻辑 ---
-const deleteFromImages = (path) => {
+const deleteFromImages = (path: string) => {
   const index = localImages.value.findIndex(img => img.path === path)
   if (index !== -1) {
     const [deletedImg] = localImages.value.splice(index, 1)
@@ -245,7 +261,7 @@ const deleteFromImages = (path) => {
   }
 }
 
-const deleteFromTempImages = (path) => {
+const deleteFromTempImages = (path: string) => {
   const index = localTempImages.value.findIndex(img => img.path === path)
   if (index !== -1) {
     const [deletedImg] = localTempImages.value.splice(index, 1)
@@ -254,7 +270,7 @@ const deleteFromTempImages = (path) => {
   }
 }
 
-const restoreImage = (path) => {
+const restoreImage = (path: string) => {
   const index = localDeletedImages.value.findIndex(img => img.path === path)
   if (index !== -1) {
     const [restoredImg] = localDeletedImages.value.splice(index, 1)

@@ -25,8 +25,8 @@ const emit = defineEmits(['open-picker', 'open-image-manager'])
       <NodeRecognition
         :currentType="currentRecognition"
         :form="form"
-        @open-picker="(...args) => emit('open-picker', ...args)"
-        @open-image-manager="() => emit('open-image-manager')"
+        @open-picker="emit('open-picker', $event)"
+        @open-image-manager="emit('open-image-manager')"
       />
     </div>
   </div>

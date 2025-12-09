@@ -1,63 +1,66 @@
-<script setup>
-import { computed, ref, inject, watch } from 'vue'
+<script setup lang="ts">
+import { computed, ref, inject, watch, type Ref } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import NodeDetails from './NodeDetails.vue'
 import { NODE_CONFIG_MAP, ACTION_CONFIG_MAP, STATUS_ICONS } from '../../utils/nodeLogic'
+import type { FlowBusinessData, FlowNodeMeta, TemplateImage, NodeUpdatePayload } from '../../utils/flowTypes'
 
-const props = defineProps({
-  id: { type: String, required: true },
-  data: { type: Object, required: true },
-  selected: { type: Boolean, default: false }
-})
+const props = defineProps<{
+  id: string
+  data: FlowNodeMeta
+  selected?: boolean
+}>()
 
-const updateNode = inject('updateNode', () => console.warn('updateNode not provided'))
-const closeAllDetailsSignal = inject('closeAllDetailsSignal', ref(0))
-const currentFilename = inject('currentFilename', ref(''))
+const updateNode = inject<(payload: NodeUpdatePayload) => void>('updateNode', () => console.warn('updateNode not provided'))
+const closeAllDetailsSignal = inject<Ref<number>>('closeAllDetailsSignal', ref(0))
+const currentFilename = inject<Ref<string>>('currentFilename', ref(''))
 
 // 获取 UI 配置
 const config = computed(() => NODE_CONFIG_MAP[props.data.type] || NODE_CONFIG_MAP['DirectHit'])
 const availableTypes = Object.keys(NODE_CONFIG_MAP).filter(t => t !== 'Unknown')
 
-const businessData = computed(() => props.data.data || {})
+const businessData = computed<FlowBusinessData>(() => (props.data.data || {}) as FlowBusinessData)
 
 const currentActionConfig = computed(() => {
-  const action = businessData.value.action
-  if (!action || action === 'DoNothing') return null
-  return ACTION_CONFIG_MAP[action] || ACTION_CONFIG_MAP['Custom']
+  const actionKey = businessData.value.action as string | undefined
+  if (!actionKey || actionKey === 'DoNothing') return null
+  return ACTION_CONFIG_MAP[actionKey] || ACTION_CONFIG_MAP['Custom']
 })
 
 const showDetails = ref(false)
 const toggleDetails = () => showDetails.value = !showDetails.value
-const getFileName = (path) => (!path || typeof path !== 'string') ? '未选择图片' : path.split('/').pop()
+const getFileName = (path?: string) => (!path || typeof path !== 'string') ? '未选择图片' : (path.split('/').pop() || '未选择图片')
 
 watch(closeAllDetailsSignal, () => showDetails.value = false)
 
-const handleUpdateId = ({ oldId, newId }) => updateNode({ oldId, newId, newType: props.data.type })
-const handleUpdateType = (newType) => updateNode({ oldId: props.id, newId: props.id, newType })
-const handleUpdateData = (newData) => updateNode({
+const handleUpdateId = ({ oldId, newId }: { oldId: string; newId: string }) => updateNode({ oldId, newId, newType: props.data.type })
+const handleUpdateType = (newType: string) => updateNode({ oldId: props.id, newId: props.id, newType })
+const handleUpdateData = (newData: FlowBusinessData) => updateNode({
   oldId: props.id, newId: props.id, newType: newData.recognition || props.data.type, newData
 })
 
 // 状态 UI
 const statusConfig = computed(() => {
   if (props.data._isMissing) return STATUS_ICONS.missing
-  return STATUS_ICONS[props.data.status] || null
+  const key = props.data.status as keyof typeof STATUS_ICONS | undefined
+  return key ? (STATUS_ICONS[key] ?? null) : null
 })
 
 const headerStyle = computed(() => {
-  if (props.data.status && STATUS_ICONS[props.data.status]) return STATUS_ICONS[props.data.status].headerClass
+  const key = props.data.status as keyof typeof STATUS_ICONS | undefined
+  if (key && STATUS_ICONS[key]) return STATUS_ICONS[key].headerClass
   return STATUS_ICONS.default.headerClass
 })
 
 // 图片逻辑
 const isImageNode = computed(() => ['TemplateMatch', 'FeatureMatch'].includes(props.data.type))
-const nodeImages = computed(() => {
+const nodeImages = computed<TemplateImage[]>(() => {
   const template = businessData.value.template
   const paths = Array.isArray(template) ? template : (typeof template === 'string' ? [template] : [])
   if (!paths.length) return []
 
-  const allImages = [...(props.data._images || []), ...(props.data._temp_images || [])]
-  return allImages.filter(img => img.found && img.base64 && paths.includes(img.path)).slice(0, 16)
+  const allImages = [...(props.data._images || []), ...(props.data._temp_images || [])] as TemplateImage[]
+  return allImages.filter(img => img.found && img.base64 && img.path && paths.includes(img.path)).slice(0, 16)
 })
 
 // Grid 样式计算
@@ -144,7 +147,7 @@ const contentHeightClass = computed(() => {
         </div>
 
         <div v-else-if="data.type === 'ColorMatch'" class="flex items-center gap-2">
-          <div class="w-8 h-8 rounded shadow-sm border border-slate-100 ring-1 ring-slate-200" :style="{ backgroundColor: businessData.targetColor || '#000000' }"></div>
+          <div class="w-8 h-8 rounded shadow-sm border border-slate-100 ring-1 ring-slate-200" :style="{ backgroundColor: (businessData.targetColor as string) || '#000000' }"></div>
           <div class="flex flex-col overflow-hidden">
             <span class="text-[10px] text-slate-400 uppercase">Target</span>
             <span class="font-mono text-xs font-bold text-slate-700 truncate">{{ businessData.targetColor || '#N/A' }}</span>
