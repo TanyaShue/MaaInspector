@@ -127,22 +127,41 @@ const jumpToSettings = (type: string) => {
 }
 
 const parseRect = (val: unknown) => {
-  if (Array.isArray(val) && val.length === 4) return val
+  if (Array.isArray(val) && val.length === 4) return val as number[]
   if (typeof val === 'string') {
     try {
       const arr = JSON.parse(val)
-      if (Array.isArray(arr) && arr.length === 4) return arr
+      if (Array.isArray(arr) && arr.length === 4) return arr as number[]
     } catch (e) {
       const parts = val.split(',').map(Number)
-      if (parts.length === 4 && !parts.some(isNaN)) return parts
+      if (parts.length === 4 && !parts.some(isNaN)) return parts as number[]
     }
   }
   return null
 }
 
-const openDevicePicker = (field: string, referenceField: string | null = null, mode: DevicePickerMode = 'coordinate', refLabel: string | null = null) => {
-  const refRect = referenceField ? parseRect(getValue(referenceField)) : null
+const openDevicePicker = (field: string, referenceField: string | null = null, refLabel: string | null = null) => {
+  // 模式：expected -> ocr；template -> image_manager；其它 -> coordinate
+  const finalMode: DevicePickerMode =
+    field === 'expected'
+      ? 'ocr'
+      : field === 'template'
+        ? 'image_manager'
+        : 'coordinate'
+
   const currentRect = parseRect(getValue(field))
+  const roiRect = parseRect(getValue('roi'))
+
+  // 仅当显式提供 referenceField、偏移场景、或图片管理 / OCR 时展示参考框
+  let refRect = referenceField
+    ? parseRect(getValue(referenceField))
+    : (finalMode === 'image_manager' || finalMode === 'ocr' ? roiRect : null)
+
+  // 偏移字段若缺少参考，回退到 ROI（保持与旧逻辑一致，确保 target_offset/roi_offset 有参考）
+  if (field.includes('offset') && !refRect && roiRect) {
+    refRect = roiRect
+  }
+
   deviceScreenConfig.initialRect = (() => {
     if (field.includes('offset') && refRect && currentRect) {
       return [
@@ -153,16 +172,21 @@ const openDevicePicker = (field: string, referenceField: string | null = null, m
       ]
     }
     if (currentRect) return currentRect
-    if (refRect && mode !== 'image_manager') return refRect
+    if (refRect && finalMode !== 'image_manager') return refRect
     return null
   })()
 
   deviceScreenConfig.targetField = field
   deviceScreenConfig.referenceField = referenceField
   deviceScreenConfig.referenceRect = refRect
-  deviceScreenConfig.mode = mode
+  deviceScreenConfig.mode = finalMode
   deviceScreenConfig.referenceLabel = refLabel || referenceField || '参考区域'
-  deviceScreenConfig.title = mode === 'ocr' ? 'OCR 区域识别' : (field.includes('offset') ? `设置偏移 (${field})` : `选取区域 (${field})`)
+  deviceScreenConfig.title =
+    finalMode === 'ocr'
+      ? 'OCR 区域识别'
+      : finalMode === 'image_manager'
+        ? '模板图片管理'
+        : (field.includes('offset') ? `设置偏移 (${field})` : `选取区域 (${field})`)
   deviceScreenConfig.imageList = []
   showDeviceScreen.value = true
 }

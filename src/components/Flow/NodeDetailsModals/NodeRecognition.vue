@@ -38,7 +38,7 @@ const selectDetector = (val) => {
                                        @input="setJsonValue('roi', $event.target.value)"
                                        class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono min-w-0"
                                        placeholder="[x,y,w,h]"/>
-          <button @click="$emit('open-picker', 'roi', null, 'coordinate', 'ROI')"
+          <button @click="$emit('open-picker', 'roi', null, 'ROI')"
                   class="px-2 bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 rounded-lg flex items-center justify-center">
             <Crop :size="12"/>
           </button>
@@ -50,7 +50,7 @@ const selectDetector = (val) => {
                                        @input="setJsonValue('roi_offset', $event.target.value)"
                                        class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono min-w-0"
                                        placeholder="[x,y,w,h]"/>
-          <button @click="$emit('open-picker', 'roi_offset', 'roi', 'coordinate', 'ROI区域')"
+          <button @click="$emit('open-picker', 'roi_offset', 'roi', 'ROI区域')"
                   class="px-2 bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 rounded-lg flex items-center justify-center">
             <Crosshair :size="12"/>
           </button>
@@ -190,7 +190,7 @@ const selectDetector = (val) => {
                                        @input="setJsonValue('expected', $event.target.value)"
                                        class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
                                        placeholder="期望文本或正则"/>
-          <button @click="$emit('open-picker', 'expected', 'roi', 'ocr', 'ROI区域')"
+          <button @click="$emit('open-picker', 'expected', 'roi', 'ROI区域')"
                   class="px-2 bg-purple-50 text-purple-600 border border-purple-200 hover:bg-purple-100 rounded-lg flex items-center justify-center"
                   title="OCR 识别取词">
             <ScanText :size="12"/>

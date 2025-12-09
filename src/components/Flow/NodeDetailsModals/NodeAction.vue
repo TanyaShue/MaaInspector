@@ -20,7 +20,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
                                        @input="setTargetValue('target', $event.target.value)"
                                        class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono min-w-0"
                                        placeholder="留空默认自身, 或输入节点名/[x,y,w,h]"/>
-          <button @click="$emit('open-picker', 'target', null, 'coordinate', 'Target')"
+          <button @click="$emit('open-picker', 'target', null, 'Target')"
                   class="px-2 bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 rounded-lg flex items-center justify-center">
             <Crop :size="12"/>
           </button>
@@ -32,7 +32,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
                                        @input="setJsonValue('target_offset', $event.target.value)"
                                        class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono min-w-0"
                                        placeholder="[x,y,w,h]"/>
-          <button @click="$emit('open-picker', 'target_offset', 'target', 'coordinate', '目标区域')"
+          <button @click="$emit('open-picker', 'target_offset', 'target', '目标区域')"
                   class="px-2 bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 rounded-lg flex items-center justify-center">
             <Crosshair :size="12"/>
           </button>
@@ -64,7 +64,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
           <div class="flex gap-1"><input :value="getTargetValue('begin')"
                                          @input="setTargetValue('begin', $event.target.value)"
                                          class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0"/>
-            <button @click="$emit('open-picker', 'begin', null, 'coordinate', '起点')"
+            <button @click="$emit('open-picker', 'begin', null, '起点')"
                     class="px-2 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg">
               <Crop :size="12"/>
             </button>
@@ -75,7 +75,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
           <div class="flex gap-1"><input :value="getJsonValue('begin_offset')"
                                          @input="setJsonValue('begin_offset', $event.target.value)"
                                          class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0"/>
-            <button @click="$emit('open-picker', 'begin_offset', 'begin', 'coordinate', '起点')"
+            <button @click="$emit('open-picker', 'begin_offset', 'begin', '起点')"
                     class="px-2 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg">
               <Crosshair :size="12"/>
             </button>
@@ -85,7 +85,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
           <div class="flex gap-1"><input :value="getTargetValue('end')"
                                          @input="setTargetValue('end', $event.target.value)"
                                          class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0"/>
-            <button @click="$emit('open-picker', 'end', 'begin', 'coordinate', '起点')"
+            <button @click="$emit('open-picker', 'end', 'begin', '起点')"
                     class="px-2 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg">
               <Crop :size="12"/>
             </button>
@@ -96,7 +96,7 @@ const { getValue, setValue, getJsonValue, setJsonValue, getTargetValue, setTarge
           <div class="flex gap-1"><input :value="getJsonValue('end_offset')"
                                          @input="setJsonValue('end_offset', $event.target.value)"
                                          class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono min-w-0"/>
-            <button @click="$emit('open-picker', 'end_offset', 'end', 'coordinate', '终点')"
+            <button @click="$emit('open-picker', 'end_offset', 'end', '终点')"
                     class="px-2 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg">
               <Crosshair :size="12"/>
             </button>
