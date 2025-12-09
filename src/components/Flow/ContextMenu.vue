@@ -113,6 +113,13 @@ const menuItems = computed<MenuItem[]>(() => {
         submenu: recognitionMenuOptions,
         submenuAction: 'add'
       },
+      {
+        type: 'item',
+        label: '添加锚点',
+        action: 'add_anchor',
+        icon: PlusCircle,
+        color: 'text-amber-600'
+      },
       {type: 'divider'},
       searchMenuItem,
       debugMenuItem,

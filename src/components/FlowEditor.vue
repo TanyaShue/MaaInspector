@@ -160,7 +160,7 @@ const onEdgeContextMenu = (params: EdgeMouseEvent) => {
 }
 
 type MenuAction =
-  | { action: 'add'; type: 'pane' | 'node' | 'edge'; data: any; payload?: string }
+  | { action: 'add' | 'add_anchor'; type: 'pane' | 'node' | 'edge'; data: any; payload?: string }
   | { action: 'debug_this_node' | 'debug_this_node_reco' | 'debug_in_panel' | 'edit' | 'duplicate' | 'delete' | 'setJumpBack' | 'setNormalLink' | 'layout_chain'; type: 'node' | 'edge'; data: any; payload?: any }
   | { action: 'layout' | 'reset' | 'clear' | 'search' | 'closeSearch' | 'openDebugPanel' | 'closeDebugPanel' | 'closeAllDetails'; type: MenuKind; data: any; payload?: any }
   | { action: 'changeSpacing'; type: MenuKind; data: any; payload: SpacingKey }
@@ -175,6 +175,15 @@ const handleMenuAction = ({ action, type, data, payload }: MenuAction) => {
       if (menu.value.flowPos) newNode.position = { ...menu.value.flowPos }
       nodes.value.push(newNode)
       break
+    case 'add_anchor': {
+      const anchorId = `A-${Date.now()}`
+      const anchorNode = createNodeObject(anchorId, { id: anchorId, recognition: 'Anchor', anchor: true })
+      if (menu.value.flowPos) anchorNode.position = { ...menu.value.flowPos }
+      // 仅输入端口，无输出
+      anchorNode.data = { ...(anchorNode.data || {}), type: 'Anchor', id: anchorId }
+      nodes.value.push(anchorNode)
+      break
+    }
     case 'debug_this_node':
       if (type === 'node' && data?.id) {
         handleDebugNode(String(data.id), 'standard')

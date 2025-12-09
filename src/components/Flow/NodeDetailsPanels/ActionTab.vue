@@ -291,6 +291,55 @@ const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.
           </label>
         </template>
 
+        <template v-if="currentAction === 'Shell'">
+          <div class="p-2 bg-slate-50 border border-dashed border-slate-200 rounded text-[11px] text-slate-600 mb-2">
+            仅对 ADB 控制器生效。命令输出可在动作详情中查看。
+          </div>
+          <div class="space-y-1">
+            <label class="text-[10px] font-semibold text-slate-500 uppercase">命令 (cmd)</label>
+            <input
+              :value="getValue('cmd', '')"
+              @input="setValue('cmd', getInputValue($event))"
+              class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono"
+              placeholder="getprop ro.build.version.sdk"
+            />
+          </div>
+          <div class="space-y-1">
+            <label class="text-[10px] font-semibold text-slate-500 uppercase">目标位置 (Target)</label>
+            <div class="flex gap-1">
+              <input
+                :value="getTargetValue('target')"
+                @input="setTargetValue('target', getInputValue($event))"
+                class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono min-w-0"
+                placeholder="true / 节点名 / [x,y,w,h]"
+              />
+              <button
+                @click="emit('open-picker', 'target', null, 'Target')"
+                class="px-2 bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 rounded-lg flex items-center justify-center"
+              >
+                <Crop :size="12" />
+              </button>
+            </div>
+          </div>
+          <div class="space-y-1">
+            <label class="text-[10px] font-semibold text-slate-500 uppercase">目标偏移 (Offset)</label>
+            <div class="flex gap-1">
+              <input
+                :value="getJsonValue('target_offset')"
+                @input="setJsonValue('target_offset', getInputValue($event))"
+                class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono min-w-0"
+                placeholder="[x,y,w,h]"
+              />
+              <button
+                @click="emit('open-picker', 'target_offset', 'target', '目标区域')"
+                class="px-2 bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 rounded-lg flex items-center justify-center"
+              >
+                <Crosshair :size="12" />
+              </button>
+            </div>
+          </div>
+        </template>
+
         <template v-if="currentAction === 'Custom'">
           <div class="space-y-1">
             <label class="text-[10px] font-semibold text-slate-500 uppercase">自定义动作名</label>

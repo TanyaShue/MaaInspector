@@ -21,7 +21,14 @@ const config = computed(() => NODE_CONFIG_MAP[props.data.type] || NODE_CONFIG_MA
 const availableTypes = Object.keys(NODE_CONFIG_MAP).filter(t => t !== 'Unknown')
 
 const businessData = computed<FlowBusinessData>(() => (props.data.data || {}) as FlowBusinessData)
-const isAnchor = computed(() => !!businessData.value.anchor)
+const isAnchor = computed(() => !!businessData.value.anchor || props.data.type === 'Anchor')
+const isUnknown = computed(() => props.data.type === 'Unknown')
+const isAnchorType = computed(() => props.data.type === 'Anchor')
+const hasOutputs = computed(() => !isUnknown.value && !isAnchorType.value)
+const canRenameInBody = computed(() => isUnknown.value || isAnchorType.value || props.data._isMissing)
+
+const editingId = ref(props.id)
+watch(() => props.id, (val) => { editingId.value = val })
 
 const currentActionConfig = computed(() => {
   const actionKey = businessData.value.action as string | undefined
@@ -30,7 +37,10 @@ const currentActionConfig = computed(() => {
 })
 
 const showDetails = ref(false)
-const toggleDetails = () => showDetails.value = !showDetails.value
+const toggleDetails = () => {
+  if (isUnknown.value || isAnchorType.value) return
+  showDetails.value = !showDetails.value
+}
 const getFileName = (path?: string) => (!path || typeof path !== 'string') ? '未选择图片' : (path.split('/').pop() || '未选择图片')
 
 watch(closeAllDetailsSignal, () => showDetails.value = false)
@@ -40,6 +50,12 @@ const handleUpdateType = (newType: string) => updateNode({ oldId: props.id, newI
 const handleUpdateData = (newData: FlowBusinessData) => updateNode({
   oldId: props.id, newId: props.id, newType: newData.recognition || props.data.type, newData
 })
+
+const applyIdChange = () => {
+  const newId = editingId.value?.trim()
+  if (!newId || newId === props.id) return
+  handleUpdateId({ oldId: props.id, newId })
+}
 
 // 状态 UI
 const statusConfig = computed(() => {
@@ -129,8 +145,29 @@ const contentHeightClass = computed(() => {
 
     <div class="p-4 bg-white min-h-[80px] flex items-center gap-3">
       <div class="flex-1 min-w-0">
-        <div v-if="data._isMissing" class="text-center text-slate-400 text-xs italic bg-slate-50 p-2 rounded border border-dashed border-slate-200">引用缺失</div>
-        <div v-else-if="data.type === 'Unknown'" class="text-center text-slate-400 text-xs italic">未知节点</div>
+        <div v-if="canRenameInBody" class="space-y-2">
+          <div v-if="data._isMissing" class="text-center text-slate-500 text-[11px] bg-slate-50 p-2 rounded border border-dashed border-slate-200">引用缺失</div>
+          <div class="text-[11px] text-slate-500 bg-slate-50 border border-dashed border-slate-200 rounded px-2 py-1.5 flex items-center gap-2">
+            <span v-if="isUnknown" class="text-amber-600 font-semibold">未知节点</span>
+            <span v-else-if="isAnchorType" class="text-amber-600 font-semibold">锚点节点</span>
+            <span v-else class="text-amber-600 font-semibold">缺失节点</span>
+            <span class="text-slate-500">可重命名以修正引用</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <input
+              v-model="editingId"
+              class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono outline-none focus:border-indigo-400"
+              :placeholder="id"
+            />
+            <button
+              class="px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              :disabled="!editingId || editingId === id"
+              @click.stop="applyIdChange"
+            >
+              应用
+            </button>
+          </div>
+        </div>
 
         <div v-else-if="isImageNode" class="space-y-1">
           <div class="w-full bg-slate-50 rounded-lg border border-slate-200 border-dashed overflow-hidden relative transition-all duration-300" :class="contentHeightClass">
@@ -179,7 +216,7 @@ const contentHeightClass = computed(() => {
       </div>
     </div>
 
-    <div v-if="!data._isMissing && data.type !== 'Unknown'" class="flex h-6 w-full border-t border-slate-100 divide-x divide-slate-100">
+    <div v-if="!data._isMissing && hasOutputs" class="flex h-6 w-full border-t border-slate-100 divide-x divide-slate-100">
       <div class="flex-1 relative group hover:bg-blue-50 flex justify-center items-center cursor-crosshair transition-colors">
         <span class="text-[10px] font-bold text-blue-500 opacity-60 group-hover:opacity-100 transition-opacity">Next</span>
         <Handle id="source-a" type="source" :position="Position.Bottom" class="!w-full !h-full !inset-0 !translate-x-0 !rounded-none !opacity-0 group-hover:!opacity-50 !bg-blue-400 !transition-opacity"/>

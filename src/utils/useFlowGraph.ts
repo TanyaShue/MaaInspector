@@ -65,6 +65,9 @@ export function useFlowGraph() {
       if (node.data?.type === 'Unknown') return
 
       const nodeData = { ...(node.data?.data || {}) } as FlowBusinessData
+      // 仅锚点节点类型不导出，普通节点的 anchor 属性需正常导出
+      if (node.data?.type === 'Anchor') return
+
       delete (nodeData as Record<string, unknown>).id
       delete (nodeData as Record<string, unknown>).interrupt
       result[node.id] = nodeData
@@ -94,6 +97,53 @@ export function useFlowGraph() {
     }
   }
 
+  const stripPrefix = (val: string) => val.replace(/\[(Anchor|JumpBack)\]/g, '')
+  const buildLinkId = (targetId: string, isAnchor: boolean, isJumpBack: boolean) => {
+    let id = targetId
+    // 统一顺序：Anchor 在前，JumpBack 在后；但解析允许任意顺序
+    if (isAnchor) id = `[Anchor]${id}`
+    if (isJumpBack) id = `[JumpBack]${id}`
+    return id
+  }
+  const parseLinkFlags = (val?: string) => ({
+    anchor: !!val && val.includes('[Anchor]'),
+    jumpBack: !!val && val.includes('[JumpBack]'),
+    id: val ? stripPrefix(val) : ''
+  })
+  const isAnchorNode = (node?: FlowNode | null) =>
+    !!(node?.data?.type === 'Anchor' || (node?.data?.data as FlowBusinessData | undefined)?.anchor)
+
+  const normalizeLinksAcrossNodes = (targetNodes: FlowNode[]) => {
+    const anchorIds = new Set(targetNodes.filter(n => isAnchorNode(n)).map(n => n.id))
+    const normalizeItem = (item: unknown) => {
+      if (typeof item !== 'string') return item
+      const flags = parseLinkFlags(item)
+      const targetId = flags.id || item
+      const isAnchorTarget = anchorIds.has(targetId) || flags.anchor
+      return buildLinkId(targetId, isAnchorTarget, flags.jumpBack)
+    }
+    const normalizeField = (val: unknown) => {
+      if (Array.isArray(val)) return val.map(normalizeItem).filter(Boolean)
+      if (typeof val === 'string') return normalizeItem(val)
+      return val
+    }
+
+    targetNodes.forEach(n => {
+      const meta = ensureNodeMeta(n)
+      if (!meta?.data) return
+      const data = meta.data as FlowBusinessData
+      ;(['next', 'on_error', 'timeout_next'] as const).forEach(field => {
+        const rawVal = (data as Record<string, unknown>)[field]
+        const normalized = normalizeField(rawVal)
+        if (normalized === undefined || normalized === null || (Array.isArray(normalized) && normalized.length === 0)) {
+          delete (data as Record<string, unknown>)[field]
+        } else {
+          (data as Record<string, unknown>)[field] = normalized as any
+        }
+      })
+    })
+  }
+
   const onValidateConnection = (connection: FlowConnection) => {
     if (connection.source === connection.target) return false
     if (connection.sourceHandle === 'in') return false
@@ -115,7 +165,9 @@ export function useFlowGraph() {
       data: {
         id,
         type: logicType,
-        data: isUnknown ? { id } : { ...sanitizedContent, id, recognition: logicType },
+        data: isUnknown
+          ? { id, ...(sanitizedContent.anchor ? { anchor: sanitizedContent.anchor } : {}) }
+          : { ...sanitizedContent, id, recognition: logicType },
         _isMissing: isMissing,
         status: 'idle'
       }
@@ -128,18 +180,19 @@ export function useFlowGraph() {
     targetId: string,
     isArrayType: boolean,
     isAdd: boolean,
-    isJumpBack = false
+    isJumpBack = false,
+    isAnchorTarget = false
   ) => {
     const sourceMeta = ensureNodeMeta(sourceNode)
     if (!sourceMeta || !sourceMeta.data) return
     const data = sourceMeta.data as FlowBusinessData
-    const storedId = isJumpBack ? `[JumpBack]${targetId}` : targetId
+    const storedId = buildLinkId(targetId, isAnchorTarget, isJumpBack)
 
     if (isArrayType) {
       if (!Array.isArray(data[field])) data[field] = []
 
       const existingIndex = (data[field] as unknown[]).findIndex(id =>
-        id === targetId || id === `[JumpBack]${targetId}`
+        typeof id === 'string' && stripPrefix(id) === targetId
       )
 
       if (isAdd) {
@@ -156,7 +209,7 @@ export function useFlowGraph() {
         data[field] = storedId
       } else {
         const currentVal = (data as Record<string, unknown>)[field] as string | undefined
-        if (currentVal === targetId || currentVal === `[JumpBack]${targetId}`) {
+        if (typeof currentVal === 'string' && stripPrefix(currentVal) === targetId) {
           delete (data as Record<string, unknown>)[field]
         }
       }
@@ -169,16 +222,18 @@ export function useFlowGraph() {
     )
     const portConfig = PORT_MAPPING[params.sourceHandle || '']
     const sourceNode = findNode(params.source)
+    const targetNode = findNode(params.target)
+    const isAnchorTarget = isAnchorNode(targetNode)
 
     if (existingEdge) {
       removeEdges([existingEdge.id])
       if (sourceNode && portConfig) {
-        updateNodeDataConnection(sourceNode, portConfig.field, params.target, portConfig.type === 'array', false)
+        updateNodeDataConnection(sourceNode, portConfig.field, params.target, portConfig.type === 'array', false, false, isAnchorTarget)
       }
     } else {
       addEdges({ ...params, ...getEdgeStyle(params.sourceHandle || '', false), label: portConfig?.field })
       if (sourceNode && portConfig) {
-        updateNodeDataConnection(sourceNode, portConfig.field, params.target, portConfig.type === 'array', true, false)
+        updateNodeDataConnection(sourceNode, portConfig.field, params.target, portConfig.type === 'array', true, false, isAnchorTarget)
       }
     }
   }
@@ -191,7 +246,9 @@ export function useFlowGraph() {
           const sourceNode = findNode(edge.source)
           const portConfig = PORT_MAPPING[edge.sourceHandle || '']
           if (sourceNode && portConfig) {
-            updateNodeDataConnection(sourceNode, portConfig.field, edge.target, portConfig.type === 'array', false)
+            const targetNode = findNode(edge.target)
+            const isAnchorTarget = isAnchorNode(targetNode)
+            updateNodeDataConnection(sourceNode, portConfig.field, edge.target, portConfig.type === 'array', false, false, isAnchorTarget)
           }
         }
       }
@@ -204,6 +261,8 @@ export function useFlowGraph() {
 
     const sourceNode = findNode(edge.source)
     const portConfig = PORT_MAPPING[edge.sourceHandle || '']
+    const targetNode = findNode(edge.target)
+    const isAnchorTarget = isAnchorNode(targetNode)
 
     edge.data = { ...edge.data, isJumpBack }
     edge.label = isJumpBack ? 'JumpBack' : (portConfig?.field || '')
@@ -215,7 +274,7 @@ export function useFlowGraph() {
     edges.value = [...edges.value]
 
     if (sourceNode && portConfig) {
-      updateNodeDataConnection(sourceNode, portConfig.field, edge.target, portConfig.type === 'array', true, isJumpBack)
+      updateNodeDataConnection(sourceNode, portConfig.field, edge.target, portConfig.type === 'array', true, isJumpBack, isAnchorTarget)
     }
   }
 
@@ -245,35 +304,27 @@ export function useFlowGraph() {
         return (update.source || update.target) ? { ...e, ...update, id: e.id.replace(oldId, newId) } : e
       })
 
-      nodes.value.forEach(n => {
-        if (n.id === newId || !n.data?.data) return
-        const d = n.data.data
-        ;['next'].forEach(f => {
-          const fieldVal = (d as Record<string, unknown>)[f]
-          if (Array.isArray(fieldVal)) {
-            (d as Record<string, unknown>)[f] = fieldVal.map(item => {
-              if (item === oldId) return newId
-              if (item === `[JumpBack]${oldId}`) return `[JumpBack]${newId}`
-              return item
-            })
-          }
-        })
-        if (Array.isArray(d.on_error)) {
-          d.on_error = d.on_error.map(item => {
-            if (item === oldId) return newId
-            if (item === `[JumpBack]${oldId}`) return `[JumpBack]${newId}`
-            return item
-          })
-        } else if (d.on_error) {
-          if (d.on_error === oldId) d.on_error = newId
-          if (d.on_error === `[JumpBack]${oldId}`) d.on_error = `[JumpBack]${newId}`
+      const replaceLinkVal = (val: unknown) => {
+        if (typeof val !== 'string') return val
+        const flags = parseLinkFlags(val)
+        const targetId = flags.id || val
+        if (targetId !== oldId) return val
+        return buildLinkId(newId, flags.anchor, flags.jumpBack)
+      }
+      const replaceField = (d: Record<string, unknown>, field: string) => {
+        const fieldVal = d[field]
+        if (Array.isArray(fieldVal)) {
+          d[field] = fieldVal.map(replaceLinkVal) as unknown[]
+        } else if (typeof fieldVal === 'string') {
+          const newVal = replaceLinkVal(fieldVal)
+          d[field] = newVal as unknown
         }
+      }
 
-        ;['timeout_next'].forEach(f => {
-          const fieldVal = (d as Record<string, unknown>)[f]
-          if (fieldVal === oldId) (d as Record<string, unknown>)[f] = newId
-          if (fieldVal === `[JumpBack]${oldId}`) (d as Record<string, unknown>)[f] = `[JumpBack]${newId}`
-        })
+      nodes.value.forEach(n => {
+        if (!n.data?.data) return
+        const d = n.data.data as Record<string, unknown>
+        ;['next', 'on_error', 'timeout_next'].forEach(f => replaceField(d, f))
       })
     }
 
@@ -281,6 +332,7 @@ export function useFlowGraph() {
     if (newData) nodeMeta.data = { ...newData, id: node.id, recognition: newType }
     else if (nodeMeta.data) nodeMeta.data.recognition = newType
 
+    normalizeLinksAcrossNodes(nodes.value)
     nodes.value = [...nodes.value]
   }
 
@@ -373,16 +425,13 @@ export function useFlowGraph() {
 
           rawTargets.forEach(rawTargetId => {
             if (!rawTargetId) return
-
-            let targetId = rawTargetId as string
-            let isJumpBack = false
-            if (typeof targetId === 'string' && targetId.startsWith('[JumpBack]')) {
-              isJumpBack = true
-              targetId = targetId.replace('[JumpBack]', '')
-            }
+            const flags = parseLinkFlags(String(rawTargetId))
+            let targetId = flags.id || String(rawTargetId)
+            const isJumpBack = flags.jumpBack
+            const isAnchorTarget = flags.anchor
 
             if (!createdNodeIds.has(targetId)) {
-              newNodes.push(createNodeObject(targetId, {}, true))
+              newNodes.push(createNodeObject(targetId, isAnchorTarget ? { id: targetId, anchor: true } as FlowBusinessData : {}, true))
               createdNodeIds.add(targetId)
             }
 
@@ -399,6 +448,8 @@ export function useFlowGraph() {
         }
       })
     }
+
+    normalizeLinksAcrossNodes(newNodes)
 
     const layoutedNodes = layoutWithSpacing(newNodes, newEdges, getSpacingConfig())
     nodes.value = layoutedNodes
