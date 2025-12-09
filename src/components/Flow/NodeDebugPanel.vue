@@ -1,27 +1,73 @@
-<script setup>
+<script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import {
   X, Bug, PlayCircle, PauseCircle, MapPin, Loader2, Search as SearchIcon,
   Terminal, Activity, CheckCircle2, XCircle
 } from 'lucide-vue-next'
-import { deviceApi, debugApi } from '../../services/api'
+import { deviceApi, debugApi } from '../../services/api.ts'
+import type { FlowNode } from '../../utils/flowTypes'
 
 const STATUS = {
   UNKNOWN: 'unknown',
   STARTING: 'starting',
   SUCCEEDED: 'succeeded',
   FAILED: 'failed'
+} as const
+type StatusKey = (typeof STATUS)[keyof typeof STATUS]
+type NodeStatus = 'success' | 'error' | 'running' | 'ignored' | null
+
+interface NextChild {
+  name: string
+  status: StatusKey
+  reco_id?: string | null
+  jump_back?: boolean
+  anchor?: boolean
+  [key: string]: unknown
 }
 
-const props = defineProps({
-  visible: { type: Boolean, default: false },
-  nodes: { type: Array, default: () => [] },
-  currentFilename: { type: String, default: '' },
-  currentSource: { type: String, default: '' },
-  initialNodeId: { type: String, default: '' }
-})
+interface DebugEventRecord {
+  recordId: string
+  taskId: string | number
+  name: string
+  nextList: NextChild[]
+  timestamp: number
+}
 
-const emit = defineEmits(['close', 'locate-node', 'debug-node', 'update-node-status'])
+interface RecognitionPayload {
+  type?: string
+  status?: StatusKey
+  task_id?: string | number
+  name?: string
+  reco_id?: string
+  timestamp?: number
+  [key: string]: unknown
+}
+
+interface NextListPayload {
+  type?: string
+  task_id?: string | number
+  name?: string
+  next_list?: NextChild[]
+  timestamp?: number
+  [key: string]: unknown
+}
+
+type SsePayload = RecognitionPayload | NextListPayload
+
+const props = defineProps<{
+  visible?: boolean
+  nodes?: FlowNode[]
+  currentFilename?: string
+  currentSource?: string
+  initialNodeId?: string
+}>()
+
+const emit = defineEmits<{
+  (e: 'close'): void
+  (e: 'locate-node', id: string): void
+  (e: 'debug-node', id: string): void
+  (e: 'update-node-status', payload: { nodeId: string; status: NodeStatus }): void
+}>()
 
 const position = ref({ x: 360, y: 140 })
 const isDragging = ref(false)
@@ -32,22 +78,20 @@ const selectedNodeId = ref('')
 const isOptionOpen = ref(false)
 const previewUrl = ref('')
 const isLoadingPreview = ref(false)
-const events = ref([])
+const events = ref<DebugEventRecord[]>([])
 const isStreamRunning = ref(false)
-const selectedDetail = ref(null)
+const selectedDetail = ref<{
+  record: DebugEventRecord
+  child: NextChild
+  image: string
+  fields: Array<{ label: string; value: string }>
+} | null>(null)
 
-let stopStream = null
-let previewTimer = null
-const STATUS_TEXT = {
-  [STATUS.UNKNOWN]: '未开始',
-  [STATUS.STARTING]: '进行中',
-  [STATUS.SUCCEEDED]: '成功',
-  [STATUS.FAILED]: '失败'
-}
-
-const nodeOptions = computed(() => props.nodes.map(node => ({
+let stopStream: (() => void) | null = null
+let previewTimer: ReturnType<typeof setInterval> | null = null
+const nodeOptions = computed(() => (props.nodes || []).map(node => ({
   id: node.id,
-  label: node.data?.data?.id || node.id
+  label: (node as any).data?.data?.id || node.id
 })))
 
 const filteredNodeOptions = computed(() => {
@@ -61,28 +105,22 @@ const sortedEvents = computed(() => [...events.value].sort((a, b) => b.timestamp
 const actionButtonText = computed(() => '开始调试')
 const showPreviewPanel = computed(() => !selectedDetail.value)
 
-const createRecordId = (taskId) => `${taskId || 'task'}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`
-const mapStatusToNode = (status) => {
+const createRecordId = (taskId?: string | number) => `${taskId || 'task'}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`
+const mapStatusToNode = (status: StatusKey): NodeStatus => {
   if (status === STATUS.SUCCEEDED) return 'success'
   if (status === STATUS.FAILED) return 'error'
   if (status === STATUS.STARTING) return 'running'
   return null
 }
-const aggregateNextListStatus = (list = []) => {
-  if (list.some(item => item.status === STATUS.STARTING || item.status === STATUS.UNKNOWN)) return STATUS.STARTING
-  if (list.some(item => item.status === STATUS.FAILED)) return STATUS.FAILED
-  if (list.some(item => item.status === STATUS.SUCCEEDED)) return STATUS.SUCCEEDED
-  return STATUS.UNKNOWN
-}
-
-const startDrag = (e) => {
-  if (e.target.closest('input') || e.target.closest('select') || e.target.closest('button')) return
+const startDrag = (e: MouseEvent) => {
+  const target = e.target as HTMLElement | null
+  if (target && (target.closest('input') || target.closest('select') || target.closest('button'))) return
   isDragging.value = true
   dragOffset.value = { x: e.clientX - position.value.x, y: e.clientY - position.value.y }
   document.addEventListener('mousemove', onDrag)
   document.addEventListener('mouseup', stopDrag)
 }
-const onDrag = (e) => {
+const onDrag = (e: MouseEvent) => {
   if (!isDragging.value) return
   position.value = { x: e.clientX - dragOffset.value.x, y: e.clientY - dragOffset.value.y }
 }
@@ -97,7 +135,7 @@ const fetchPreview = async () => {
   isLoadingPreview.value = true
   try {
     const res = await deviceApi.getScreenshot()
-    previewUrl.value = res?.image || ''
+    previewUrl.value = (res as any)?.image || (res as any)?.data || ''
   } catch (e) {
     console.warn('[DebugPanel] 获取设备预览失败，使用占位图', e)
     previewUrl.value = ''
@@ -117,7 +155,7 @@ const stopPreviewAutoRefresh = () => {
   previewTimer = null
 }
 
-const upsertNextList = (payload) => {
+const upsertNextList = (payload: NextListPayload) => {
   if (!payload) return
   const nextList = Array.isArray(payload.next_list) ? payload.next_list : []
   const taskId = payload.task_id || Date.now()
@@ -125,11 +163,15 @@ const upsertNextList = (payload) => {
     recordId: createRecordId(taskId),
     taskId,
     name: payload.name || searchValue.value || selectedNodeId.value || '未知节点',
-    nextList: nextList.map(child => ({
-      ...child,
-      status: STATUS.UNKNOWN,
-      reco_id: child.reco_id ?? null
-    })),
+    nextList: nextList.map(child => {
+      const childName = child?.name || 'Unknown'
+      return {
+        ...child,
+        name: childName,
+        status: STATUS.UNKNOWN,
+        reco_id: child.reco_id ?? null
+      }
+    }),
     timestamp: payload.timestamp || Date.now()
   }
 
@@ -137,10 +179,10 @@ const upsertNextList = (payload) => {
   events.value = [record, ...events.value].slice(0, 200)
 
   // 将当前文件中对应节点名称的状态置为 ignored（等待识别）
-  if (nextList.length) {
+  if (nextList.length && props.nodes) {
     const targetNames = new Set(nextList.map(child => child.name).filter(Boolean))
     props.nodes.forEach(node => {
-      const nodeName = node.data?.data?.id || node.id
+      const nodeName = (node as any).data?.data?.id || node.id
       if (targetNames.has(nodeName)) {
         emit('update-node-status', { nodeId: nodeName, status: 'ignored' })
       }
@@ -148,7 +190,7 @@ const upsertNextList = (payload) => {
   }
 }
 
-const normalizeDetailFields = (child) => {
+const normalizeDetailFields = (child: any) => {
   if (!child) return []
   if (Array.isArray(child.detailList)) return child.detailList
   if (Array.isArray(child.details)) return child.details
@@ -161,9 +203,10 @@ const normalizeDetailFields = (child) => {
       }))
 }
 
-const applyRecognition = (payload) => {
+const applyRecognition = (payload: RecognitionPayload) => {
   if (!payload) return
   const status = payload.status || STATUS.UNKNOWN
+  const targetName = payload.name || '未知节点'
   let matched = false
   let updatedRecord = null
   const updatedEvents = [...events.value]
@@ -173,10 +216,10 @@ const applyRecognition = (payload) => {
     if (evt.taskId !== payload.task_id) continue
     matched = true
     const nextList = [...evt.nextList]
-    let idx = nextList.findIndex(c => c.name === payload.name)
+    let idx = nextList.findIndex(c => c.name === targetName)
     if (idx === -1) {
       nextList.push({
-        name: payload.name,
+        name: targetName,
         jump_back: false,
         anchor: false,
         status: STATUS.UNKNOWN
@@ -198,9 +241,9 @@ const applyRecognition = (payload) => {
     updatedRecord = {
       recordId: createRecordId(taskId),
       taskId,
-      name: payload.name || '未知节点',
+      name: targetName,
       nextList: [{
-        name: payload.name,
+        name: targetName,
         jump_back: false,
         anchor: false,
         status,
@@ -214,10 +257,10 @@ const applyRecognition = (payload) => {
   events.value = updatedEvents.slice(0, 200)
 
   const mapped = mapStatusToNode(status)
-  if (mapped) emit('update-node-status', { nodeId: payload.name, status: mapped })
+  if (mapped) emit('update-node-status', { nodeId: targetName, status: mapped })
 }
 
-const handleSsePayload = (payload) => {
+const handleSsePayload = (payload: SsePayload) => {
   if (!payload || !payload.type) return
   if (payload.type === 'node_next_list') {
     upsertNextList(payload)
@@ -229,7 +272,7 @@ const handleSsePayload = (payload) => {
 
 const startRealtimeStream = () => {
   if (isStreamRunning.value) return
-  stopStream = debugApi.subscribeNodeStream(handleSsePayload)
+  stopStream = debugApi.subscribeNodeStream((data: any) => handleSsePayload(data as SsePayload))
   isStreamRunning.value = true
 }
 
@@ -245,7 +288,7 @@ const handleDebugNow = () => {
   emit('debug-node', targetId)
 }
 
-const handleLocate = (id) => {
+const handleLocate = (id: string) => {
   const targetId = id || selectedNodeId.value || searchValue.value
   if (targetId) emit('locate-node', targetId)
 }
@@ -277,12 +320,16 @@ const handlePauseDebug = async () => {
   }
 }
 
-const handleChildClick = (child, item) => {
-  if (![STATUS.SUCCEEDED, STATUS.FAILED].includes(child.status)) return
+const handleChildClick = (child: NextChild, item: DebugEventRecord) => {
+  if (child.status !== STATUS.SUCCEEDED && child.status !== STATUS.FAILED) return
   if (child.reco_id !== undefined) {
     console.log('当前节点 reco_id:', child.reco_id)
   }
-  const image = child.debug_image || child.image || child.screenshot || ''
+  const image =
+    (typeof (child as any).debug_image === 'string' && (child as any).debug_image) ||
+    (typeof (child as any).image === 'string' && (child as any).image) ||
+    (typeof (child as any).screenshot === 'string' && (child as any).screenshot) ||
+    ''
   selectedDetail.value = {
     record: item,
     child,
@@ -295,7 +342,7 @@ const handleDetailClose = () => {
   selectedDetail.value = null
 }
 
-const handleOptionSelect = (opt) => {
+const handleOptionSelect = (opt: { id: string }) => {
   searchValue.value = opt.id
   selectedNodeId.value = opt.id
   isOptionOpen.value = false
@@ -311,8 +358,8 @@ const closeOptionList = () => {
   }, 120)
 }
 
-const formatTime = (ts) => {
-  const d = new Date(ts)
+const formatTime = (ts: number | string) => {
+  const d = new Date(ts as any)
   return d.toLocaleTimeString()
 }
 
