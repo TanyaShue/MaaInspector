@@ -39,7 +39,7 @@ export interface FlowNodeMeta {
 export type FlowNode = Node<FlowNodeMeta>
 export type FlowEdge = Edge<{ isJumpBack?: boolean }>
 export type FlowConnection = Connection
-export type FlowEdgeChange = EdgeChange<FlowEdge>
+export type FlowEdgeChange = EdgeChange
 
 export interface NodeUpdatePayload {
   oldId: string
