@@ -44,13 +44,14 @@ def debug_node():
     data = request.get_json()
     node = (data or {}).get("node") or {}
     node_id = node.get("id")
-    node["next"] = []
-    node["on_error"] = []
-    node["action"] = "DoNothing"
-    converted = convert_node(node)
     if data.get("debug_mode") == "recognition_only":
+        node["next"] = []
+        node["on_error"] = []
+        node["action"] = "DoNothing"
+        converted = convert_node(node)
         maafw.run_task(node_id, converted)
     else:
+        converted = convert_node(node)
         maafw.run_task(node_id, converted)
     return json_response(True, "debug_return", {})
 
@@ -75,7 +76,7 @@ def debug_ocr_text():
         return json_response(False, "Missing or invalid roi", status=400)
 
     task_payload = {"debug_ocr_text": {"roi": roi, "next": "", "on_error": ""}}
-    result = maafw.run_task("debug_ocr_text", task_payload)
+    result = maafw.tasker.post_recognition("OCR",task_payload,maafw.im).wait().get()
     text = getattr(getattr(result, "beast", None), "text", "") or ""
     return json_response(True, "OK", {"text": text})
 

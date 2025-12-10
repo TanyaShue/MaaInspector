@@ -58,6 +58,7 @@ class MaaFW:
     tasker_sink=False
 
     def __init__(self):
+        self.im = None
         Toolkit.init_option("/")
         Tasker.set_debug_mode(True)
 
@@ -183,11 +184,11 @@ class MaaFW:
 
         if capture:
             self.controller.post_screencap().wait()
-        im = self.controller.cached_image
-        if im is None:
+        self.im = self.controller.cached_image
+        if self.im is None:
             return None
 
-        return cvmat_to_image(im)
+        return cvmat_to_image(self.im)
 
     def click(self, x, y) -> bool:
         if not self.controller:
@@ -202,7 +203,6 @@ class MaaFW:
         detail = self.tasker.get_recognition_detail(reco_id)
         if not detail:
             return None
-        print(f"识别详情为:{detail}")
         try:
             if getattr(detail, "raw_image", None) is not None and not isinstance(detail.raw_image, Image.Image):
                 detail.raw_image = cvmat_to_image(detail.raw_image)
