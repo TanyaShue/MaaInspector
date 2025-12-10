@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, provide, onMounted, onBeforeUnmount, computed } from 'vue'
-import { VueFlow, useVueFlow, Panel, type EdgeMouseEvent, type NodeMouseEvent } from '@vue-flow/core'
+import { VueFlow, useVueFlow, Panel, type EdgeMouseEvent, type NodeMouseEvent, type NodeTypesObject } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { FolderSearch } from 'lucide-vue-next'
@@ -12,18 +12,18 @@ import SaveConfirmModal from './Flow/Modals/SaveConfirmModal.vue'
 import DeleteImagesConfirmModal from './Flow/Modals/DeleteImagesConfirmModal.vue'
 import { useFlowGraph } from '../utils/useFlowGraph'
 import { resourceApi ,debugApi } from '../services/api'
-import type { FlowNode, FlowBusinessData, SpacingKey, TemplateImage } from '../utils/flowTypes'
+import type { FlowNode, FlowEdge, FlowBusinessData, SpacingKey, TemplateImage, MenuType, NodeStatus, UsedImageInfo } from '../utils/flowTypes'
 import type { EdgeType } from '../utils/flowOptions'
 
-type MenuKind = 'pane' | 'node' | 'edge' | null
 type DebugMode = 'standard' | 'recognition_only'
+type MenuData = FlowNode | FlowEdge | null
 
 interface MenuState {
   visible: boolean
   x: number
   y: number
-  type: MenuKind
-  data: unknown
+  type: MenuType
+  data: MenuData
   flowPos: { x: number; y: number } | null
 }
 
@@ -56,6 +56,7 @@ const {
   getNodesData, getImageData, clearTempImageData, clearDirty,
   setEdgeJumpBack, layoutChainFromNode // 引入新功能
 } = useFlowGraph()
+const nodeTypesObject = nodeTypes as unknown as NodeTypesObject
 
 const { fitView, removeEdges, findNode, screenToFlowCoordinate } = useVueFlow()
 const isFileLoaded = computed<boolean>(() => !!currentFilename.value)
@@ -66,7 +67,7 @@ provide('updateNode', handleNodeUpdate)
 provide('currentFilename', currentFilename)
 
 const isDeviceConnected = ref<boolean>(false)
-const menu = ref<MenuState>({ visible: false, x: 0, y: 0, type: null, data: null, flowPos: { x: 0, y: 0 } })
+const menu = ref<MenuState>({ visible: false, x: 0, y: 0, type: 'pane', data: null, flowPos: { x: 0, y: 0 } })
 const editor = ref<EditorState>({ visible: false, nodeId: '', nodeData: null })
 const searchVisible = ref<boolean>(false)
 const debugPanel = ref<DebugPanelState>({ visible: false, nodeId: '' })
@@ -88,7 +89,7 @@ const pendingSwitchConfig = ref<PendingSwitchConfig | null>(null)
 const showDeleteImagesModal = ref<boolean>(false)
 const isProcessingImages = ref<boolean>(false)
 const unusedImages = ref<string[]>([])
-const usedImages = ref<string[]>([])
+const usedImages = ref<UsedImageInfo[]>([])
 const pendingSaveConfig = ref<PendingSaveConfig | null>(null)
 
 const handleRequestSwitch = (config: PendingSwitchConfig) => {
@@ -159,19 +160,20 @@ const onEdgeContextMenu = (params: EdgeMouseEvent) => {
   menu.value = { visible: true, x: event.clientX, y: event.clientY, type: 'edge', data: params.edge, flowPos: null }
 }
 
-type MenuAction =
-  | { action: 'add' | 'add_anchor'; type: 'pane' | 'node' | 'edge'; data: any; payload?: string }
-  | { action: 'debug_this_node' | 'debug_this_node_reco' | 'debug_in_panel' | 'edit' | 'duplicate' | 'delete' | 'setJumpBack' | 'setNormalLink' | 'layout_chain'; type: 'node' | 'edge'; data: any; payload?: any }
-  | { action: 'layout' | 'reset' | 'clear' | 'search' | 'closeSearch' | 'openDebugPanel' | 'closeDebugPanel' | 'closeAllDetails'; type: MenuKind; data: any; payload?: any }
-  | { action: 'changeSpacing'; type: MenuKind; data: any; payload: SpacingKey }
-  | { action: 'changeEdgeType'; type: MenuKind; data: any; payload: EdgeType }
+type MenuAction = {
+  action: string
+  type: MenuType
+  data: FlowNode | FlowEdge | null
+  payload?: string | EdgeType | SpacingKey | null
+}
 
 const handleMenuAction = ({ action, type, data, payload }: MenuAction) => {
   closeMenu()
   switch (action) {
     case 'add':
+      const recognition = typeof payload === 'string' ? payload : undefined
       const newId = `N-${Date.now()}`
-      const newNode = createNodeObject(newId, { id: newId, recognition: payload || 'DirectHit' })
+      const newNode = createNodeObject(newId, { id: newId, recognition: recognition || 'DirectHit' })
       if (menu.value.flowPos) newNode.position = { ...menu.value.flowPos }
       nodes.value.push(newNode)
       break
@@ -185,26 +187,34 @@ const handleMenuAction = ({ action, type, data, payload }: MenuAction) => {
       break
     }
     case 'debug_this_node':
-      if (type === 'node' && data?.id) {
+      if (type === 'node' && isFlowNodeData(data) && data.id) {
         handleDebugNode(String(data.id), 'standard')
       }
       break
     case 'debug_this_node_reco':
-      if (type === 'node' && data?.id) {
+      if (type === 'node' && isFlowNodeData(data) && data.id) {
         handleDebugNode(String(data.id), 'recognition_only')
       }
       break
     case 'debug_in_panel':
-      if (type === 'node' && data?.id) {
+      if (type === 'node' && isFlowNodeData(data) && data.id) {
         debugPanel.value = { visible: true, nodeId: String(data.id) }
       }
       break
     case 'edit':
-      editor.value = { visible: true, nodeId: String(data?.id || ''), nodeData: JSON.parse(JSON.stringify(data?.data?.data || { id: data?.id, recognition: 'DirectHit' })) }
+      if (type === 'node' && isFlowNodeData(data)) {
+        const fallback = { id: data.id, recognition: 'DirectHit' }
+        editor.value = {
+          visible: true,
+          nodeId: String(data.id || ''),
+          nodeData: JSON.parse(JSON.stringify(data.data?.data || fallback))
+        }
+      }
       break
     case 'duplicate':
-      if (data?.data?.data && data?.position) {
-        const copyId = `N-${Date.now()}`, copyData = JSON.parse(JSON.stringify(data.data.data)) as FlowBusinessData
+      if (type === 'node' && isFlowNodeData(data) && data.data?.data && data.position) {
+        const copyId = `N-${Date.now()}`
+        const copyData = JSON.parse(JSON.stringify(data.data.data)) as FlowBusinessData
         copyData.id = copyId
         const copyNode = createNodeObject(copyId, copyData)
         copyNode.position = { x: data.position.x + 50, y: data.position.y + 50 }
@@ -229,19 +239,23 @@ const handleMenuAction = ({ action, type, data, payload }: MenuAction) => {
       }
       break
     case 'layout_chain':
-      if (type === 'node' && data?.id) {
+      if (type === 'node' && isFlowNodeData(data) && data.id) {
         layoutChainFromNode(data.id, currentSpacing.value)
       }
       break
     case 'layout': applyLayout(currentSpacing.value); break
-    case 'changeSpacing': if (payload) { currentSpacing.value = payload; applyLayout(payload) }; break
-    case 'changeEdgeType': if (payload) { currentEdgeType.value = payload; edges.value = edges.value.map(e => ({ ...e, type: payload })) }; break
+    case 'changeSpacing':
+      if (isSpacingKey(payload)) { currentSpacing.value = payload; applyLayout(payload) }
+      break
+    case 'changeEdgeType':
+      if (isEdgeType(payload)) { currentEdgeType.value = payload; edges.value = edges.value.map(e => ({ ...e, type: payload })) }
+      break
     case 'reset': fitView({ padding: 0.2, duration: 500 }); break
     case 'clear': nodes.value = []; edges.value = []; break
     case 'search': searchVisible.value = true; break
     case 'closeSearch': searchVisible.value = false; break
     case 'openDebugPanel':
-      debugPanel.value = { visible: true, nodeId: type === 'node' ? data?.id : '' }
+      debugPanel.value = { visible: true, nodeId: type === 'node' && isFlowNodeData(data) ? data.id : '' }
       break
     case 'closeDebugPanel':
       debugPanel.value = { ...debugPanel.value, visible: false, nodeId: '' }
@@ -289,16 +303,17 @@ const handleDebugNode = async (nodeId: string, mode: DebugMode = 'standard') => 
     nodes.value = [...nodes.value]
   }
 }
-const handleUpdateNodeStatus = ({ nodeId, status }: { nodeId: string; status: string }) => {
-  if (!nodeId || !status) return
+const handleUpdateNodeStatus = ({ nodeId, status }: { nodeId: string; status: NodeStatus }) => {
+  if (!nodeId || status === undefined) return
+  const nextStatus = status ?? undefined
   let changed = false
   nodes.value = nodes.value.map((n): FlowNode => {
     const meta = ensureMeta(n)
     const match = n.id === nodeId || (meta.data as FlowBusinessData | undefined)?.id === nodeId
     if (!match) return n
-    if (meta.status === status) return n
+    if (meta.status === nextStatus) return n
     changed = true
-    return { ...n, data: { ...meta, status } }
+    return { ...n, data: { ...meta, status: nextStatus } }
   })
   if (changed) {
     nodes.value = [...nodes.value]
@@ -322,22 +337,40 @@ const handleLoadNodesWrapper = (payload: { filename: string; source: string; nod
   }
 }
 
-const handleLoadImages = (imageDataMap: Record<string, unknown[]>) => {
+const isTemplateImageArray = (value: unknown): value is TemplateImage[] => {
+  return Array.isArray(value) && value.every(item => typeof item === 'object' && !!item && 'path' in item)
+}
+const isFlowNodeData = (value: MenuData): value is FlowNode => {
+  return !!value && 'position' in value
+}
+const isUsedImageInfoArray = (value: unknown): value is UsedImageInfo[] => {
+  return Array.isArray(value) && value.every(
+    item => typeof item === 'object' && !!item && 'path' in item && 'used_by' in item
+  )
+}
+const isEdgeType = (value: unknown): value is EdgeType => value === 'smoothstep' || value === 'default'
+const isSpacingKey = (value: unknown): value is SpacingKey => value === 'compact' || value === 'normal' || value === 'loose'
+
+const handleLoadImages = (imageDataMap: Record<string, unknown>) => {
   if (!imageDataMap) return
   nodes.value = nodes.value.map((node): FlowNode => {
     const meta = ensureMeta(node)
-    return imageDataMap[node.id]
-      ? { ...node, data: { ...meta, _images: imageDataMap[node.id] as TemplateImage[] } }
+    const images = imageDataMap[node.id]
+    return isTemplateImageArray(images)
+      ? { ...node, data: { ...meta, _images: images } }
       : { ...node, data: meta }
   })
 }
 
-const handleUpdateCanvasConfig = ({ edgeType, spacing }: { edgeType?: EdgeType; spacing?: SpacingKey }) => {
-  if (edgeType && edgeType !== currentEdgeType.value) {
-    currentEdgeType.value = edgeType
-    edges.value = edges.value.map(edge => ({ ...edge, type: edgeType }))
+const handleUpdateCanvasConfig = ({ edgeType, spacing }: { edgeType?: string; spacing?: string }) => {
+  const nextEdgeType = isEdgeType(edgeType) ? edgeType : undefined
+  const nextSpacing = isSpacingKey(spacing) ? spacing : undefined
+
+  if (nextEdgeType && nextEdgeType !== currentEdgeType.value) {
+    currentEdgeType.value = nextEdgeType
+    edges.value = edges.value.map(edge => ({ ...edge, type: nextEdgeType }))
   }
-  if (spacing && spacing !== currentSpacing.value) currentSpacing.value = spacing
+  if (nextSpacing && nextSpacing !== currentSpacing.value) currentSpacing.value = nextSpacing
 }
 
 // --- Save & Image Handling ---
@@ -349,7 +382,7 @@ const handleSaveNodes = async ({ source, filename }: { source: string; filename:
       if (delImages.length > 0) {
         const checkRes = await resourceApi.checkUnusedImages(source, filename, delImages)
         unusedImages.value = checkRes.unused_images || []
-        usedImages.value = checkRes.used_images || []
+        usedImages.value = isUsedImageInfoArray(checkRes.used_images) ? checkRes.used_images : []
         if (unusedImages.value.length > 0) { showDeleteImagesModal.value = true; return }
       }
       await processImagesAndSave(source, filename, [], tempImages)
@@ -401,7 +434,7 @@ const handleDebugNodeFromPanel = (nodeId: string) => handleDebugNode(nodeId, 'st
 <template>
   <div class="w-full h-full min-h-[500px] bg-slate-50 relative">
     <VueFlow
-        v-model:nodes="nodes" v-model:edges="edges" :node-types="nodeTypes"
+        v-model:nodes="nodes" v-model:edges="edges" :node-types="nodeTypesObject"
         :default-zoom="1" :min-zoom="0.1" :max-zoom="4" fit-view-on-init
         :is-valid-connection="onValidateConnection"
         :nodes-draggable="isFileLoaded" :nodes-connectable="isFileLoaded" :elements-selectable="isFileLoaded"

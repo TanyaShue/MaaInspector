@@ -19,6 +19,8 @@ const emit = defineEmits<{
   (e: 'remove-focus', key: string): void
   (e: 'update-focus', payload: { key: string; value: string }): void
 }>()
+void props
+void emit
 
 const getInputValue = (event: Event) => (event.target as HTMLInputElement | null)?.value ?? ''
 </script>

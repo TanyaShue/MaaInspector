@@ -16,6 +16,8 @@ const emit = defineEmits<{
   (e: 'discard'): void
   (e: 'save'): void
 }>()
+void props
+void emit
 </script>
 
 <template>

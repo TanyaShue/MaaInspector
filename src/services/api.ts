@@ -1,4 +1,16 @@
-const API_BASE_URL = 'http://127.0.0.1:5000'
+const DEFAULT_API_BASE_URL = 'http://127.0.0.1:5000'
+
+const API_BASE_URL = (() => {
+  if (typeof window !== 'undefined') {
+    const runtimeBase = (window as any).__MAA_API_BASE as string | undefined
+    if (runtimeBase) return runtimeBase
+  }
+
+  // 允许通过构建时环境变量覆盖（如 Vite dev 场景）
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const viteEnv = (import.meta as any)?.env?.VITE_API_BASE as string | undefined
+  return viteEnv || DEFAULT_API_BASE_URL
+})()
 
 type JsonHeaders = Record<string, string>
 

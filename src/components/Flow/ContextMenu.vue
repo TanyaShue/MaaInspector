@@ -6,9 +6,7 @@ import {
 } from 'lucide-vue-next'
 import { recognitionMenuOptions } from '../../utils/nodeLogic'
 import { EDGE_TYPE_OPTIONS, SPACING_TYPE_OPTIONS, type EdgeType, type OptionItem } from '../../utils/flowOptions'
-import type { SpacingKey } from '../../utils/flowTypes'
-
-type MenuType = 'node' | 'edge' | 'pane'
+import type { SpacingKey, MenuType, FlowNode, FlowEdge } from '../../utils/flowTypes'
 
 type SubmenuItem = OptionItem<string | EdgeType | SpacingKey> & { color?: string }
 
@@ -35,7 +33,7 @@ const props = defineProps<{
   x: number
   y: number
   type: MenuType
-  data?: EdgeData | Record<string, unknown> | null
+  data?: FlowNode | FlowEdge | null
   currentEdgeType?: EdgeType
   currentSpacing?: SpacingKey
   debugPanelVisible?: boolean
@@ -44,7 +42,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'action', payload: { action: string; type: MenuType; data: unknown; payload?: string | EdgeType | SpacingKey | null }): void
+  (e: 'action', payload: { action: string; type: MenuType; data: FlowNode | FlowEdge | null; payload?: string | EdgeType | SpacingKey | null }): void
 }>()
 
 const showSubmenu = ref<string | null>(null)

@@ -1,6 +1,8 @@
 import type { Connection, Edge, EdgeChange, Node } from '@vue-flow/core'
 
 export type SpacingKey = 'compact' | 'normal' | 'loose'
+export type MenuType = 'pane' | 'node' | 'edge'
+export type NodeStatus = 'success' | 'error' | 'running' | 'ignored' | null
 
 export interface SpacingOption {
   ranksep: number
@@ -12,6 +14,11 @@ export interface TemplateImage {
   base64?: string
   found?: boolean
   nodeId?: string
+}
+
+export interface UsedImageInfo {
+  path: string
+  used_by: string[]
 }
 
 export interface FlowBusinessData {

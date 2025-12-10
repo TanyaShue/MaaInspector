@@ -45,7 +45,8 @@ const getFileName = (path?: string) => (!path || typeof path !== 'string') ? 'æœ
 
 watch(closeAllDetailsSignal, () => showDetails.value = false)
 
-const handleUpdateId = ({ oldId, newId }: { oldId: string; newId: string }) => updateNode({ oldId, newId, newType: props.data.type })
+const handleUpdateId = ({ oldId, newId }: { oldId?: string; newId: string }) =>
+  updateNode({ oldId: oldId ?? props.id, newId, newType: props.data.type })
 const handleUpdateType = (newType: string) => updateNode({ oldId: props.id, newId: props.id, newType })
 const handleUpdateData = (newData: FlowBusinessData) => updateNode({
   oldId: props.id, newId: props.id, newType: newData.recognition || props.data.type, newData

@@ -1,9 +1,9 @@
 [package]
-name = "tauri_demo1"
+name = "MaaInspector"
 version = "0.1.0"
 description = "A Tauri App"
-authors = ["you"]
-edition = "2021"
+authors = ["TanYaShue"]
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -22,4 +22,5 @@ tauri = { version = "2.5.1", features = [] }
 tauri-plugin-opener = "2.5.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+windows-sys = { version = "0.59.0", features = ["Win32_System_Console", "Win32_Foundation"] }
 

@@ -10,7 +10,7 @@ import RecognitionTab from './NodeDetailsPanels/RecognitionTab.vue'
 import ActionTab from './NodeDetailsPanels/ActionTab.vue'
 import JsonPreviewTab from './NodeDetailsPanels/JsonPreviewTab.vue'
 import { useNodeForm, recognitionTypes, actionTypes } from '../../utils/nodeLogic'
-import type { FlowBusinessData, FlowNodeMeta } from '../../utils/flowTypes'
+import type { FlowBusinessData, FlowNodeMeta, TemplateImage } from '../../utils/flowTypes'
 
 type DevicePickerMode = 'coordinate' | 'ocr' | 'image_manager'
 
@@ -69,6 +69,8 @@ watch(activeTab, closeAllDropdowns)
 
 // Device Screen 状态
 const showDeviceScreen = ref(false)
+type ImageItem = TemplateImage & { _source?: string }
+
 const deviceScreenConfig = reactive<{
   targetField: string
   referenceField: string | null
@@ -77,9 +79,9 @@ const deviceScreenConfig = reactive<{
   referenceLabel: string
   title: string
   mode: DevicePickerMode
-  imageList: unknown[]
-  tempImageList: unknown[]
-  deletedImageList: unknown[]
+  imageList: ImageItem[]
+  tempImageList: ImageItem[]
+  deletedImageList: ImageItem[]
   filename: string
   nodeId: string
 }>({
@@ -97,8 +99,19 @@ const deviceScreenConfig = reactive<{
   nodeId: ''
 })
 
-const currentRecognition = computed(() => formData.value.recognition || 'DirectHit')
-const currentAction = computed(() => formData.value.action || 'DoNothing')
+const toImageItems = (val: unknown): ImageItem[] => {
+  if (!Array.isArray(val)) return []
+  return val
+    .map(item => (item && typeof item === 'object' ? item as ImageItem : null))
+    .filter((item): item is ImageItem => !!item && typeof item.path === 'string')
+}
+
+const currentRecognition = computed<string>(() =>
+  typeof formData.value.recognition === 'string' ? formData.value.recognition : 'DirectHit'
+)
+const currentAction = computed<string>(() =>
+  typeof formData.value.action === 'string' ? formData.value.action : 'DoNothing'
+)
 const recognitionConfig = computed(() => recognitionTypes.find(r => r.value === currentRecognition.value) || recognitionTypes[0])
 const actionConfig = computed(() => actionTypes.find(a => a.value === currentAction.value) || actionTypes[0])
 const nextList = computed(() => getArrayList('next'))
@@ -119,6 +132,10 @@ const selectRecognitionType = (newType: string) => {
 const selectActionType = (newAction: string) => {
   setValue('action', newAction)
   dropdownStates.action = false
+}
+
+const handleFocusUpdate = (payload: { key: string; value: string }) => {
+  updateFocusParam(payload.key, payload.value)
 }
 
 const jumpToSettings = (type: string) => {
@@ -198,9 +215,9 @@ const openImageManager = () => {
   deviceScreenConfig.referenceRect = parseRect(getValue('roi'))
   deviceScreenConfig.initialRect = deviceScreenConfig.referenceRect
   deviceScreenConfig.referenceLabel = 'roi'
-  deviceScreenConfig.imageList = props.nodeData?._images || []
-  deviceScreenConfig.tempImageList = props.nodeData?._temp_images || []
-  deviceScreenConfig.deletedImageList = props.nodeData?._del_images || []
+  deviceScreenConfig.imageList = toImageItems(props.nodeData?._images)
+  deviceScreenConfig.tempImageList = toImageItems(props.nodeData?._temp_images)
+  deviceScreenConfig.deletedImageList = toImageItems(props.nodeData?._del_images)
   deviceScreenConfig.filename = props.currentFilename || ''
   deviceScreenConfig.nodeId = props.nodeId || ''
   showDeviceScreen.value = true
@@ -379,7 +396,7 @@ watch(() => props.visible, (val) => {
             @toggle-dropdown="() => toggleDropdown('focus')"
             @add-focus="addFocusParam"
             @remove-focus="removeFocusParam"
-            @update-focus="({ key, value }: { key: string; value: string }) => updateFocusParam(key, value)"
+            @update-focus="handleFocusUpdate"
           />
         </div>
 

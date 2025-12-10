@@ -1,11 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { AlertTriangle, Trash2, Image as ImageIcon, FileWarning } from 'lucide-vue-next'
-
-interface UsedImageInfo {
-  path: string
-  used_by: string[]
-}
+import type { UsedImageInfo } from '../../../utils/flowTypes'
 
 const props = withDefaults(defineProps<{
   visible: boolean
@@ -24,6 +20,7 @@ const emit = defineEmits<{
   (e: 'confirm'): void
   (e: 'skip'): void
 }>()
+void emit
 
 const hasUnused = computed<boolean>(() => props.unusedImages.length > 0)
 const hasUsed = computed<boolean>(() => props.usedImages.length > 0)

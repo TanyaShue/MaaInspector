@@ -8,6 +8,8 @@ import {
 import {useVueFlow} from '@vue-flow/core'
 import {deviceApi, resourceApi, agentApi, systemApi} from '../../services/api.ts'
 import type { DeviceInfo, ResourceProfile, ResourceFileInfo } from '../../services/api.ts'
+import type { FlowBusinessData, TemplateImage, SpacingKey } from '../../utils/flowTypes'
+import type { EdgeType } from '../../utils/flowOptions'
 import DeviceSettingsModal from './Modals/DeviceSettingsModal.vue'
 import ResourceSettingsModal from './Modals/ResourceSettingsModal.vue'
 import CreateResourceModal from './Modals/CreateResourceModal.vue'
@@ -18,18 +20,18 @@ const props = defineProps<{
   edgeCount?: number
   isDirty?: boolean
   currentFilename?: string
-  edgeType?: string
-  spacing?: string
+  edgeType?: EdgeType
+  spacing?: SpacingKey
 }>()
 
 // [核心] 增加 request-switch-file 和 update-canvas-config 事件
 const emit = defineEmits<{
-  (e: 'load-nodes', payload: { filename: string; source: string; nodes: Record<string, unknown> }): void
-  (e: 'load-images', payload: Record<string, unknown>): void
+  (e: 'load-nodes', payload: { filename: string; source: string; nodes: Record<string, FlowBusinessData> }): void
+  (e: 'load-images', payload: Record<string, TemplateImage[]>): void
   (e: 'save-nodes', payload: { source: string; filename: string }): void
   (e: 'device-connected', status: boolean): void
   (e: 'request-switch-file', payload: { filename: string; source: string }): void
-  (e: 'update-canvas-config', payload: { edgeType?: string; spacing?: string }): void
+  (e: 'update-canvas-config', payload: { edgeType?: EdgeType; spacing?: SpacingKey }): void
 }>()
 
 // --- 内部组件 ---
@@ -61,7 +63,14 @@ const showCreateFileModal = ref(false)
 
 // --- 全局数据源 ---
 const availableDevices = ref<DeviceInfo[]>([])
-const resourceProfiles = ref<ResourceProfile[]>([])
+type EditableProfile = ResourceProfile & { paths: string[] }
+const normalizeProfiles = (profiles?: ResourceProfile[]): EditableProfile[] =>
+  (profiles || []).map(p => ({
+    ...p,
+    paths: Array.isArray((p as any).paths) ? [...(p as any).paths] : []
+  }))
+
+const resourceProfiles = ref<EditableProfile[]>([])
 const currentAgentSocket = ref<string>('')
 const systemStatus = ref<'connected' | 'loading' | 'error' | 'disconnected'>('disconnected')
 
@@ -146,7 +155,7 @@ const agentCtrl = useStatusModule(agentApi, 'Agent')
 
 // --- 计算属性 ---
 const currentDevice = computed<DeviceInfo | Record<string, unknown>>(() => availableDevices.value[selectedDeviceIndex.value] || {})
-const currentProfile = computed<ResourceProfile | { name: string; paths: string[] }>(() => resourceProfiles.value[selectedProfileIndex.value] || {name: 'None', paths: []})
+const currentProfile = computed<EditableProfile>(() => resourceProfiles.value[selectedProfileIndex.value] || {name: 'None', paths: []})
 
 const fetchAndEmitNodes = async () => {
   if (!selectedResourceFile.value) return
@@ -155,7 +164,7 @@ const fetchAndEmitNodes = async () => {
 
   try {
     resourceCtrl.message = '加载节点中...'
-    const res = await resourceApi.getFileNodes<Record<string, unknown>>(fileObj.source, fileObj.value)
+    const res = await resourceApi.getFileNodes<Record<string, FlowBusinessData>>(fileObj.source, fileObj.value)
     const nodes = res.nodes || {}
 
     // 传递 source 到 load-nodes 事件
@@ -164,7 +173,7 @@ const fetchAndEmitNodes = async () => {
 
     try {
       const imgRes = await resourceApi.getTemplateImages(fileObj.source, fileObj.value)
-      if (imgRes.results) emit('load-images', imgRes.results)
+      if (imgRes.results) emit('load-images', imgRes.results as Record<string, TemplateImage[]>)
     } catch (imgError) {
       console.warn("图片加载失败", imgError)
     }
@@ -318,7 +327,7 @@ const fetchSystemState = async () => {
   try {
     const data = await systemApi.getInitialState()
     if (data.devices) availableDevices.value = data.devices
-    if (data.resource_profiles) resourceProfiles.value = data.resource_profiles
+    if (data.resource_profiles) resourceProfiles.value = normalizeProfiles(data.resource_profiles as ResourceProfile[])
     const state = data.current_state || {}
     if (state.device_index !== undefined && availableDevices.value[state.device_index]) selectedDeviceIndex.value = state.device_index
     if (state.resource_profile_index !== undefined && resourceProfiles.value[state.resource_profile_index]) selectedProfileIndex.value = state.resource_profile_index
@@ -335,8 +344,8 @@ const fetchSystemState = async () => {
     // 加载画布配置（连线类型和布局间隔）
     if (state.edge_type || state.spacing) {
       emit('update-canvas-config', {
-        edgeType: state.edge_type || 'smoothstep',
-        spacing: state.spacing || 'normal'
+        edgeType: (state.edge_type as EdgeType) || 'smoothstep',
+        spacing: (state.spacing as SpacingKey) || 'normal'
       })
     }
 
@@ -389,8 +398,8 @@ const saveDeviceSettings = (data: { devices: DeviceInfo[]; index?: number }) => 
   showDeviceSettings.value = false
   saveAllConfig()
 }
-const saveResourceSettings = (data: { profiles: ResourceProfile[]; index?: number }) => {
-  resourceProfiles.value = data.profiles
+const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: number }) => {
+  resourceProfiles.value = normalizeProfiles(data.profiles)
   if (selectedProfileIndex.value >= resourceProfiles.value.length) selectedProfileIndex.value = 0
   if (data.index !== undefined) selectedProfileIndex.value = data.index
   showResourceSettings.value = false
