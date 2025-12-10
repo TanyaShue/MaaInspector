@@ -5,31 +5,31 @@ on:
     tags:
       - 'v*'
 
-permissions:
-  contents: write
+defaults:
+  run:
+    shell: pwsh
 
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
-      # ---- Checkout project ----
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ---- Setup Node ----
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
           cache: npm
 
-      # ---- Install frontend deps ----
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Install frontend deps
         run: npm ci
 
       - name: Set version from tag
-        shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
           if (-not $tag.StartsWith('v')) {
@@ -37,38 +37,47 @@ jobs:
           }
           $version = $tag.Substring(1)
           Write-Host "Using version $version"
-          $json = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+
+          $json = Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json
           $json.version = $version
           $json | ConvertTo-Json -Depth 10 | Set-Content src-tauri/tauri.conf.json
+
+          "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Prepare embedded Python
         env:
           PYTHONIOENCODING: utf-8
         run: python setup_embedded_python.py
 
-      # ---- Move backend ----
       - name: Move backend into src-tauri
-        shell: pwsh
         run: |
           if (Test-Path src-tauri/backend) { Remove-Item -Recurse -Force src-tauri/backend }
           Move-Item backend src-tauri/backend
 
-      # ---- Build with Official Tauri Action ----
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          bundle: nsis
+          # Release 信息
           tagName: ${{ github.ref_name }}
           releaseName: "MaaInspector ${{ github.ref_name }}"
           releaseBody: "Automated Tauri build"
-          includeDebug: false
-          includeUpdaterJson: false
+          prerelease: false
+          releaseDraft: false
 
-      # ---- Upload artifacts ----
-      - name: Upload Bundles
-        uses: actions/upload-artifact@v4
-        with:
-          name: tauri-windows-bundle
-          path: src-tauri/target/release/bundle/**
+          # 构建设置
+          includeDebug: false       # 不构建 debug
+          includeRelease: true      # 仅构建 release 模式
+
+          # 自动更新 JSON
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true   # 你的安装器是 NSIS，自动更新推荐使用它
+
+          # 项目路径（必须）
+          projectPath: "."               # 当前项目根目录
+          tauriScript: "npm run tauri"   # 默认构建命令
+
+          # 上传设置
+          uploadPlainBinary: false
+          uploadWorkflowArtifacts: true  # 可选，在 Actions Artifacts 保存一份
