@@ -1,0 +1,63 @@
+name: Build Tauri (Windows)
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: npm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Set version from tag
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if (-not $tag.StartsWith('v')) {
+            throw "Tag must start with v, got $tag"
+          }
+          $version = $tag.Substring(1)
+          Write-Host "Using version $version"
+          $json = Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json
+          $json.version = $version
+          $json | ConvertTo-Json -Depth 10 | Set-Content src-tauri/tauri.conf.json
+          "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Prepare embedded Python
+        run: python setup_embedded_python.py
+
+      - name: Move backend into src-tauri
+        run: |
+          if (Test-Path src-tauri/backend) { Remove-Item -Recurse -Force src-tauri/backend }
+          Move-Item backend src-tauri/backend
+
+      - name: Build Tauri (Windows)
+        env:
+          CI: true
+        run: npm run tauri build -- --bundles nsis
+
+      - name: Upload Windows bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-windows-bundle
+          path: src-tauri/target/release/bundle/**
+          if-no-files-found: warn
+
