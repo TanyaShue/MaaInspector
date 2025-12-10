@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { AlertTriangle, Trash2, X, Image as ImageIcon, FileWarning } from 'lucide-vue-next'
+import { AlertTriangle, Trash2, Image as ImageIcon, FileWarning } from 'lucide-vue-next'
 
 interface UsedImageInfo {
   path: string

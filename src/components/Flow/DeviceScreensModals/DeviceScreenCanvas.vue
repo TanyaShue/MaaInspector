@@ -20,7 +20,6 @@ const emit = defineEmits<{
   (e: 'preview-generated', payload: string): void
 }>()
 
-const containerRef = ref<HTMLDivElement | null>(null)
 const contentRef = ref<HTMLDivElement | null>(null)
 
 const BASE_WIDTH = 1280

@@ -261,6 +261,11 @@ const handleImageManagerSave = () => {
   emit('close')
 }
 
+const handlePreviewEdit = (editedBase64: string) => {
+  if (!editedBase64) return
+  previewUrl.value = editedBase64
+}
+
 // --- 图片管理逻辑 ---
 const deleteFromImages = (path: string) => {
   const index = localImages.value.findIndex(img => img.path === path)
@@ -360,6 +365,7 @@ saveImagePath.value = generateDefaultSavePath()
         @update:ocrResult="ocrResult = $event"
         @update:saveImagePath="saveImagePath = $event"
         @save-temp-image="handleSaveTempImage"
+        @apply-preview-edit="handlePreviewEdit"
         @save-image-changes="handleImageManagerSave"
         @delete-image="deleteFromImages"
         @delete-temp="deleteFromTempImages"

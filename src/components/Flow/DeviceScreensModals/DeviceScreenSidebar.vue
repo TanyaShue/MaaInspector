@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {
   Crosshair, Check, X, MousePointer2, ScanText, Loader2, ImageIcon,
   Copy, Maximize, ArrowLeftRight
 } from 'lucide-vue-next'
 import DeviceScreenImageList from './DeviceScreenImageList.vue'
+import DeviceScreenMaskEditor from './DeviceScreenMaskEditor.vue'
 
 type ModeType = 'coordinate' | 'ocr' | 'image_manager'
 interface Selection { x: number; y: number; w: number; h: number }
@@ -36,6 +37,7 @@ const emit = defineEmits<{
   (e: 'update:ocrResult', val: string): void
   (e: 'update:saveImagePath', val: string): void
   (e: 'save-temp-image'): void
+  (e: 'apply-preview-edit', val: string): void
   (e: 'save-image-changes'): void
   (e: 'delete-image', path: string): void
   (e: 'delete-temp', path: string): void
@@ -59,6 +61,27 @@ const copySelection = () => {
 
 const handleConfirm = () => {
   emit('confirm')
+}
+
+// --- 预览涂绿编辑 ---
+const lastPreview = ref(props.previewUrl ?? '')
+const isEditing = ref(false)
+
+watch(() => props.previewUrl, (val) => {
+  lastPreview.value = val ?? ''
+  if (!val) isEditing.value = false
+})
+
+const openMaskEditor = () => {
+  if (!lastPreview.value) return
+  isEditing.value = true
+}
+
+const handleApply = (edited: string) => {
+  if (!edited) return
+  emit('apply-preview-edit', edited)
+  lastPreview.value = edited
+  isEditing.value = false
 }
 </script>
 
@@ -102,11 +125,22 @@ const handleConfirm = () => {
         </div>
 
         <div v-else-if="props.mode === 'image_manager'" class="space-y-3">
-          <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-            <ImageIcon :size="12"/>
-            选区截图预览
+          <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between gap-2">
+            <div class="flex items-center gap-1">
+              <ImageIcon :size="12"/>
+              选区截图预览
+            </div>
+            <button
+              class="px-2 py-1 text-[11px] rounded border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              :disabled="!previewUrl"
+              @click="openMaskEditor"
+            >
+              编辑
+            </button>
           </div>
-          <div class="bg-slate-100 border border-slate-200 rounded-lg overflow-hidden shadow-inner flex items-center justify-center min-h-[120px] h-[120px] relative p-2">
+          <div
+            class="bg-slate-100 border border-slate-200 rounded-lg overflow-hidden shadow-inner flex items-center justify-center min-h-[120px] h-[120px] relative p-2"
+          >
             <div class="absolute inset-0 opacity-10 bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:8px_8px]"></div>
             <img v-if="previewUrl" :src="previewUrl" class="relative z-10 w-full h-full object-contain drop-shadow-sm"/>
             <div v-else class="text-[10px] text-slate-400 relative z-10 flex flex-col items-center gap-1">
@@ -216,5 +250,12 @@ const handleConfirm = () => {
         </div>
       </div>
     </div>
+    <DeviceScreenMaskEditor
+      :visible="isEditing"
+      :preview="lastPreview"
+      :initialBrushSize="16"
+      @close="isEditing = false"
+      @apply="handleApply"
+    />
   </div>
 </template>
