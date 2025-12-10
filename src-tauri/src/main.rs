@@ -158,8 +158,8 @@ fn main() {
         .manage(AppState(Mutex::new(None)))
         .setup(|app| {
             let args: Vec<String> = std::env::args().collect();
-            let backend_port = parse_port_arg(&args, "--backend-port", 5000);
-            let frontend_port = parse_port_arg(&args, "--frontend-port", 1420);
+            let backend_port = parse_port_arg(&args, "--backend-port", 38081);
+            let frontend_port = parse_port_arg(&args, "--frontend-port", 38080);
             let api_base = format!("http://127.0.0.1:{}", backend_port);
             let backend_port_str = backend_port.to_string();
 

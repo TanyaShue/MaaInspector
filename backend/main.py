@@ -38,7 +38,7 @@ app = create_app()
 
 if __name__ == "__main__":
     env_port = os.environ.get("MAA_BACKEND_PORT")
-    default_port = int(env_port) if env_port and env_port.isdigit() else 5000
+    default_port = int(env_port) if env_port and env_port.isdigit() else 38081
 
     parser = argparse.ArgumentParser(description="Run MaaInspector backend")
     parser.add_argument(

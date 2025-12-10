@@ -1,4 +1,4 @@
-const DEFAULT_API_BASE_URL = 'http://127.0.0.1:5000'
+const DEFAULT_API_BASE_URL = 'http://127.0.0.1:38081'
 
 const API_BASE_URL = (() => {
   if (typeof window !== 'undefined') {
