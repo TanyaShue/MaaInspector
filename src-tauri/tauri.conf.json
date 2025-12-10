@@ -43,7 +43,7 @@
     ],
     "resources": [
       "python-runtime",
-      "../backend"
+      "backend"
     ]
   }
 }
