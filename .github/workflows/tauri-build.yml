@@ -5,30 +5,28 @@ on:
     tags:
       - 'v*'
 
-defaults:
-  run:
-    shell: pwsh
-
 jobs:
-  build-windows:
+  build:
     runs-on: windows-latest
+
     steps:
+      # ---- Checkout project ----
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ---- Setup Node ----
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: 18
           cache: npm
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
+      # ---- Install frontend deps ----
       - name: Install frontend deps
         run: npm ci
 
       - name: Set version from tag
+        shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
           if (-not $tag.StartsWith('v')) {
@@ -36,30 +34,38 @@ jobs:
           }
           $version = $tag.Substring(1)
           Write-Host "Using version $version"
-          $json = Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json
+          $json = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
           $json.version = $version
           $json | ConvertTo-Json -Depth 10 | Set-Content src-tauri/tauri.conf.json
-          "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Prepare embedded Python
         env:
           PYTHONIOENCODING: utf-8
         run: python setup_embedded_python.py
 
+      # ---- Move backend ----
       - name: Move backend into src-tauri
+        shell: pwsh
         run: |
           if (Test-Path src-tauri/backend) { Remove-Item -Recurse -Force src-tauri/backend }
           Move-Item backend src-tauri/backend
 
-      - name: Build Tauri (Windows)
+      # ---- Build with Official Tauri Action ----
+      - name: Build Tauri App
+        uses: tauri-apps/tauri-action@v0
         env:
-          CI: true
-        run: npm run tauri build -- --bundles nsis
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          bundle: nsis
+          tagName: ${{ github.ref_name }}
+          releaseName: "MaaInspector ${{ github.ref_name }}"
+          releaseBody: "Automated Tauri build"
+          includeDebug: false
+          includeUpdaterJson: false
 
-      - name: Upload Windows bundle
+      # ---- Upload artifacts ----
+      - name: Upload Bundles
         uses: actions/upload-artifact@v4
         with:
           name: tauri-windows-bundle
           path: src-tauri/target/release/bundle/**
-          if-no-files-found: warn
-
