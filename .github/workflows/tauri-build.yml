@@ -38,6 +38,9 @@ jobs:
       # -----------------------------
       # Cargo/Rust 缓存（Tauri 提速关键点）
       # -----------------------------
+      - name: Setup Git (fix CRLF issue)
+        run: git config --global core.autocrlf false
+
       - name: Cache Cargo
         uses: actions/cache@v4
         with:
@@ -49,6 +52,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
+
 
       # -----------------------------
       # 安装前端依赖
