@@ -51,6 +51,7 @@ def load_config() -> Dict[str, Any]:
         for k, v in DEFAULT_CONFIG.items():
             if k not in cfg:
                 cfg[k] = v
+        print("111111111111111")
         return cfg
     except Exception:
         return DEFAULT_CONFIG.copy()

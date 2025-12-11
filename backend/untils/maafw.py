@@ -171,6 +171,25 @@ class MaaFW:
         self.tasker.post_task(entry, pipeline_override)
 
         return None
+    def run_re(self):
+
+        if not self.tasker:
+            self.tasker = Tasker()
+
+        if not self.resource or not self.controller:
+            return (False, "Resource or Controller not initialized")
+
+        self.tasker.bind(self.resource, self.controller)
+        if not self.tasker.inited:
+            return (False, "Failed to init MaaFramework tasker")
+        if not self.context_sink:
+            self.tasker.add_context_sink(MyNotificationHandler(debug_broker))
+            self.context_sink=True
+        if not self.tasker_sink:
+            self.tasker.add_sink(NotificationHandler(debug_broker))
+            self.tasker_sink=True
+
+        return self.tasker
 
     def stop_task(self):
         if not self.tasker:
@@ -183,11 +202,10 @@ class MaaFW:
             return None
 
         if capture:
-            self.controller.post_screencap().wait()
-        self.im = self.controller.cached_image
+            self.im=self.controller.post_screencap().wait().get()
+        # self.im = self.controller.cached_image
         if self.im is None:
             return None
-
         return cvmat_to_image(self.im)
 
     def click(self, x, y) -> bool:
@@ -284,13 +302,6 @@ class MyNotificationHandler(ContextEventSink):
             "timestamp": int(time.time() * 1000),
         }
 
-        if noti_type == NotificationType.Starting:
-            print(f"当前开始的节点的名称为:{detail.name},完整参数为:{detail}")
-        if noti_type == NotificationType.Succeeded:
-            print(f"当前成功识别的节点的名称为:{detail.name},识别id为:{detail.reco_id}")
-        if noti_type == NotificationType.Failed:
-            print(f"当前识别失败的节点的名称为:{detail.name},识别id为:{detail.reco_id}")
-
         self.broker.publish(payload)
 
 class NotificationHandler(TaskerEventSink):
@@ -299,10 +310,7 @@ class NotificationHandler(TaskerEventSink):
         self.broker = broker
 
     def on_tasker_task(self, tasker: Tasker, noti_type: NotificationType, detail: TaskerEventSink.TaskerTaskDetail):
-        if noti_type == NotificationType.Starting:
-            print(f"当前开始的节点的名称为:{detail.entry},完整参数为:{detail}")
-        if noti_type != NotificationType.Starting:
-            print(f"当前结束节点的名称为:{detail.entry},完整参数为:{detail}")
+        pass
 
 
 def cvmat_to_image(cvmat: ndarray) -> Image.Image:

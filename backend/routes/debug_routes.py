@@ -4,6 +4,7 @@ from typing import Optional
 
 from PIL import Image
 from flask import Blueprint, Response, jsonify, request, stream_with_context
+from maa.pipeline import JOCR
 
 from backend.common.utils import (
     convert_node,
@@ -74,11 +75,17 @@ def debug_ocr_text():
     roi = data.get("roi")
     if not roi or not isinstance(roi, list) or len(roi) != 4:
         return json_response(False, "Missing or invalid roi", status=400)
-
-    task_payload = {"debug_ocr_text": {"roi": roi, "next": "", "on_error": ""}}
-    result = maafw.tasker.post_recognition("OCR",task_payload,maafw.im).wait().get()
-    text = getattr(getattr(result, "beast", None), "text", "") or ""
-    return json_response(True, "OK", {"text": text})
+    task=JOCR()
+    task.roi=roi
+    tasker=maafw.run_re()
+    maafw.screencap()
+    result = tasker.post_recognition("OCR",task,maafw.im).wait().get().nodes[0].recognition
+    print(result)
+    if result.hit:
+        txt = result.best_result.text
+    else:
+        txt = ""
+    return json_response(True, "OK", {"text": txt})
 
 
 @debug_bp.route("/debug/get_reco_details", methods=["POST"])
