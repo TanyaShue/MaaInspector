@@ -2,8 +2,10 @@
 
 **MaaInspector** 是为 [maafw](https://github.com/MaaAssistantArknights/framework) 打造的可视化节点编辑器，旨在提供直观的图形化、低代码工作流创建与调试体验。
 
-> 项目仍在开发中，功能持续完善中。
-
+> 项目仍在开发中，功能持续完善中。  
+⚠️ 重要提示
+当前版本 仅支持 MaaFramework 5.0 及以上版本的 Pipeline。
+旧版 Pipeline（4.x 及更早）暂不兼容。
 ---
 
 ## 功能特性
