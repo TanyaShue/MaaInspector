@@ -7,6 +7,7 @@ import {
 import { deviceApi, debugApi } from '../../services/api.ts'
 import type { FlowNode } from '../../utils/flowTypes'
 
+// ... (原有类型定义保持不变) ...
 const STATUS = {
   UNKNOWN: 'unknown',
   STARTING: 'starting',
@@ -69,10 +70,21 @@ const emit = defineEmits<{
   (e: 'update-node-status', payload: { nodeId: string; status: NodeStatus }): void
 }>()
 
+// --- 窗口位置与大小状态 ---
 const position = ref({ x: 360, y: 140 })
+const size = ref({ w: 1024, h: 620 }) // 新增：控制窗口大小
+const minSize = { w: 600, h: 400 }    // 新增：最小限制
+
+// --- 拖拽移动逻辑 ---
 const isDragging = ref(false)
 const dragOffset = ref({ x: 0, y: 0 })
 
+// --- 调整大小逻辑 ---
+const isResizing = ref(false)
+const resizeDirection = ref<'e' | 's' | 'se' | null>(null) // e:右, s:下, se:右下
+const resizeStart = ref({ x: 0, y: 0, w: 0, h: 0 })
+
+// ... (原有业务状态保持不变) ...
 const searchValue = ref('')
 const selectedNodeId = ref('')
 const isOptionOpen = ref(false)
@@ -98,6 +110,8 @@ const fullImagePreview = ref<{ visible: boolean; src: string }>({ visible: false
 
 let stopStream: (() => void) | null = null
 let previewTimer: ReturnType<typeof setInterval> | null = null
+
+// ... (computed 保持不变) ...
 const nodeOptions = computed(() => (props.nodes || []).map(node => ({
   id: node.id,
   label: (node as any).data?.data?.id || node.id
@@ -121,7 +135,11 @@ const mapStatusToNode = (status: StatusKey): NodeStatus => {
   if (status === STATUS.STARTING) return 'running'
   return null
 }
+
+// --- 拖拽移动实现 ---
 const startDrag = (e: MouseEvent) => {
+  // 如果正在调整大小，禁止拖拽移动
+  if (isResizing.value) return
   const target = e.target as HTMLElement | null
   if (target && (target.closest('input') || target.closest('select') || target.closest('button'))) return
   isDragging.value = true
@@ -138,6 +156,46 @@ const stopDrag = () => {
   document.removeEventListener('mousemove', onDrag)
   document.removeEventListener('mouseup', stopDrag)
 }
+
+// --- 调整大小实现 (新增) ---
+const startResize = (dir: 'e' | 's' | 'se', e: MouseEvent) => {
+  e.preventDefault()
+  e.stopPropagation()
+  isResizing.value = true
+  resizeDirection.value = dir
+  resizeStart.value = {
+    x: e.clientX,
+    y: e.clientY,
+    w: size.value.w,
+    h: size.value.h
+  }
+  document.body.style.cursor = dir === 'e' ? 'ew-resize' : (dir === 's' ? 'ns-resize' : 'nwse-resize')
+  document.addEventListener('mousemove', onResize)
+  document.addEventListener('mouseup', stopResize)
+}
+
+const onResize = (e: MouseEvent) => {
+  if (!isResizing.value) return
+  const dx = e.clientX - resizeStart.value.x
+  const dy = e.clientY - resizeStart.value.y
+
+  if (resizeDirection.value === 'e' || resizeDirection.value === 'se') {
+    size.value.w = Math.max(minSize.w, resizeStart.value.w + dx)
+  }
+  if (resizeDirection.value === 's' || resizeDirection.value === 'se') {
+    size.value.h = Math.max(minSize.h, resizeStart.value.h + dy)
+  }
+}
+
+const stopResize = () => {
+  isResizing.value = false
+  resizeDirection.value = null
+  document.body.style.cursor = ''
+  document.removeEventListener('mousemove', onResize)
+  document.removeEventListener('mouseup', stopResize)
+}
+
+// ... (原有业务逻辑 fetchPreview, upsertNextList 等保持不变) ...
 
 const fetchPreview = async () => {
   if (isLoadingPreview.value) return
@@ -184,10 +242,8 @@ const upsertNextList = (payload: NextListPayload) => {
     timestamp: payload.timestamp || Date.now()
   }
 
-  // 每次 next_list 推送都新增一条主任务记录，保留历史记录
   events.value = [record, ...events.value].slice(0, 200)
 
-  // 将当前文件中对应节点名称的状态置为 ignored（等待识别）
   if (nextList.length && props.nodes) {
     const targetNames = new Set(nextList.map(child => child.name).filter(Boolean))
     props.nodes.forEach(node => {
@@ -204,18 +260,8 @@ const normalizeDetailFields = (child: any) => {
   if (Array.isArray(child.detailList)) return child.detailList
   if (Array.isArray(child.details)) return child.details
   const skipKeys = [
-    'name',
-    'status',
-    'jump_back',
-    'debug_image',
-    'image',
-    'screenshot',
-    'draw_images',
-    'raw_image',
-    'raw_detail',
-    'all_results',
-    'filtered_results',
-    'best_result'
+    'name', 'status', 'jump_back', 'debug_image', 'image', 'screenshot',
+    'draw_images', 'raw_image', 'raw_detail', 'all_results', 'filtered_results', 'best_result'
   ]
   return Object.entries(child)
       .filter(([k]) => !skipKeys.includes(k))
@@ -363,7 +409,6 @@ const handleChildClick = async (child: NextChild, item: DebugEventRecord) => {
   let meta: { algorithm?: string; hit?: boolean; box?: any } | undefined
   let results: Array<{ label: string; text: string; raw: any; flags?: string[] }> = []
 
-  // 若有 reco_id，调用后端接口获取识别详情
   if (child.reco_id !== undefined && child.reco_id !== null) {
     try {
       const res = await debugApi.getRecoDetails(child.reco_id)
@@ -388,7 +433,6 @@ const handleChildClick = async (child: NextChild, item: DebugEventRecord) => {
           fields = [...fields, ...detailFields]
         }
 
-        // 合并 all / filtered / best 并标记
         const allList = Array.isArray((detail as any).all_results) ? (detail as any).all_results : []
         const filteredList = Array.isArray((detail as any).filtered_results) ? (detail as any).filtered_results : []
         const bestItem = (detail as any).best_result
@@ -425,7 +469,6 @@ const handleChildClick = async (child: NextChild, item: DebugEventRecord) => {
           results.push({ label, text, raw: item, flags })
         })
 
-        // 如果 best 不在 all（安全兜底），单独补充
         if (bestItem && !allList.length && merged.indexOf(bestItem) === -1) {
           let text = ''
           try {
@@ -508,7 +551,10 @@ watch(() => props.visible, (val) => {
   if (val) {
     selectedNodeId.value = props.initialNodeId || ''
     searchValue.value = props.initialNodeId || ''
-    position.value = { x: window.innerWidth - 920, y: 160 }
+    // 重置位置时，也可以根据需求重置大小，或者保持上次大小
+    // 这里保持默认逻辑，如果窗口太小被挤出去可以调整
+    const safeX = Math.min(window.innerWidth - size.value.w - 20, Math.max(20, window.innerWidth - size.value.w - 100))
+    position.value = { x: safeX > 0 ? safeX : 20, y: 160 }
     startPreviewAutoRefresh()
     startRealtimeStream()
   } else {
@@ -525,10 +571,14 @@ watch(() => props.initialNodeId, (val) => {
 
 onMounted(() => {
   document.addEventListener('mouseup', stopDrag)
+  document.addEventListener('mouseup', stopResize) // 防止异常状态
 })
 
 onUnmounted(() => {
   document.removeEventListener('mouseup', stopDrag)
+  document.removeEventListener('mouseup', stopResize)
+  document.removeEventListener('mousemove', onDrag)
+  document.removeEventListener('mousemove', onResize)
   stopRealtimeStream()
   stopPreviewAutoRefresh()
 })
@@ -545,12 +595,32 @@ onUnmounted(() => {
   >
     <div
         v-if="visible"
-        class="fixed z-[120] w-[1024px] h-[620px] bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden select-none flex flex-col"
-        :style="{ left: `${position.x}px`, top: `${position.y}px` }"
+        class="fixed z-[120] bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden select-none flex flex-col"
+        :style="{
+          left: `${position.x}px`,
+          top: `${position.y}px`,
+          width: `${size.w}px`,
+          height: `${size.h}px`
+        }"
         @mousedown.stop
     >
       <div
-          class="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-slate-200 cursor-move"
+          class="absolute right-0 top-0 bottom-4 w-1 cursor-ew-resize hover:bg-amber-400/50 z-[130] transition-colors"
+          @mousedown.stop="(e) => startResize('e', e)"
+      ></div>
+      <div
+          class="absolute left-0 right-4 bottom-0 h-1 cursor-ns-resize hover:bg-amber-400/50 z-[130] transition-colors"
+          @mousedown.stop="(e) => startResize('s', e)"
+      ></div>
+      <div
+          class="absolute right-0 bottom-0 w-4 h-4 cursor-nwse-resize z-[131] flex items-end justify-end p-0.5 group"
+          @mousedown.stop="(e) => startResize('se', e)"
+      >
+        <div class="w-2 h-2 border-r-2 border-b-2 border-slate-300 group-hover:border-amber-400 rounded-br-sm"></div>
+      </div>
+
+      <div
+          class="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-slate-200 cursor-move shrink-0"
           @mousedown="startDrag"
       >
         <div class="flex items-center gap-2">
@@ -575,7 +645,7 @@ onUnmounted(() => {
       <div class="flex flex-1 min-h-0">
         <div
             v-if="showPreviewPanel"
-            class="w-[260px] bg-slate-50 border-r border-slate-200 p-3 flex flex-col gap-3"
+            class="w-[260px] bg-slate-50 border-r border-slate-200 p-3 flex flex-col gap-3 shrink-0"
         >
           <div class="text-xs text-slate-500 font-semibold flex items-center gap-2">
             <Terminal :size="14" class="text-amber-500"/> 设备预览
@@ -592,8 +662,8 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div class="flex-1 flex flex-col min-h-0">
-          <div class="p-4 border-b border-slate-100 bg-white flex flex-col gap-3">
+        <div class="flex-1 flex flex-col min-h-0 w-0">
+          <div class="p-4 border-b border-slate-100 bg-white flex flex-col gap-3 shrink-0">
             <div class="flex gap-3 items-center">
               <div class="relative flex-1">
                 <SearchIcon :size="14" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
@@ -654,7 +724,7 @@ onUnmounted(() => {
                 <Activity :size="14" class="text-amber-500"/>
                 <span>实时事件数量：{{ events.length }}</span>
               </div>
-              <div class="flex items-center gap-3 text-[11px] text-slate-500">
+              <div class="flex items-center gap-3 text-[11px] text-slate-500 ml-auto">
                 <div class="flex items-center gap-2">
                   <span class="w-2.5 h-2.5 rounded-full bg-blue-400"></span>
                   <span>顺序</span>
@@ -729,9 +799,9 @@ onUnmounted(() => {
         <transition name="detail-slide">
           <div
               v-if="selectedDetail"
-              class="w-[320px] border-l border-slate-200 bg-white flex flex-col min-h-0"
+              class="w-[320px] border-l border-slate-200 bg-white flex flex-col min-h-0 shrink-0"
           >
-            <div class="flex items-center justify-between px-3 py-2 border-b border-slate-200 bg-slate-50">
+             <div class="flex items-center justify-between px-3 py-2 border-b border-slate-200 bg-slate-50">
               <div class="flex flex-col">
                 <span class="text-sm font-semibold text-slate-700">{{ selectedDetail.child.name }}</span>
                 <span class="text-[11px] text-slate-500">任务 #{{ selectedDetail.record.taskId }}</span>
@@ -961,4 +1031,3 @@ onUnmounted(() => {
   transform: translateX(12px);
 }
 </style>
-

@@ -16,5 +16,6 @@ def agent_connect():
 
     maafw.create_agent(socket_id)
     maafw.connect_agent()
+    print("agent connected")
     return json_response(True, "Agent Linked", {"info": {"Socket": socket_id}})
 
