@@ -204,6 +204,22 @@ const handlePreviewGenerated = (base64: string) => {
   previewUrl.value = base64
 }
 
+// 处理本地上传的图片
+const handleLocalImageUpload = (base64: string) => {
+  imageUrl.value = base64
+  // 上传新图后重置选区，因为旧选区可能不适用
+  selection.x = 0
+  selection.y = 0
+  selection.w = 0
+  selection.h = 0
+  previewUrl.value = ''
+
+  // 重置视图位置
+  if (canvasRef.value) {
+    canvasRef.value.resetView()
+  }
+}
+
 const handleOcr = async () => {
   if (selection.w <= 0 || selection.h <= 0) return
   isOcrLoading.value = true
@@ -341,6 +357,7 @@ saveImagePath.value = generateDefaultSavePath()
         @refresh="fetchScreenshot"
         @selection-change="handleSelectionChange"
         @preview-generated="handlePreviewGenerated"
+        @image-uploaded="handleLocalImageUpload"
       />
 
       <DeviceScreenSidebar

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
-import { Smartphone, RefreshCw, RotateCcw } from 'lucide-vue-next'
+import { Smartphone, RefreshCw, RotateCcw, Upload } from 'lucide-vue-next'
 
 type ModeType = 'coordinate' | 'ocr' | 'image_manager'
 interface Selection { x: number; y: number; w: number; h: number }
@@ -18,9 +18,11 @@ const emit = defineEmits<{
   (e: 'refresh'): void
   (e: 'selection-change', payload: Selection): void
   (e: 'preview-generated', payload: string): void
+  (e: 'image-uploaded', payload: string): void
 }>()
 
 const contentRef = ref<HTMLDivElement | null>(null)
+const fileInputRef = ref<HTMLInputElement | null>(null)
 
 const BASE_WIDTH = 1280
 const BASE_HEIGHT = 720
@@ -94,6 +96,38 @@ const generatePreviewSnapshot = () => {
     emit('preview-generated', canvas.toDataURL('image/png'))
   }
   img.src = props.imageUrl
+}
+
+// 处理本地图片上传并缩放
+const triggerFileUpload = () => {
+  fileInputRef.value?.click()
+}
+
+const handleFileChange = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  if (input.files && input.files[0]) {
+    const file = input.files[0]
+    const reader = new FileReader()
+
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        canvas.width = BASE_WIDTH
+        canvas.height = BASE_HEIGHT
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          // 强制绘制为 1280x720
+          ctx.drawImage(img, 0, 0, BASE_WIDTH, BASE_HEIGHT)
+          emit('image-uploaded', canvas.toDataURL('image/png'))
+        }
+      }
+      img.src = e.target?.result as string
+    }
+    reader.readAsDataURL(file)
+  }
+  // 清空 input 以允许重复上传同一文件
+  input.value = ''
 }
 
 // 视图操作
@@ -206,6 +240,14 @@ defineExpose({ resetView, generatePreviewSnapshot })
       'cursor-crosshair': !isPanning
     }"
   >
+    <input
+      type="file"
+      ref="fileInputRef"
+      accept="image/*"
+      class="hidden"
+      @change="handleFileChange"
+    />
+
     <div
         ref="contentRef"
         class="relative transition-transform duration-75 ease-linear"
@@ -252,6 +294,13 @@ defineExpose({ resetView, generatePreviewSnapshot })
               title="刷新屏幕">
         <RefreshCw :size="16" :class="{'animate-spin': isLoading}"/>
       </button>
+
+      <button @click="triggerFileUpload"
+              class="p-2 bg-black/40 hover:bg-black/60 text-white rounded-lg backdrop-blur transition-all flex items-center justify-center shadow-sm border border-white/10"
+              title="上传本地图片(自动缩放至1280x720)">
+        <Upload :size="16"/>
+      </button>
+
       <button @click="resetView"
               class="p-2 bg-black/40 hover:bg-black/60 text-white rounded-lg backdrop-blur transition-all flex items-center justify-center shadow-sm border border-white/10"
               title="重置视图">
