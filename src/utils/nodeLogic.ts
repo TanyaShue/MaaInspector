@@ -5,7 +5,7 @@ import {
   Target, Image, Sparkles, Palette, ScanText, Brain, ScanEye, Code2, HelpCircle,
   Square, MousePointer, Hand, ArrowRight, Layers, Fingerprint, Move,
   Mouse, Keyboard, Type, Play, Terminal, Wand2,
-  Loader2, AlertCircle, Ban, CheckCircle2
+  Loader2, AlertCircle, Ban, CheckCircle2, GitMerge, GitFork
 } from 'lucide-vue-next'
 
 export interface ConfigItem {
@@ -50,6 +50,8 @@ export const RECOGNITION_CONFIG: ConfigItem[] = [
   { key: 'OCR', label: 'OCR识别', icon: ScanText, color: 'text-emerald-600', bg: 'bg-emerald-500', border: 'border-emerald-200' },
   { key: 'NeuralNetworkClassify', label: '模型分类', icon: Brain, color: 'text-amber-600', bg: 'bg-amber-500', border: 'border-amber-200' },
   { key: 'NeuralNetworkDetect', label: '模型检测', icon: ScanEye, color: 'text-orange-600', bg: 'bg-orange-500', border: 'border-orange-200' },
+  { key: 'And', label: '逻辑与', icon: GitMerge, color: 'text-teal-600', bg: 'bg-teal-500', border: 'border-teal-200' },
+  { key: 'Or', label: '逻辑或', icon: GitFork, color: 'text-cyan-600', bg: 'bg-cyan-500', border: 'border-cyan-200' },
   { key: 'Custom', label: '自定义', icon: Code2, color: 'text-slate-600', bg: 'bg-slate-500', border: 'border-slate-200' },
   { key: 'Anchor', label: '锚点', icon: Target, color: 'text-amber-600', bg: 'bg-amber-500', border: 'border-amber-200' },
   { key: 'Unknown', label: '未知节点', icon: HelpCircle, color: 'text-gray-500', bg: 'bg-gray-400', border: 'border-gray-300' }

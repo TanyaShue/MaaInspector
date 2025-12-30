@@ -41,7 +41,7 @@ const toggleDetails = () => {
   if (isUnknown.value || isAnchorType.value) return
   showDetails.value = !showDetails.value
 }
-const getFileName = (path?: string) => (!path || typeof path !== 'string') ? '未选择图片' : (path.split('/').pop() || '未选择图片')
+const getFileName = (path?: string) => (!path || false) ? '未选择图片' : (path.split('/').pop() || '未选择图片')
 
 watch(closeAllDetailsSignal, () => showDetails.value = false)
 

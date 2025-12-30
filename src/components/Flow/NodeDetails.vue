@@ -23,11 +23,20 @@ const props = defineProps<{
   typeConfig?: Record<string, unknown>
   currentFilename?: string
 }>()
+type PickerPayload = {
+  field: string
+  referenceField?: string | null
+  referenceLabel?: string | null
+  referenceRect?: number[] | null
+  onConfirm?: (val: any) => void
+}
+
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'update-id', payload: { oldId?: string; newId: string }): void
   (e: 'update-type', newType: string): void
   (e: 'update-data', payload: FlowBusinessData & { _action?: string } & Record<string, unknown>): void
+  (e: 'open-picker', payload: string | PickerPayload, referenceField?: string | null, referenceLabel?: string): void
 }>()
 
 const formMethods = useNodeForm(props as any, emit as any)
@@ -84,6 +93,7 @@ const deviceScreenConfig = reactive<{
   deletedImageList: ImageItem[]
   filename: string
   nodeId: string
+  onConfirm?: ((val: any) => void) | null
 }>({
   targetField: '',
   referenceField: '',
@@ -96,7 +106,8 @@ const deviceScreenConfig = reactive<{
   tempImageList: [],
   deletedImageList: [],
   filename: '',
-  nodeId: ''
+  nodeId: '',
+  onConfirm: null
 })
 
 const toImageItems = (val: unknown): ImageItem[] => {
@@ -157,7 +168,21 @@ const parseRect = (val: unknown) => {
   return null
 }
 
-const openDevicePicker = (field: string, referenceField: string | null = null, refLabel: string | null = null) => {
+const normalizePickerPayload = (payload: string | PickerPayload, refField?: string | null, refLabel?: string | null): PickerPayload => {
+  if (typeof payload === 'string') return { field: payload, referenceField: refField, referenceLabel: refLabel || null }
+  return payload
+}
+
+const openDevicePicker = (fieldParam: string | PickerPayload, referenceField: string | null = null, refLabel: string | null = null) => {
+  const payload = normalizePickerPayload(fieldParam, referenceField, refLabel)
+  const {
+    field,
+    referenceField: refField = null,
+    referenceLabel: refLabelFinal = null,
+    referenceRect: refRectOverride = null,
+    onConfirm
+  } = payload
+
   // 模式：expected -> ocr；template -> image_manager；其它 -> coordinate
   const finalMode: DevicePickerMode =
     field === 'expected'
@@ -170,9 +195,8 @@ const openDevicePicker = (field: string, referenceField: string | null = null, r
   const roiRect = parseRect(getValue('roi'))
 
   // 仅当显式提供 referenceField、偏移场景、或图片管理 / OCR 时展示参考框
-  let refRect = referenceField
-    ? parseRect(getValue(referenceField))
-    : (finalMode === 'image_manager' || finalMode === 'ocr' ? roiRect : null)
+  let refRect = refRectOverride
+    ?? (refField ? parseRect(getValue(refField)) : (finalMode === 'image_manager' || finalMode === 'ocr' ? roiRect : null))
 
   // 偏移字段若缺少参考，回退到 ROI（保持与旧逻辑一致，确保 target_offset/roi_offset 有参考）
   if (field.includes('offset') && !refRect && roiRect) {
@@ -194,10 +218,10 @@ const openDevicePicker = (field: string, referenceField: string | null = null, r
   })()
 
   deviceScreenConfig.targetField = field
-  deviceScreenConfig.referenceField = referenceField
+  deviceScreenConfig.referenceField = refField
   deviceScreenConfig.referenceRect = refRect
   deviceScreenConfig.mode = finalMode
-  deviceScreenConfig.referenceLabel = refLabel || referenceField || '参考区域'
+  deviceScreenConfig.referenceLabel = refLabelFinal || refField || '参考区域'
   deviceScreenConfig.title =
     finalMode === 'ocr'
       ? 'OCR 区域识别'
@@ -205,6 +229,7 @@ const openDevicePicker = (field: string, referenceField: string | null = null, r
         ? '模板图片管理'
         : (field.includes('offset') ? `设置偏移 (${field})` : `选取区域 (${field})`)
   deviceScreenConfig.imageList = []
+  deviceScreenConfig.onConfirm = onConfirm || null
   showDeviceScreen.value = true
 }
 
@@ -224,6 +249,11 @@ const openImageManager = () => {
 }
 
 const handleDevicePick = (result: any) => {
+  if (deviceScreenConfig.onConfirm) {
+    deviceScreenConfig.onConfirm(result)
+    showDeviceScreen.value = false
+    return
+  }
   if (deviceScreenConfig.mode === 'image_manager') {
     if (result.type === 'save_image_changes') {
       emit('update-data', {
