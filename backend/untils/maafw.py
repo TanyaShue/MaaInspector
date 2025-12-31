@@ -9,6 +9,7 @@ from PIL import Image
 from maa.agent_client import AgentClient
 from maa.context import ContextEventSink
 from maa.controller import AdbController, Win32Controller
+from maa.define import MaaWin32ScreencapMethodEnum
 from maa.event_sink import NotificationType
 from maa.resource import Resource
 from maa.tasker import Tasker, RecognitionDetail, TaskerEventSink
@@ -96,13 +97,13 @@ class MaaFW:
 
 
     def connect_win32hwnd(
-            self, hwnd: Union[int, str], screencap_method: int, input_method: int
+            self, hwnd: Union[int, str], screencap_method: int =None, mouse_method: int =None,keyboard_method:int =None
     ) -> Tuple[bool, Optional[str]]:
         if isinstance(hwnd, str):
             hwnd = int(hwnd, 16)
 
         self.controller = Win32Controller(
-            hwnd, screencap_method=screencap_method, input_method=input_method
+            hwnd, screencap_method=screencap_method, mouse_method=mouse_method,keyboard_method=keyboard_method
         )
         connected = self.controller.post_connection().wait().succeeded
         if not connected:
@@ -237,6 +238,10 @@ class MaaFW:
             return False
 
         return self.tasker.clear_cache()
+
+
+# 单例实例，供路由直接使用
+maafw = MaaFW()
 
 
 class MyNotificationHandler(ContextEventSink):

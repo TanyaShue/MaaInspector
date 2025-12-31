@@ -29,6 +29,18 @@ export interface ApiResponse<T = unknown> {
 
 export interface DeviceInfo {
   name?: string
+  type?: string
+  address?: string
+  config?: Record<string, unknown>
+  hwnd?: number | string
+  class_name?: string
+  window_name?: string
+  adb_path?: string
+  screencap_methods?: number
+  input_methods?: number
+  screencap_method?: number
+  mouse_method?: number
+  keyboard_method?: number
   [key: string]: unknown
 }
 
@@ -64,6 +76,7 @@ export interface SystemInitResponse {
   resource_profiles?: ResourceProfile[]
   agent_socket_id?: string
   current_state?: SystemState
+  last_connected_device?: DeviceInfo
 }
 
 export interface DeviceConfigPayload {
@@ -137,13 +150,26 @@ export const systemApi = {
   getInitialState: () => request<SystemInitResponse>('/system/init', { method: 'GET' }),
   saveDeviceConfig: (fullConfig: DeviceConfigPayload) =>
     request<ApiResponse>('/system/config/save', { method: 'POST', body: JSON.stringify(fullConfig) }),
-  searchDevices: () => request<ApiResponse<{ devices?: DeviceInfo[] }>>('/system/devices/search', { method: 'POST' })
+  searchDevices: (deviceType?: string) => {
+    const body = deviceType ? JSON.stringify({ type: deviceType }) : undefined
+    return request<ApiResponse<{ devices?: DeviceInfo[] }>>('/system/devices/search', {
+      method: 'POST',
+      ...(body ? { body } : {})
+    })
+  }
+}
+
+export interface ScreenshotResponse extends ApiResponse {
+  image?: string
+  size?: number[]
 }
 
 export const deviceApi = {
-  connect: (deviceData: DeviceInfo) =>
-    request<ApiResponse>('/device/connect', { method: 'POST', body: JSON.stringify(deviceData) }),
-  getScreenshot: () => request<ApiResponse<string>>('/device/screenshot', { method: 'GET' })
+  connectAdb: (deviceData: { adb_path: string; address: string; config?: Record<string, unknown> }) =>
+    request<ApiResponse>('/device/connect/adb', { method: 'POST', body: JSON.stringify(deviceData) }),
+  connectWin32: (deviceData: { hwnd: number | string; screencap_method?: number; mouse_method?: number; keyboard_method?: number }) =>
+    request<ApiResponse>('/device/connect/win32', { method: 'POST', body: JSON.stringify(deviceData) }),
+  getScreenshot: () => request<ScreenshotResponse>('/device/screenshot', { method: 'GET' })
 }
 
 export const resourceApi = {

@@ -1,16 +1,15 @@
 <script setup lang="ts">
-import {computed, ref, reactive, onMounted, defineComponent, h, watch} from 'vue'
+import {computed, ref, reactive, onMounted, onUnmounted, defineComponent, h, watch} from 'vue'
 import {
   Server, Database, Bot, Power, Settings, RefreshCw, CheckCircle2, XCircle, Loader2, HardDrive,
   FolderInput, Link, ChevronDown, Minimize2, Maximize2, Smartphone, FileText, Circle,
-  FilePlus, Save
+  FilePlus, Save, Search
 } from 'lucide-vue-next'
 import {useVueFlow} from '@vue-flow/core'
 import {deviceApi, resourceApi, agentApi, systemApi} from '../../services/api.ts'
 import type { DeviceInfo, ResourceProfile, ResourceFileInfo } from '../../services/api.ts'
 import type { FlowBusinessData, TemplateImage, SpacingKey } from '../../utils/flowTypes'
 import type { EdgeType } from '../../utils/flowOptions'
-import DeviceSettingsModal from './Modals/DeviceSettingsModal.vue'
 import ResourceSettingsModal from './Modals/ResourceSettingsModal.vue'
 import CreateResourceModal from './Modals/CreateResourceModal.vue'
 
@@ -24,7 +23,6 @@ const props = defineProps<{
   spacing?: SpacingKey
 }>()
 
-// [核心] 增加 request-switch-file 和 update-canvas-config 事件
 const emit = defineEmits<{
   (e: 'load-nodes', payload: { filename: string; source: string; nodes: Record<string, FlowBusinessData> }): void
   (e: 'load-images', payload: Record<string, TemplateImage[]>): void
@@ -57,12 +55,10 @@ const StatusIndicator = defineComponent({
 const {viewport} = useVueFlow()
 const zoomPercentage = computed(() => Math.round((viewport.value.zoom || 1) * 100) + '%')
 const isCollapsed = ref(false)
-const showDeviceSettings = ref(false)
 const showResourceSettings = ref(false)
 const showCreateFileModal = ref(false)
 
 // --- 全局数据源 ---
-const availableDevices = ref<DeviceInfo[]>([])
 type EditableProfile = ResourceProfile & { paths: string[] }
 const normalizeProfiles = (profiles?: ResourceProfile[]): EditableProfile[] =>
   (profiles || []).map(p => ({
@@ -74,8 +70,44 @@ const resourceProfiles = ref<EditableProfile[]>([])
 const currentAgentSocket = ref<string>('')
 const systemStatus = ref<'connected' | 'loading' | 'error' | 'disconnected'>('disconnected')
 
+// --- 设备搜索相关 ---
+const deviceType = ref<'win32' | 'adb'>('adb')
+const searchedDevices = ref<DeviceInfo[]>([])
+const selectedDeviceIndex = ref<number>(-1)
+const isSearchingDevices = ref(false)
+
+// Win32 连接方法枚举
+const win32ScreencapMethods = [
+  { value: 0, label: 'Null' },
+  { value: 1, label: 'GDI' },
+  { value: 2, label: 'FramePool' },
+  { value: 4, label: 'DXGI_DesktopDup' },
+  { value: 8, label: 'DXGI_DesktopDup_Window' },
+  { value: 16, label: 'PrintWindow' },
+  { value: 32, label: 'ScreenDC' },
+]
+
+const win32InputMethods = [
+  { value: 0, label: 'Null' },
+  { value: 1, label: 'Seize' },
+  { value: 2, label: 'SendMessage' },
+  { value: 4, label: 'PostMessage' },
+  { value: 8, label: 'LegacyEvent' },
+  { value: 16, label: 'PostThreadMessage' },
+  { value: 32, label: 'SendMessageWithCursorPos' },
+  { value: 64, label: 'PostMessageWithCursorPos' },
+]
+
+// Win32 连接参数
+const win32ScreencapMethod = ref(4) // DXGI_DesktopDup
+const win32MouseMethod = ref(1) // Seize
+const win32KeyboardMethod = ref(1) // Seize
+
+// --- 设备截图相关 ---
+const deviceScreenshot = ref<string>('')
+let screenshotTimer: ReturnType<typeof setInterval> | null = null
+
 // --- 选中状态 ---
-const selectedDeviceIndex = ref(0)
 const selectedProfileIndex = ref(0)
 const selectedResourceFile = ref('')  // 存储唯一ID: source|filename
 const availableFiles = ref<ResourceFileInfo[]>([])
@@ -154,7 +186,13 @@ const resourceCtrl = useStatusModule(resourceApi, '资源')
 const agentCtrl = useStatusModule(agentApi, 'Agent')
 
 // --- 计算属性 ---
-const currentDevice = computed<DeviceInfo | Record<string, unknown>>(() => availableDevices.value[selectedDeviceIndex.value] || {})
+const currentDevice = computed<DeviceInfo | null>(() => {
+  if (selectedDeviceIndex.value >= 0 && selectedDeviceIndex.value < searchedDevices.value.length) {
+    return searchedDevices.value[selectedDeviceIndex.value]
+  }
+  return null
+})
+
 const currentProfile = computed<EditableProfile>(() => resourceProfiles.value[selectedProfileIndex.value] || {name: 'None', paths: []})
 
 const fetchAndEmitNodes = async () => {
@@ -167,7 +205,6 @@ const fetchAndEmitNodes = async () => {
     const res = await resourceApi.getFileNodes<Record<string, FlowBusinessData>>(fileObj.source, fileObj.value)
     const nodes = res.nodes || {}
 
-    // 传递 source 到 load-nodes 事件
     emit('load-nodes', {filename: fileObj.value, source: fileObj.source, nodes: nodes})
     resourceCtrl.message = `已加载: ${Object.keys(nodes).length} 节点`
 
@@ -233,15 +270,127 @@ const handleFileSelectChange = (newFileId: string) => {
   })
 }
 
-// --- 连接逻辑 ---
-const handleDeviceConnect = async () => {
+// --- 设备截图逻辑 ---
+const fetchDeviceScreenshot = async () => {
+  if (deviceCtrl.status !== 'connected') return
   try {
-    await deviceCtrl.connect(currentDevice.value)
-    emit('device-connected', true)
+    const res = await deviceApi.getScreenshot()
+    // image 字段直接在响应对象上
+    if (res.success && res.image) {
+      deviceScreenshot.value = res.image
+    }
   } catch (e) {
-    emit('device-connected', false)
+    console.warn('获取设备截图失败', e)
   }
 }
+
+const startScreenshotTimer = () => {
+  stopScreenshotTimer()
+  console.log('启动截图定时器')
+  fetchDeviceScreenshot() // 立即获取一次
+  screenshotTimer = setInterval(fetchDeviceScreenshot, 1000) // 每秒更新
+  console.log('截图定时器 ID:', screenshotTimer)
+}
+
+const stopScreenshotTimer = () => {
+  if (screenshotTimer) {
+    clearInterval(screenshotTimer)
+    screenshotTimer = null
+  }
+  deviceScreenshot.value = ''
+}
+
+// --- 设备搜索逻辑 ---
+const handleSearchDevices = async () => {
+  if (isSearchingDevices.value) return
+  isSearchingDevices.value = true
+  deviceCtrl.message = '搜索设备中...'
+  
+  try {
+    const searchType = deviceType.value === 'win32' ? 'win32control' : 'adb'
+    const res = await systemApi.searchDevices(searchType)
+    const devices = (res.data?.devices ?? res.devices ?? []) as DeviceInfo[]
+    
+    searchedDevices.value = devices
+    if (devices.length > 0) {
+      selectedDeviceIndex.value = 0
+      deviceCtrl.message = `找到 ${devices.length} 个设备`
+    } else {
+      selectedDeviceIndex.value = -1
+      deviceCtrl.message = '未找到设备'
+    }
+  } catch (e: any) {
+    console.error('搜索设备失败', e)
+    deviceCtrl.message = '搜索失败: ' + (e?.message || '未知错误')
+    searchedDevices.value = []
+    selectedDeviceIndex.value = -1
+  } finally {
+    isSearchingDevices.value = false
+  }
+}
+
+// --- 连接逻辑 ---
+const handleDeviceConnect = async () => {
+  const device = currentDevice.value
+  if (!device) {
+    alert('请先搜索并选择设备')
+    return
+  }
+
+  if (deviceCtrl.status === 'connecting') return
+  deviceCtrl.status = 'connecting'
+  deviceCtrl.message = '连接中...'
+
+  try {
+    let res: any
+    
+    if (deviceType.value === 'win32') {
+      // Win32 设备连接
+      res = await deviceApi.connectWin32({
+        hwnd: device.hwnd as number | string,
+        screencap_method: win32ScreencapMethod.value,
+        mouse_method: win32MouseMethod.value,
+        keyboard_method: win32KeyboardMethod.value,
+      })
+    } else {
+      // ADB 设备连接
+      res = await deviceApi.connectAdb({
+        adb_path: device.adb_path as string,
+        address: device.address as string,
+        config: device.config || {},
+      })
+    }
+
+    const ok = res?.success ?? true
+    const msg = res?.message || (ok ? '设备已连接' : '连接失败')
+
+    if (!ok) {
+      deviceCtrl.status = 'failed'
+      deviceCtrl.message = msg
+      emit('device-connected', false)
+      setTimeout(() => {
+        if (deviceCtrl.status === 'failed') deviceCtrl.status = 'disconnected'
+      }, 3000)
+      return
+    }
+
+    deviceCtrl.status = 'connected'
+    deviceCtrl.message = msg
+    if (res?.info) deviceCtrl.info = res.info
+    emit('device-connected', true)
+    
+    // 启动截图定时器
+    startScreenshotTimer()
+  } catch (e: any) {
+    deviceCtrl.status = 'failed'
+    deviceCtrl.message = '连接失败: ' + (e?.message || '未知错误')
+    emit('device-connected', false)
+    setTimeout(() => {
+      if (deviceCtrl.status === 'failed') deviceCtrl.status = 'disconnected'
+    }, 3000)
+  }
+}
+
 const handleResourceLoad = async () => {
   try {
     const res = await resourceCtrl.connect(currentProfile.value)
@@ -253,10 +402,8 @@ const handleResourceLoad = async () => {
 
     if ((res as any).list) {
       availableFiles.value = res.list
-      // 使用唯一 ID 检查文件是否仍然存在
       let fileStillExists = selectedResourceFile.value ? getFileObjById(selectedResourceFile.value) : null
 
-      // 兼容旧配置：如果没有找到，尝试仅通过文件名匹配（适用于从旧配置恢复的情况）
       if (!fileStillExists && selectedResourceFile.value && !selectedResourceFile.value.includes('|')) {
         const matchByName = availableFiles.value.find(f => f.value === selectedResourceFile.value)
         if (matchByName) {
@@ -280,6 +427,7 @@ const handleResourceLoad = async () => {
     console.error("资源加载流程异常", e)
   }
 }
+
 const handleCreateFile = async ({path, filename}: { path: string; filename: string }) => {
   try {
     resourceCtrl.message = '创建文件中...'
@@ -287,7 +435,6 @@ const handleCreateFile = async ({path, filename}: { path: string; filename: stri
     showCreateFileModal.value = false
     await handleResourceLoad()
     const simpleName = filename.endsWith('.json') ? filename : filename + '.json'
-    // 查找新创建的文件：source 现在是资源根目录，与 path 相同（规范化比较）
     const normalizedPath = path.replace(/\\/g, '/').toLowerCase()
     const newFileObj = availableFiles.value.find(f =>
       f.value === simpleName &&
@@ -303,19 +450,44 @@ const handleCreateFile = async ({path, filename}: { path: string; filename: stri
     resourceCtrl.message = '创建失败'
   }
 }
+
 const handleProfileSwitch = () => handleResourceLoad()
 const handleAgentConnect = () => agentCtrl.connect({socket_id: currentAgentSocket.value})
 
 const deviceButtonLabel = computed(() => deviceCtrl.status === 'connected' ? '重新连接' : '连接设备')
 const agentButtonLabel = computed(() => agentCtrl.status === 'connected' ? '重新连接 Agent' : '启动 Agent')
 
-// 设备切换时重置连接状态，避免显示“已连接”状态遗留
+// 设备切换时重置连接状态
 watch(selectedDeviceIndex, (nv, ov) => {
   if (nv === ov || isInit) return
   deviceCtrl.status = 'disconnected'
   deviceCtrl.message = '设备未连接'
   deviceCtrl.info = {}
   emit('device-connected', false)
+  stopScreenshotTimer()
+})
+
+// 设备类型切换时清空搜索结果
+watch(deviceType, () => {
+  searchedDevices.value = []
+  selectedDeviceIndex.value = -1
+  deviceCtrl.status = 'disconnected'
+  deviceCtrl.message = '设备未连接'
+  deviceCtrl.info = {}
+  emit('device-connected', false)
+  stopScreenshotTimer()
+})
+
+// 监听设备连接状态变化
+watch(() => deviceCtrl.status, (newStatus) => {
+  if (newStatus !== 'connected') {
+    stopScreenshotTimer()
+  }
+})
+
+// 监听截图数据变化
+watch(deviceScreenshot, (newValue) => {
+  console.log('截图数据已更新:', newValue ? `${newValue.substring(0, 50)}... (长度: ${newValue.length})` : '空')
 })
 
 // --- 初始化 ---
@@ -326,27 +498,50 @@ const fetchSystemState = async () => {
   isInit = true
   try {
     const data = await systemApi.getInitialState()
-    if (data.devices) availableDevices.value = data.devices
     if (data.resource_profiles) resourceProfiles.value = normalizeProfiles(data.resource_profiles as ResourceProfile[])
     const state = data.current_state || {}
-    if (state.device_index !== undefined && availableDevices.value[state.device_index]) selectedDeviceIndex.value = state.device_index
     if (state.resource_profile_index !== undefined && resourceProfiles.value[state.resource_profile_index]) selectedProfileIndex.value = state.resource_profile_index
-    // 使用 source 和 filename 生成唯一 ID
     if (state.resource_file && state.resource_source) {
       selectedResourceFile.value = makeFileId(state.resource_source, state.resource_file)
     } else if (state.resource_file) {
-      // 兼容旧配置：没有 resource_source 时，仅使用文件名（后续加载时会尝试匹配）
       selectedResourceFile.value = state.resource_file
     }
     if (state.agent_socket_id) currentAgentSocket.value = state.agent_socket_id
     else if (data.agent_socket_id) currentAgentSocket.value = data.agent_socket_id
 
-    // 加载画布配置（连线类型和布局间隔）
     if (state.edge_type || state.spacing) {
       emit('update-canvas-config', {
         edgeType: (state.edge_type as EdgeType) || 'smoothstep',
         spacing: (state.spacing as SpacingKey) || 'normal'
       })
+    }
+
+    // 加载最后连接成功的设备配置
+    if (data.last_connected_device) {
+      const lastDevice = data.last_connected_device
+      const deviceTypeValue = lastDevice.type === 'win32' ? 'win32' : 'adb'
+      
+      // 设置设备类型
+      deviceType.value = deviceTypeValue
+      
+      // 将最后连接的设备加入搜索结果
+      searchedDevices.value = [lastDevice as DeviceInfo]
+      selectedDeviceIndex.value = 0
+      
+      // 如果是 Win32 设备，恢复连接方法配置
+      if (deviceTypeValue === 'win32') {
+        if (lastDevice.screencap_method !== undefined) {
+          win32ScreencapMethod.value = lastDevice.screencap_method
+        }
+        if (lastDevice.mouse_method !== undefined) {
+          win32MouseMethod.value = lastDevice.mouse_method
+        }
+        if (lastDevice.keyboard_method !== undefined) {
+          win32KeyboardMethod.value = lastDevice.keyboard_method
+        }
+      }
+      
+      deviceCtrl.message = '已加载上次连接的设备'
     }
 
     systemStatus.value = 'connected'
@@ -359,26 +554,31 @@ const fetchSystemState = async () => {
     }, 500)
   }
 }
+
 onMounted(() => fetchSystemState())
+
+// 组件卸载时清理定时器
+onUnmounted(() => {
+  stopScreenshotTimer()
+})
 
 const saveAllConfig = async () => {
   if (isInit) return
   if (systemStatus.value !== 'connected') return
   try {
-    // 解析当前选中文件的 source 和 filename
     const { source: currentSource, filename: currentFilename } = parseFileId(selectedResourceFile.value)
     const payload = {
-      devices: availableDevices.value,
+      devices: [],
       resource_profiles: resourceProfiles.value,
       agent_socket_id: currentAgentSocket.value,
       current_state: {
-        device_index: selectedDeviceIndex.value,
+        device_index: -1,
         resource_profile_index: selectedProfileIndex.value,
         resource_file: currentFilename,
         resource_source: currentSource,
         agent_socket_id: currentAgentSocket.value,
-        edge_type: props.edgeType,    // 保存连线类型
-        spacing: props.spacing         // 保存布局间隔
+        edge_type: props.edgeType,
+        spacing: props.spacing
       }
     }
     await systemApi.saveDeviceConfig(payload)
@@ -386,18 +586,10 @@ const saveAllConfig = async () => {
     console.error("Auto save failed", e)
   }
 }
-watch([selectedDeviceIndex, selectedProfileIndex, selectedResourceFile, currentAgentSocket], () => saveAllConfig(), {deep: false})
 
-// 监听画布配置变化
+watch([selectedProfileIndex, selectedResourceFile, currentAgentSocket], () => saveAllConfig(), {deep: false})
 watch(() => [props.edgeType, props.spacing], () => saveAllConfig(), {deep: false})
 
-const saveDeviceSettings = (data: { devices: DeviceInfo[]; index?: number }) => {
-  availableDevices.value = data.devices
-  if (selectedDeviceIndex.value >= availableDevices.value.length) selectedDeviceIndex.value = 0
-  if (data.index !== undefined) selectedDeviceIndex.value = data.index
-  showDeviceSettings.value = false
-  saveAllConfig()
-}
 const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: number }) => {
   resourceProfiles.value = normalizeProfiles(data.profiles)
   if (selectedProfileIndex.value >= resourceProfiles.value.length) selectedProfileIndex.value = 0
@@ -416,7 +608,7 @@ const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: numbe
         <div class="flex items-center gap-1.5" :title="deviceCtrl.message">
           <StatusIndicator :status="deviceCtrl.status" :size="12"/>
           <span class="text-xs font-bold text-slate-600 max-w-[80px] truncate">{{
-              deviceCtrl.status === 'connected' ? currentDevice.name : '无设备'
+              deviceCtrl.status === 'connected' ? (currentDevice?.name || '设备') : '无设备'
             }}</span>
         </div>
         <div class="w-px h-4 bg-slate-200"></div>
@@ -479,6 +671,7 @@ const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: numbe
         </div>
 
         <div class="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
+          <!-- 设备管理 -->
           <section class="space-y-2">
             <div class="flex items-center justify-between text-xs mb-1">
               <div class="flex items-center gap-1.5 font-bold text-slate-700">
@@ -489,50 +682,142 @@ const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: numbe
             </div>
             <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-3 shadow-sm"
                  :class="{'!bg-indigo-50/30 !border-indigo-100': deviceCtrl.status === 'connected'}">
-              <div class="relative">
-                <div class="absolute left-3 top-2.5 text-slate-400 pointer-events-none">
-                  <Server :size="14"/>
-                </div>
-                <select v-model="selectedDeviceIndex"
-                        class="input-base pl-10 appearance-none cursor-pointer"
-                        :disabled="availableDevices.length === 0 || deviceCtrl.status === 'connecting'">
-                  <option v-for="(dev, index) in availableDevices" :key="index" :value="index">{{ dev.name }}
-                    ({{ dev.address }})
-                  </option>
-                  <option v-if="availableDevices.length === 0" disabled>无可用设备...</option>
-                </select>
-                <div class="absolute right-3 top-2.5 text-slate-400 pointer-events-none">
-                  <ChevronDown :size="14"/>
-                </div>
-              </div>
-              <div
-                  class="flex items-center justify-between bg-white border border-slate-200 rounded-lg p-2 shadow-sm"
-                  :class="{'!bg-indigo-50/40 !border-indigo-100': deviceCtrl.status === 'connected'}">
-                <div class="flex flex-col overflow-hidden">
-                  <span class="text-xs font-bold text-indigo-700 truncate">{{ currentDevice.name || '未选择设备' }}</span>
-                  <span class="text-[10px] font-mono text-slate-500 truncate">{{ currentDevice.address || '--' }}</span>
-                </div>
-                <div class="px-2 py-0.5 rounded text-[10px] font-bold"
-                     :class="deviceCtrl.status === 'connected' ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-400'">
-                  {{ deviceCtrl.status === 'connected' ? '已连接' : '未连接' }}
+              
+              <!-- 设备类型选择 -->
+              <div class="space-y-1.5">
+                <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">设备类型</label>
+                <div class="grid grid-cols-2 gap-2">
+                  <button 
+                    @click="deviceType = 'adb'"
+                    class="py-2 px-3 text-xs font-bold rounded-lg border-2 transition-all"
+                    :class="deviceType === 'adb' 
+                      ? 'bg-indigo-500 text-white border-indigo-500 shadow-sm' 
+                      : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'">
+                    ADB 设备
+                  </button>
+                  <button 
+                    @click="deviceType = 'win32'"
+                    class="py-2 px-3 text-xs font-bold rounded-lg border-2 transition-all"
+                    :class="deviceType === 'win32' 
+                      ? 'bg-indigo-500 text-white border-indigo-500 shadow-sm' 
+                      : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'">
+                    Win32 窗口
+                  </button>
                 </div>
               </div>
 
-              <div class="flex gap-2">
+              <!-- 搜索按钮 -->
+              <button @click="handleSearchDevices" :disabled="isSearchingDevices"
+                      class="w-full btn-primary bg-indigo-500 shadow-indigo-100 flex items-center justify-center gap-2">
+                <component :is="isSearchingDevices ? Loader2 : Search" :size="14"
+                           :class="{'animate-spin': isSearchingDevices}"/>
+                {{ isSearchingDevices ? '搜索中...' : '搜索设备' }}
+              </button>
+
+              <!-- 设备列表 -->
+              <div v-if="searchedDevices.length > 0" class="space-y-2">
+                <div class="relative">
+                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10">
+                    <Server :size="14"/>
+                  </span>
+                  <select v-model="selectedDeviceIndex"
+                          class="input-base pl-10 pr-8 appearance-none cursor-pointer w-full bg-white"
+                          :disabled="deviceCtrl.status === 'connecting'">
+                    <option v-for="(dev, index) in searchedDevices" :key="index" :value="index">
+                      {{ dev.name || dev.window_name || dev.address || `设备${index + 1}` }}
+                    </option>
+                  </select>
+                  <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10">
+                    <ChevronDown :size="14"/>
+                  </span>
+                </div>
+
+                <!-- 设备信息展示 -->
+                <div v-if="currentDevice"
+                    class="flex items-center justify-between bg-white border border-slate-200 rounded-lg p-2 shadow-sm"
+                    :class="{'!bg-indigo-50/40 !border-indigo-100': deviceCtrl.status === 'connected'}">
+                  <div class="flex flex-col overflow-hidden">
+                    <span class="text-xs font-bold text-indigo-700 truncate">
+                      {{ currentDevice.name || currentDevice.window_name || '未命名设备' }}
+                    </span>
+                    <span class="text-[10px] font-mono text-slate-500 truncate">
+                      <template v-if="deviceType === 'win32'">
+                        HWND: {{ currentDevice.hwnd || 'N/A' }}
+                      </template>
+                      <template v-else>
+                        {{ currentDevice.address || 'N/A' }}
+                      </template>
+                    </span>
+                  </div>
+                  <div class="px-2 py-0.5 rounded text-[10px] font-bold"
+                       :class="deviceCtrl.status === 'connected' ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-400'">
+                    {{ deviceCtrl.status === 'connected' ? '已连接' : '未连接' }}
+                  </div>
+                </div>
+
+                <!-- Win32 额外参数 -->
+                <div v-if="deviceType === 'win32'" class="space-y-2 pt-2 border-t border-slate-200">
+                  <div class="space-y-1.5">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">截图方法</label>
+                    <select v-model="win32ScreencapMethod"
+                            class="w-full text-xs bg-white border border-slate-200 rounded-lg py-2 px-3 outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50 appearance-none cursor-pointer">
+                      <option v-for="method in win32ScreencapMethods" :key="method.value" :value="method.value">
+                        {{ method.label }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="space-y-1.5">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">鼠标输入方法</label>
+                    <select v-model="win32MouseMethod"
+                            class="w-full text-xs bg-white border border-slate-200 rounded-lg py-2 px-3 outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50 appearance-none cursor-pointer">
+                      <option v-for="method in win32InputMethods" :key="method.value" :value="method.value">
+                        {{ method.label }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="space-y-1.5">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">键盘输入方法</label>
+                    <select v-model="win32KeyboardMethod"
+                            class="w-full text-xs bg-white border border-slate-200 rounded-lg py-2 px-3 outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50 appearance-none cursor-pointer">
+                      <option v-for="method in win32InputMethods" :key="method.value" :value="method.value">
+                        {{ method.label }}
+                      </option>
+                    </select>
+                  </div>
+                </div>
+
+                <!-- 连接按钮 -->
                 <button @click="handleDeviceConnect"
-                        :disabled="deviceCtrl.status === 'connecting' || availableDevices.length === 0"
-                        class="btn-primary flex-1 bg-indigo-500 shadow-indigo-100">
+                        :disabled="deviceCtrl.status === 'connecting' || !currentDevice"
+                        class="w-full btn-primary bg-indigo-500 shadow-indigo-100">
                   <component :is="deviceCtrl.status === 'connecting' ? Loader2 : Power" :size="14"
                              :class="{'animate-spin': deviceCtrl.status === 'connecting'}"/>
                   {{ deviceButtonLabel }}
                 </button>
-                <button @click="showDeviceSettings = true" class="btn-icon">
-                  <Settings :size="16"/>
-                </button>
+
+                <!-- 设备截图预览 -->
+                <div v-if="deviceCtrl.status === 'connected' && deviceScreenshot" 
+                     class="mt-3 rounded-lg overflow-hidden border border-slate-200 bg-slate-100">
+                  <div class="text-[10px] font-bold text-slate-500 px-2 py-1 bg-slate-50 border-b border-slate-200">
+                    实时预览
+                  </div>
+                  <div class="relative aspect-video bg-slate-900">
+                    <img 
+                      :src="deviceScreenshot" 
+                      alt="设备截图" 
+                      class="w-full h-full object-contain"
+                    />
+                  </div>
+                </div>
+              </div>
+              
+              <div v-else-if="!isSearchingDevices" class="text-xs text-slate-400 text-center py-2">
+                点击"搜索设备"查找可用设备
               </div>
             </div>
           </section>
 
+          <!-- 资源配置 -->
           <section class="space-y-2">
             <div class="flex items-center justify-between text-xs mb-1">
               <div class="flex items-center gap-1.5 font-bold text-slate-700">
@@ -544,17 +829,17 @@ const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: numbe
             <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-3 shadow-sm">
               <div class="flex gap-2">
                 <div class="relative flex-1">
-                  <div class="absolute left-3 top-2.5 text-slate-400 pointer-events-none">
+                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10">
                     <FolderInput :size="14"/>
-                  </div>
+                  </span>
                   <select v-model="selectedProfileIndex" @change="handleProfileSwitch"
-                          class="input-base pl-10 appearance-none cursor-pointer">
+                          class="input-base pl-10 pr-8 appearance-none cursor-pointer w-full bg-white">
                     <option v-for="(prof, idx) in resourceProfiles" :key="idx" :value="idx">{{ prof.name }}</option>
                     <option v-if="resourceProfiles.length === 0" disabled>无配置...</option>
                   </select>
-                  <div class="absolute right-3 top-2.5 text-slate-400 pointer-events-none">
+                  <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10">
                     <ChevronDown :size="14"/>
-                  </div>
+                  </span>
                 </div>
                 <button @click="showResourceSettings = true" class="btn-icon">
                   <Settings :size="16"/>
@@ -574,11 +859,11 @@ const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: numbe
               </div>
               <div v-if="resourceCtrl.status === 'connected'" class="animate-in fade-in slide-in-from-top-2">
                 <div class="relative">
-                  <div class="absolute left-3 top-2.5 text-emerald-600 pointer-events-none">
+                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600 pointer-events-none z-10">
                     <FileText :size="14"/>
-                  </div>
+                  </span>
                   <select :value="selectedResourceFile" @change="(e) => handleFileSelectChange((e.target as HTMLSelectElement | null)?.value || '')"
-                          class="input-base pl-10 border-emerald-200 focus:ring-emerald-100 appearance-none cursor-pointer"
+                          class="input-base pl-10 pr-8 border-emerald-200 focus:ring-emerald-100 appearance-none cursor-pointer w-full bg-white"
                           :class="{'!border-amber-300 !ring-amber-100': props.isDirty}">
                     <option v-for="file in availableFiles" :key="makeFileId(file.source, file.value)" :value="makeFileId(file.source, file.value)">{{
                         file.label
@@ -586,14 +871,15 @@ const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: numbe
                     </option>
                     <option v-if="availableFiles.length === 0" disabled>配置路径下无文件</option>
                   </select>
-                  <div class="absolute right-3 top-2.5 text-slate-400 pointer-events-none">
+                  <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10">
                     <ChevronDown :size="14"/>
-                  </div>
+                  </span>
                 </div>
               </div>
             </div>
           </section>
 
+          <!-- Agent -->
           <section class="space-y-2">
             <div class="flex items-center justify-between text-xs mb-1">
               <div class="flex items-center gap-1.5 font-bold text-slate-700">
@@ -604,11 +890,11 @@ const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: numbe
             </div>
             <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-3 shadow-sm">
               <div class="relative group">
-                <div class="absolute left-3 top-2.5 text-slate-400 pointer-events-none">
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10">
                   <Link :size="14"/>
-                </div>
+                </span>
                 <input v-model="currentAgentSocket" type="text" placeholder="Socket ID..."
-                       class="input-base pl-10 focus:border-violet-500 focus:ring-violet-100"
+                       class="input-base pl-10 focus:border-violet-500 focus:ring-violet-100 w-full bg-white"
                        @keyup.enter="handleAgentConnect"/>
               </div>
               <button @click="handleAgentConnect"
@@ -644,8 +930,6 @@ const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: numbe
       </div>
     </Transition>
 
-    <DeviceSettingsModal :visible="showDeviceSettings" :devices="availableDevices" :currentIndex="selectedDeviceIndex"
-                         @close="showDeviceSettings = false" @save="saveDeviceSettings"/>
     <ResourceSettingsModal :visible="showResourceSettings" :profiles="resourceProfiles"
                            :currentIndex="selectedProfileIndex" @close="showResourceSettings = false"
                            @save="saveResourceSettings"/>
@@ -653,3 +937,51 @@ const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: numbe
                          @close="showCreateFileModal = false" @create="handleCreateFile"/>
   </div>
 </template>
+
+<style scoped>
+.fade-scale-enter-active,
+.fade-scale-leave-active {
+  transition: all 0.3s ease;
+}
+
+.fade-scale-enter-from,
+.fade-scale-leave-to {
+  opacity: 0;
+  transform: scale(0.95);
+}
+
+.input-base {
+  @apply w-full bg-white border border-slate-200 rounded-lg py-2 px-3 text-xs text-slate-600 outline-none transition-all shadow-sm focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50;
+}
+
+.btn-primary {
+  @apply flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-white rounded-lg shadow-sm hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.btn-icon {
+  @apply p-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-100 hover:border-slate-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(203 213 225) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgb(203 213 225);
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(148 163 184);
+}
+</style>
