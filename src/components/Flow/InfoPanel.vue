@@ -2,7 +2,7 @@
 import {computed, ref, reactive, onMounted, onUnmounted, defineComponent, h, watch} from 'vue'
 import {
   Database, Bot, Power, Settings, RefreshCw, CheckCircle2, XCircle, Loader2, HardDrive,
-  Minimize2, Maximize2, Smartphone, Circle, ChevronDown,
+  Minimize2, Maximize2, Smartphone, Circle,
   FilePlus, Save, Search
 } from 'lucide-vue-next'
 import {useVueFlow} from '@vue-flow/core'

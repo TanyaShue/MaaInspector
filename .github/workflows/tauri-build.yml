@@ -29,6 +29,14 @@ jobs:
           node-version: 18
           cache: npm
 
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-modules-
+
       # -----------------------------
       # 安装 Rust
       # -----------------------------
@@ -41,17 +49,26 @@ jobs:
       - name: Setup Git (fix CRLF issue)
         run: git config --global core.autocrlf false
 
-      - name: Cache Cargo
+      - name: Cache Rust toolchain
         uses: actions/cache@v4
         with:
           path: |
-            C:\Users\runneradmin\.cargo\bin
-            C:\Users\runneradmin\.cargo\registry
-            C:\Users\runneradmin\.cargo\git
-            src-tauri\target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-toolchain-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-cargo-toolchain-
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/target
+          key: ${{ runner.os }}-rust-target-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ hashFiles('src-tauri/**/*.rs') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-target-${{ hashFiles('src-tauri/Cargo.lock') }}-
+            ${{ runner.os }}-rust-target-
 
 
       # -----------------------------
@@ -81,6 +98,16 @@ jobs:
       # -----------------------------
       # 准备嵌入式 Python
       # -----------------------------
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            python-embedded
+            backend/.venv
+          key: ${{ runner.os }}-python-${{ hashFiles('backend/requirements.txt', 'setup_embedded_python.py') }}
+          restore-keys: |
+            ${{ runner.os }}-python-
+
       - name: Prepare embedded Python
         env:
           PYTHONIOENCODING: utf-8
