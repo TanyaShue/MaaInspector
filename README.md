@@ -1,6 +1,6 @@
 # MaaInspector
 
-**MaaInspector** 是为 [maafw](https://github.com/MaaAssistantArknights/framework) 打造的可视化节点编辑器，旨在提供直观的图形化、低代码工作流创建与调试体验。
+**MaaInspector** 是为 [MaaFramework](https://github.com/MaaXYZ/MaaFramework) 打造的可视化节点编辑器，旨在提供直观的图形化、低代码工作流创建与调试体验。
 
 > 项目仍在开发中，功能持续完善中。  
 ⚠️ 重要提示
