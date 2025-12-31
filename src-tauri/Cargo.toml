@@ -3,7 +3,7 @@ name = "MaaInspector"
 version = "0.1.4"
 description = "为maafw打造的可视化工具"
 authors = ["TanYaShue"]
-edition = "2025"
+edition = "2024"
 
 [lib]
 name = "tauri_demo1_lib"
