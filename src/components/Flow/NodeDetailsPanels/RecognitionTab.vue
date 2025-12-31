@@ -163,6 +163,81 @@ const openChildPicker = (idx: number, item: CompositeItem, key: 'roi' | 'roi_off
     }
   })
 }
+
+// 主节点 template 数组管理
+const getTemplateList = (): string[] => {
+  const val = getValue<unknown>('template', '')
+  if (Array.isArray(val)) return val.map(v => String(v)).filter(Boolean)
+  if (val && typeof val === 'string') return [val]
+  return []
+}
+
+const setTemplateList = (list: string[]) => {
+  const cleaned = list.filter(v => v && v.trim())
+  if (cleaned.length === 0) {
+    setValue('template', null)
+  } else if (cleaned.length === 1) {
+    setValue('template', cleaned[0])
+  } else {
+    setValue('template', cleaned)
+  }
+}
+
+const addTemplate = () => {
+  const current = getTemplateList()
+  setTemplateList([...current, ''])
+}
+
+const removeTemplate = (index: number) => {
+  const current = getTemplateList()
+  current.splice(index, 1)
+  setTemplateList(current)
+}
+
+const updateTemplate = (index: number, value: string) => {
+  const current = getTemplateList()
+  current[index] = value
+  setTemplateList(current)
+}
+
+// 子项 template 数组管理
+const getChildTemplateList = (item: CompositeItem): string[] => {
+  const val = getChildValue<unknown>(item, 'template', '')
+  if (Array.isArray(val)) return val.map(v => String(v)).filter(Boolean)
+  if (val && typeof val === 'string') return [val]
+  return []
+}
+
+const setChildTemplateList = (index: number, list: string[]) => {
+  const cleaned = list.filter(v => v && v.trim())
+  if (cleaned.length === 0) {
+    setChildValue(index, 'template', null)
+  } else if (cleaned.length === 1) {
+    setChildValue(index, 'template', cleaned[0])
+  } else {
+    setChildValue(index, 'template', cleaned)
+  }
+}
+
+const addChildTemplate = (index: number) => {
+  const item = compositeItems.value[index]
+  const current = getChildTemplateList(item)
+  setChildTemplateList(index, [...current, ''])
+}
+
+const removeChildTemplate = (itemIndex: number, templateIndex: number) => {
+  const item = compositeItems.value[itemIndex]
+  const current = getChildTemplateList(item)
+  current.splice(templateIndex, 1)
+  setChildTemplateList(itemIndex, current)
+}
+
+const updateChildTemplate = (itemIndex: number, templateIndex: number, value: string) => {
+  const item = compositeItems.value[itemIndex]
+  const current = getChildTemplateList(item)
+  current[templateIndex] = value
+  setChildTemplateList(itemIndex, current)
+}
 </script>
 
 <template>
@@ -406,12 +481,39 @@ const openChildPicker = (idx: number, item: CompositeItem, key: 'roi' | 'roi_off
                 <template v-if="['TemplateMatch', 'FeatureMatch'].includes(item.recognition as string)">
                   <div class="space-y-1">
                     <label class="text-[10px] font-semibold text-slate-500 uppercase">模板图片</label>
-                    <input
-                      :value="getChildValue(item, 'template', '') as string"
-                      @input="setChildValue(idx, 'template', getInputValue($event))"
-                      class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono"
-                      placeholder="image/..."
-                    />
+                    <div class="space-y-1.5">
+                      <div v-for="(template, tIdx) in getChildTemplateList(item)" :key="tIdx" class="flex gap-1">
+                        <input
+                          :value="template"
+                          @input="updateChildTemplate(idx, tIdx, getInputValue($event))"
+                          class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono min-w-0"
+                          placeholder="image/..."
+                        />
+                        <button
+                          v-if="getChildTemplateList(item).length > 1"
+                          @click="removeChildTemplate(idx, tIdx)"
+                          class="px-2 bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 rounded-lg flex items-center justify-center"
+                          title="删除此模板"
+                        >
+                          <Trash2 :size="12" />
+                        </button>
+                      </div>
+                      <div v-if="getChildTemplateList(item).length === 0" class="flex gap-1">
+                        <input
+                          value=""
+                          @input="updateChildTemplate(idx, 0, getInputValue($event))"
+                          class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono min-w-0"
+                          placeholder="image/..."
+                        />
+                      </div>
+                      <button
+                        @click="addChildTemplate(idx)"
+                        class="flex items-center gap-1 px-2 py-1.5 text-xs rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-600 hover:bg-indigo-100"
+                      >
+                        <Plus :size="12" />
+                        添加模板
+                      </button>
+                    </div>
                   </div>
                   <label class="inline-flex items-center gap-1.5 cursor-pointer">
                     <input
@@ -660,20 +762,48 @@ const openChildPicker = (idx: number, item: CompositeItem, key: 'roi' | 'roi_off
         <template v-if="!isCompositeRecognition && ['TemplateMatch', 'FeatureMatch'].includes(currentRecognition)">
           <div class="space-y-1">
             <label class="text-[10px] font-semibold text-slate-500 uppercase">模板图片</label>
-            <div class="flex gap-1">
-              <input
-                :value="getValue('template', '')"
-                @input="setValue('template', getInputValue($event))"
-                class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono min-w-0"
-                placeholder="image/..."
-              />
-              <button
-                @click="emit('open-image-manager')"
-                class="px-2 bg-pink-50 text-pink-600 border border-pink-200 hover:bg-pink-100 rounded-lg flex items-center justify-center"
-                title="管理/截取模板图片"
-              >
-                <ImageIcon :size="12" />
-              </button>
+            <div class="space-y-1.5">
+              <div v-for="(template, idx) in getTemplateList()" :key="idx" class="flex gap-1">
+                <input
+                  :value="template"
+                  @input="updateTemplate(idx, getInputValue($event))"
+                  class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono min-w-0"
+                  placeholder="image/..."
+                />
+                <button
+                  v-if="getTemplateList().length > 1"
+                  @click="removeTemplate(idx)"
+                  class="px-2 bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 rounded-lg flex items-center justify-center"
+                  title="删除此模板"
+                >
+                  <Trash2 :size="12" />
+                </button>
+              </div>
+              <div v-if="getTemplateList().length === 0" class="flex gap-1">
+                <input
+                  value=""
+                  @input="updateTemplate(0, getInputValue($event))"
+                  class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono min-w-0"
+                  placeholder="image/..."
+                />
+              </div>
+              <div class="flex gap-1">
+                <button
+                  @click="addTemplate"
+                  class="flex items-center gap-1 px-2 py-1.5 text-xs rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-600 hover:bg-indigo-100"
+                >
+                  <Plus :size="12" />
+                  添加模板
+                </button>
+                <button
+                  @click="emit('open-image-manager')"
+                  class="flex items-center gap-1 px-2 py-1.5 text-xs rounded-lg border border-pink-200 bg-pink-50 text-pink-600 hover:bg-pink-100"
+                  title="管理/截取模板图片"
+                >
+                  <ImageIcon :size="12" />
+                  管理图片
+                </button>
+              </div>
             </div>
           </div>
           <label class="inline-flex items-center gap-1.5 cursor-pointer">
