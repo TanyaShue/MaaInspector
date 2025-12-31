@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import {computed, ref, reactive, onMounted, onUnmounted, defineComponent, h, watch} from 'vue'
 import {
-  Server, Database, Bot, Power, Settings, RefreshCw, CheckCircle2, XCircle, Loader2, HardDrive,
-  FolderInput, Link, ChevronDown, Minimize2, Maximize2, Smartphone, FileText, Circle,
+  Database, Bot, Power, Settings, RefreshCw, CheckCircle2, XCircle, Loader2, HardDrive,
+  Minimize2, Maximize2, Smartphone, Circle, ChevronDown,
   FilePlus, Save, Search
 } from 'lucide-vue-next'
 import {useVueFlow} from '@vue-flow/core'
@@ -12,6 +12,8 @@ import type { FlowBusinessData, TemplateImage, SpacingKey } from '../../utils/fl
 import type { EdgeType } from '../../utils/flowOptions'
 import ResourceSettingsModal from './Modals/ResourceSettingsModal.vue'
 import CreateResourceModal from './Modals/CreateResourceModal.vue'
+import Dropdown from './Common/Dropdown.vue'
+import type { DropdownOption } from './Common/Dropdown.vue'
 
 // --- Props & Emits ---
 const props = defineProps<{
@@ -194,6 +196,55 @@ const currentDevice = computed<DeviceInfo | null>(() => {
 })
 
 const currentProfile = computed<EditableProfile>(() => resourceProfiles.value[selectedProfileIndex.value] || {name: 'None', paths: []})
+
+// --- 下拉框选项 ---
+const deviceOptions = computed<DropdownOption[]>(() => {
+  return searchedDevices.value.map((dev, index) => ({
+    label: (dev.name || dev.window_name || dev.address || `设备${index + 1}`) as string,
+    value: index
+  }))
+})
+
+const profileOptions = computed<DropdownOption[]>(() => {
+  if (resourceProfiles.value.length === 0) {
+    return [{ label: '无配置...', value: -1, disabled: true }]
+  }
+  return resourceProfiles.value.map((prof, idx) => ({
+    label: prof.name || '未命名配置',
+    value: idx
+  }))
+})
+
+const fileOptions = computed<DropdownOption[]>(() => {
+  if (availableFiles.value.length === 0) {
+    return [{ label: '配置路径下无文件', value: '', disabled: true }]
+  }
+  return availableFiles.value.map((file) => ({
+    label: file.label,
+    value: makeFileId(file.source, file.value)
+  }))
+})
+
+const win32ScreencapOptions = computed<DropdownOption[]>(() => {
+  return win32ScreencapMethods.map(method => ({
+    label: method.label,
+    value: method.value
+  }))
+})
+
+const win32MouseOptions = computed<DropdownOption[]>(() => {
+  return win32InputMethods.map(method => ({
+    label: method.label,
+    value: method.value
+  }))
+})
+
+const win32KeyboardOptions = computed<DropdownOption[]>(() => {
+  return win32InputMethods.map(method => ({
+    label: method.label,
+    value: method.value
+  }))
+})
 
 const fetchAndEmitNodes = async () => {
   if (!selectedResourceFile.value) return
@@ -485,10 +536,6 @@ watch(() => deviceCtrl.status, (newStatus) => {
   }
 })
 
-// 监听截图数据变化
-watch(deviceScreenshot, (newValue) => {
-  console.log('截图数据已更新:', newValue ? `${newValue.substring(0, 50)}... (长度: ${newValue.length})` : '空')
-})
 
 // --- 初始化 ---
 let isInit = true
@@ -612,22 +659,20 @@ const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: numbe
             }}</span>
         </div>
         <div class="w-px h-4 bg-slate-200"></div>
-        <div class="flex items-center gap-1.5">
+        <div class="flex items-center gap-1.5 min-w-0">
           <StatusIndicator :status="resourceCtrl.status" :size="12"/>
-          <div class="relative group flex items-center gap-1">
-            <div v-if="props.isDirty" class="w-2 h-2 rounded-full bg-amber-500 animate-pulse" title="文件已修改"></div>
-            <select
-                :value="selectedResourceFile"
-                @change="(e) => handleFileSelectChange((e.target as HTMLSelectElement | null)?.value || '')"
-                class="appearance-none bg-transparent text-xs font-mono text-slate-600 outline-none w-[100px] truncate cursor-pointer hover:text-indigo-600 transition-colors pr-3"
-                :class="{'!text-amber-600 font-bold': props.isDirty}"
+          <div class="flex items-center gap-1 min-w-0">
+            <div v-if="props.isDirty" class="w-2 h-2 rounded-full bg-amber-500 animate-pulse flex-shrink-0" title="文件已修改"></div>
+            <div class="min-w-[120px] max-w-[160px]">
+              <Dropdown
+                :model-value="selectedResourceFile"
+                @update:model-value="handleFileSelectChange"
+                :options="fileOptions"
                 :disabled="resourceCtrl.status !== 'connected' || availableFiles.length === 0"
-            >
-              <option v-for="file in availableFiles" :key="makeFileId(file.source, file.value)" :value="makeFileId(file.source, file.value)">{{ file.label }}</option>
-              <option v-if="resourceCtrl.status !== 'connected'" disabled>未加载资源</option>
-            </select>
-            <ChevronDown v-if="resourceCtrl.status === 'connected'" :size="10"
-                         class="absolute right-0 top-1 text-slate-400 pointer-events-none"/>
+                placeholder="未加载资源"
+                size="xs"
+              />
+            </div>
           </div>
         </div>
         <div class="w-px h-4 bg-slate-200"></div>
@@ -716,21 +761,12 @@ const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: numbe
 
               <!-- 设备列表 -->
               <div v-if="searchedDevices.length > 0" class="space-y-2">
-                <div class="relative">
-                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10">
-                    <Server :size="14"/>
-                  </span>
-                  <select v-model="selectedDeviceIndex"
-                          class="input-base pl-10 pr-8 appearance-none cursor-pointer w-full bg-white"
-                          :disabled="deviceCtrl.status === 'connecting'">
-                    <option v-for="(dev, index) in searchedDevices" :key="index" :value="index">
-                      {{ dev.name || dev.window_name || dev.address || `设备${index + 1}` }}
-                    </option>
-                  </select>
-                  <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10">
-                    <ChevronDown :size="14"/>
-                  </span>
-                </div>
+                <Dropdown
+                  v-model="selectedDeviceIndex"
+                  :options="deviceOptions"
+                  :disabled="deviceCtrl.status === 'connecting'"
+                  placeholder="选择设备"
+                />
 
                 <!-- 设备信息展示 -->
                 <div v-if="currentDevice"
@@ -759,30 +795,27 @@ const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: numbe
                 <div v-if="deviceType === 'win32'" class="space-y-2 pt-2 border-t border-slate-200">
                   <div class="space-y-1.5">
                     <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">截图方法</label>
-                    <select v-model="win32ScreencapMethod"
-                            class="w-full text-xs bg-white border border-slate-200 rounded-lg py-2 px-3 outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50 appearance-none cursor-pointer">
-                      <option v-for="method in win32ScreencapMethods" :key="method.value" :value="method.value">
-                        {{ method.label }}
-                      </option>
-                    </select>
+                    <Dropdown
+                      v-model="win32ScreencapMethod"
+                      :options="win32ScreencapOptions"
+                      size="sm"
+                    />
                   </div>
                   <div class="space-y-1.5">
                     <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">鼠标输入方法</label>
-                    <select v-model="win32MouseMethod"
-                            class="w-full text-xs bg-white border border-slate-200 rounded-lg py-2 px-3 outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50 appearance-none cursor-pointer">
-                      <option v-for="method in win32InputMethods" :key="method.value" :value="method.value">
-                        {{ method.label }}
-                      </option>
-                    </select>
+                    <Dropdown
+                      v-model="win32MouseMethod"
+                      :options="win32MouseOptions"
+                      size="sm"
+                    />
                   </div>
                   <div class="space-y-1.5">
                     <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">键盘输入方法</label>
-                    <select v-model="win32KeyboardMethod"
-                            class="w-full text-xs bg-white border border-slate-200 rounded-lg py-2 px-3 outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50 appearance-none cursor-pointer">
-                      <option v-for="method in win32InputMethods" :key="method.value" :value="method.value">
-                        {{ method.label }}
-                      </option>
-                    </select>
+                    <Dropdown
+                      v-model="win32KeyboardMethod"
+                      :options="win32KeyboardOptions"
+                      size="sm"
+                    />
                   </div>
                 </div>
 
@@ -828,19 +861,13 @@ const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: numbe
             </div>
             <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-3 shadow-sm">
               <div class="flex gap-2">
-                <div class="relative flex-1">
-                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10">
-                    <FolderInput :size="14"/>
-                  </span>
-                  <select v-model="selectedProfileIndex" @change="handleProfileSwitch"
-                          class="input-base pl-10 pr-8 appearance-none cursor-pointer w-full bg-white">
-                    <option v-for="(prof, idx) in resourceProfiles" :key="idx" :value="idx">{{ prof.name }}</option>
-                    <option v-if="resourceProfiles.length === 0" disabled>无配置...</option>
-                  </select>
-                  <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10">
-                    <ChevronDown :size="14"/>
-                  </span>
-                </div>
+                <Dropdown
+                  v-model="selectedProfileIndex"
+                  @update:model-value="handleProfileSwitch"
+                  :options="profileOptions"
+                  placeholder="选择资源配置"
+                  class="flex-1"
+                />
                 <button @click="showResourceSettings = true" class="btn-icon">
                   <Settings :size="16"/>
                 </button>
@@ -858,23 +885,12 @@ const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: numbe
                 </button>
               </div>
               <div v-if="resourceCtrl.status === 'connected'" class="animate-in fade-in slide-in-from-top-2">
-                <div class="relative">
-                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600 pointer-events-none z-10">
-                    <FileText :size="14"/>
-                  </span>
-                  <select :value="selectedResourceFile" @change="(e) => handleFileSelectChange((e.target as HTMLSelectElement | null)?.value || '')"
-                          class="input-base pl-10 pr-8 border-emerald-200 focus:ring-emerald-100 appearance-none cursor-pointer w-full bg-white"
-                          :class="{'!border-amber-300 !ring-amber-100': props.isDirty}">
-                    <option v-for="file in availableFiles" :key="makeFileId(file.source, file.value)" :value="makeFileId(file.source, file.value)">{{
-                        file.label
-                      }}
-                    </option>
-                    <option v-if="availableFiles.length === 0" disabled>配置路径下无文件</option>
-                  </select>
-                  <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10">
-                    <ChevronDown :size="14"/>
-                  </span>
-                </div>
+                <Dropdown
+                  :model-value="selectedResourceFile"
+                  @update:model-value="handleFileSelectChange"
+                  :options="fileOptions"
+                  placeholder="选择文件"
+                />
               </div>
             </div>
           </section>
@@ -889,14 +905,9 @@ const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: numbe
               <StatusIndicator :status="agentCtrl.status"/>
             </div>
             <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-3 shadow-sm">
-              <div class="relative group">
-                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10">
-                  <Link :size="14"/>
-                </span>
-                <input v-model="currentAgentSocket" type="text" placeholder="Socket ID..."
-                       class="input-base pl-10 focus:border-violet-500 focus:ring-violet-100 w-full bg-white"
-                       @keyup.enter="handleAgentConnect"/>
-              </div>
+              <input v-model="currentAgentSocket" type="text" placeholder="Socket ID..."
+                     class="input-base focus:border-violet-500 focus:ring-violet-100 w-full"
+                     @keyup.enter="handleAgentConnect"/>
               <button @click="handleAgentConnect"
                       :disabled="agentCtrl.status === 'connecting'"
                       class="w-full btn-primary bg-violet-500 shadow-violet-100">
