@@ -60,7 +60,7 @@ class MaaFW:
 
     def __init__(self):
         self.im = None
-        Toolkit.init_option("/")
+        Toolkit.init_option("./")
         Tasker.set_debug_mode(True)
 
         self.resource = None

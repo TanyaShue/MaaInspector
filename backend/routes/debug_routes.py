@@ -80,7 +80,6 @@ def debug_ocr_text():
     tasker=maafw.run_re()
     maafw.screencap()
     result = tasker.post_recognition("OCR",task,maafw.im).wait().get().nodes[0].recognition
-    print(result)
     if result.hit:
         txt = result.best_result.text
     else:
