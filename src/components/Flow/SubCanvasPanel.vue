@@ -16,7 +16,7 @@ import {
   LAYOUT_DIRECTION_OPTIONS,
   SPACING_TYPE_OPTIONS
 } from '@/utils/flowOptions'
-import { collectReachableNodeIds, filterSubgraphEdges } from '@/utils/flowSubgraph'
+import { collectReachableNodeIds, filterSubgraphEdges, resolveSubgraphNodeChanges } from '@/utils/flowSubgraph'
 import type { EdgeType } from '@/utils/flowOptions'
 import type {
   FlowBusinessData,
@@ -140,6 +140,14 @@ const removeMainNodes = (nodeIds: Set<string>) => {
   refreshVisibleNodeIds()
 }
 
+const refreshSubCanvasRenderWindow = async (nodeIds: string[]) => {
+  const previousViewport = getViewport()
+  await viewportSync.withPausedVisibility(async () => {
+    await nextTick()
+  }, nodeIds)
+  await setViewport(previousViewport, { duration: 0 })
+}
+
 const subNodes = computed<FlowNode[]>({
   get: () => props.nodes
     .filter(node => visibleNodeIds.value.has(node.id))
@@ -153,31 +161,16 @@ const subNodes = computed<FlowNode[]>({
       }
     }),
   set: (nextNodes) => {
-    const nextById = new Map(nextNodes.map(node => [node.id, node]))
-    const existingIds = new Set(props.nodes.map(node => node.id))
-    const removedVisibleIds = new Set(
-      props.nodes
-        .filter(node => visibleNodeIds.value.has(node.id) && !nextById.has(node.id))
-        .map(node => node.id)
-    )
+    const { addedNodes, removedVisibleIds, nextLocalState } = resolveSubgraphNodeChanges({
+      mainNodes: props.nodes,
+      nextNodes,
+      visibleNodeIds: visibleNodeIds.value,
+      localNodeState: localNodeState.value
+    })
+
     if (removedVisibleIds.size > 0) {
       removeMainNodes(removedVisibleIds)
     }
-
-    const nextLocalState = { ...localNodeState.value }
-    nextNodes.forEach(node => {
-      nextLocalState[node.id] = {
-        ...(nextLocalState[node.id] || {}),
-        position: node.position ? { ...node.position } : undefined
-      }
-    })
-
-    const addedNodes: FlowNode[] = []
-    nextNodes.forEach(node => {
-      if (!existingIds.has(node.id)) {
-        addedNodes.push(node)
-      }
-    })
 
     if (addedNodes.length > 0) {
       sessionNodeIds.value = new Set([...sessionNodeIds.value, ...addedNodes.map(node => node.id)])
@@ -186,6 +179,9 @@ const subNodes = computed<FlowNode[]>({
       props.markDataChanged()
     }
     localNodeState.value = nextLocalState
+    if (addedNodes.length > 0) {
+      void refreshSubCanvasRenderWindow(visibleNodeIdList.value)
+    }
   }
 })
 

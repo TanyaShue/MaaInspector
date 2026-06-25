@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { collectReachableNodeIds, filterSubgraphEdges } from '@/utils/flowSubgraph'
+import { collectReachableNodeIds, filterSubgraphEdges, resolveSubgraphNodeChanges } from '@/utils/flowSubgraph'
 import type { FlowEdge, FlowNode } from '@/utils/flowTypes'
 
 const node = (id: string): FlowNode => ({
@@ -16,6 +16,11 @@ const edge = (source: string, target: string, label = 'next'): FlowEdge => ({
   sourceHandle: label === 'next' ? 'source-a' : 'source-c',
   targetHandle: 'in',
   label
+})
+
+const positionedNode = (id: string, x: number, y: number): FlowNode => ({
+  ...node(id),
+  position: { x, y }
 })
 
 describe('flowSubgraph', () => {
@@ -60,5 +65,39 @@ describe('flowSubgraph', () => {
       'e-a-b-next',
       'e-b-c-next'
     ])
+  })
+
+  it('does not treat missing visible nodes as removed while adding a new subgraph node', () => {
+    const mainNodes = ['root', 'child', 'sibling'].map(node)
+    const newNode = positionedNode('new-node', 24, 48)
+
+    const result = resolveSubgraphNodeChanges({
+      mainNodes,
+      nextNodes: [newNode],
+      visibleNodeIds: new Set(['root', 'child']),
+      localNodeState: {}
+    })
+
+    expect(result.addedNodes.map(item => item.id)).toEqual(['new-node'])
+    expect(Array.from(result.removedVisibleIds)).toEqual([])
+    expect(result.nextLocalState['new-node']?.position).toEqual({ x: 24, y: 48 })
+  })
+
+  it('still reports removed visible nodes when no new nodes are present', () => {
+    const mainNodes = ['root', 'child', 'sibling'].map(node)
+
+    const result = resolveSubgraphNodeChanges({
+      mainNodes,
+      nextNodes: [positionedNode('root', 12, 16)],
+      visibleNodeIds: new Set(['root', 'child']),
+      localNodeState: {
+        child: { position: { x: 4, y: 8 } }
+      }
+    })
+
+    expect(result.addedNodes).toEqual([])
+    expect(Array.from(result.removedVisibleIds)).toEqual(['child'])
+    expect(result.nextLocalState.root?.position).toEqual({ x: 12, y: 16 })
+    expect(result.nextLocalState.child).toBeUndefined()
   })
 })
