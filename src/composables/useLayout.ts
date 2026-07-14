@@ -20,6 +20,67 @@ export const NODE_SIZE_PADDING = {
 
 const elk = new ELK()
 
+interface ElkEdgeDescriptor {
+  id: string
+  sources: string[]
+  targets: string[]
+}
+
+interface ElkLayoutChild {
+  id: string
+  x?: number
+  y?: number
+}
+
+const HANDLE_ORDER: Record<string, number> = {
+  'source-a': 1,
+  'source-c': 3
+}
+
+/**
+ * Preserve the existing source-handle order without looking the original edge
+ * up again from every sort comparison. The three buckets also keep equal
+ * weights stable while visiting every input edge only once.
+ */
+export const createOrderedElkEdges = (edges: FlowEdge[]): ElkEdgeDescriptor[] => {
+  const buckets: [ElkEdgeDescriptor[], ElkEdgeDescriptor[], ElkEdgeDescriptor[]] = [[], [], []]
+
+  edges.forEach((edge) => {
+    const descriptor = {
+      id: edge.id,
+      sources: [edge.source],
+      targets: [edge.target]
+    }
+    const weight = HANDLE_ORDER[edge.sourceHandle ?? ''] ?? 2
+    buckets[weight - 1].push(descriptor)
+  })
+
+  return buckets.flat()
+}
+
+/** Index ELK output once instead of scanning all layout children per node. */
+export const applyElkNodePositions = (
+  nodes: FlowNode[],
+  children: ElkLayoutChild[] = []
+): FlowNode[] => {
+  const childrenById = new Map<string, ElkLayoutChild>()
+  children.forEach((child) => {
+    const childId = child.id
+    if (!childrenById.has(childId)) childrenById.set(childId, child)
+  })
+
+  return nodes.map((node) => {
+    const elkNode = childrenById.get(node.id)
+    return {
+      ...node,
+      position: {
+        x: elkNode?.x ?? 0,
+        y: elkNode?.y ?? 0
+      }
+    }
+  })
+}
+
 const getSpacingConfig = (key: SpacingKey = 'normal') =>
   SPACING_OPTIONS[key] || SPACING_OPTIONS.normal
 
@@ -89,38 +150,12 @@ export function useLayout(flowId?: string) {
           height
         }
       }),
-      edges: edges.map((edge) => ({
-        id: edge.id,
-        sources: [edge.source],
-        targets: [edge.target]
-      }))
+      edges: createOrderedElkEdges(edges)
     }
-
-    const handleOrder: Record<string, number> = {
-      'source-a': 1,
-      'source-c': 3
-    }
-
-    elkGraph.edges.sort((a, b) => {
-      const edgeA = edges.find(e => e.id === a.id)
-      const edgeB = edges.find(e => e.id === b.id)
-      const weightA = handleOrder[edgeA?.sourceHandle ?? ''] ?? 2
-      const weightB = handleOrder[edgeB?.sourceHandle ?? ''] ?? 2
-      return weightA - weightB
-    })
 
     try {
       const layouted = await elk.layout(elkGraph)
-      return nodes.map((node) => {
-        const elkNode = layouted.children?.find(c => c.id === node.id)
-        return {
-          ...node,
-          position: {
-            x: elkNode?.x ?? 0,
-            y: elkNode?.y ?? 0
-          }
-        }
-      })
+      return applyElkNodePositions(nodes, layouted.children)
     } catch (error) {
       console.error('[useLayout] ELK layout failed:', error)
       return nodes

@@ -70,23 +70,34 @@ export const collectReachableNodeIds = (
   const nodeIds = new Set(nodes.map(node => node.id))
   const visited = new Set<string>()
   const queue: string[] = []
+  const outgoingTargets = new Map<string, string[]>()
 
   if (!rootId || !nodeIds.has(rootId)) return visited
+
+  edges.forEach((edge) => {
+    const source = edge.source
+    const target = edge.target
+    if (!nodeIds.has(target)) return
+    const targets = outgoingTargets.get(source)
+    if (targets) {
+      targets.push(target)
+    } else {
+      outgoingTargets.set(source, [target])
+    }
+  })
 
   visited.add(rootId)
   queue.push(rootId)
 
-  while (queue.length > 0) {
-    const currentId = queue.shift()
-    if (!currentId) continue
-
-    edges
-      .filter(edge => edge.source === currentId && nodeIds.has(edge.target))
-      .forEach(edge => {
-        if (visited.has(edge.target)) return
-        visited.add(edge.target)
-        queue.push(edge.target)
-      })
+  let queueIndex = 0
+  while (queueIndex < queue.length) {
+    const currentId = queue[queueIndex++]
+    const targets = outgoingTargets.get(currentId) ?? []
+    targets.forEach((targetId) => {
+      if (visited.has(targetId)) return
+      visited.add(targetId)
+      queue.push(targetId)
+    })
   }
 
   return visited

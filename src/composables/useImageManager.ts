@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, type Ref } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import type { TemplateImage, ImageDataPayload } from '@/utils/flowTypes'
 
@@ -57,12 +57,30 @@ const removeFromOrder = (order: string[], path: string) => {
 export function useImageManager() {
   const imageUrlCache = new Map<string, string>()
   const buckets = new Map<string, NodeImageBucket>()
+  const nodeRevisions = new Map<string, Ref<number>>()
+  // File-wide epoch. Node-local mutations use nodeRevisions so unrelated
+  // CustomNode image computeds retain their cached value.
   const version = ref(0)
   const currentFile = ref<FileScope | null>(null)
 
-  const touch = () => {
+  const touchAll = () => {
     version.value++
   }
+
+  const ensureNodeRevision = (nodeId: string): Ref<number> => {
+    let revision = nodeRevisions.get(nodeId)
+    if (!revision) {
+      revision = ref(0)
+      nodeRevisions.set(nodeId, revision)
+    }
+    return revision
+  }
+
+  const touchNode = (nodeId: string) => {
+    ensureNodeRevision(nodeId).value++
+  }
+
+  const getNodeVersion = (nodeId: string): number => ensureNodeRevision(nodeId).value
 
   const ensureBucket = (nodeId: string): NodeImageBucket => {
     let bucket = buckets.get(nodeId)
@@ -120,11 +138,13 @@ export function useImageManager() {
     currentFile.value = { ...file }
     buckets.clear()
     imageUrlCache.clear()
-    touch()
+    nodeRevisions.clear()
+    touchAll()
   }
 
   const replaceLoadedImages = (imageMap: Record<string, TemplateImage[] | unknown>) => {
     buckets.clear()
+    nodeRevisions.clear()
 
     Object.entries(imageMap || {}).forEach(([nodeId, images]) => {
       if (!Array.isArray(images)) return
@@ -134,7 +154,7 @@ export function useImageManager() {
       ))
     })
 
-    touch()
+    touchAll()
   }
 
   const setNodeImages = (nodeId: string, images: TemplateImage[]) => {
@@ -144,7 +164,7 @@ export function useImageManager() {
     bucket.tempOrder = []
     bucket.deleted.clear()
     bucket.deletedOrder = []
-    touch()
+    touchNode(nodeId)
   }
 
   const getNodeSavedImages = (nodeId: string): TemplateImage[] => {
@@ -183,7 +203,7 @@ export function useImageManager() {
     pushUnique(bucket.tempOrder, path)
     bucket.deleted.delete(path)
     removeFromOrder(bucket.deletedOrder, path)
-    touch()
+    touchNode(nodeId)
   }
 
   const deleteImage = (nodeId: string, path: string) => {
@@ -196,13 +216,13 @@ export function useImageManager() {
       removeFromOrder(bucket.savedOrder, path)
       bucket.deleted.set(path, normalizeImage(saved))
       pushUnique(bucket.deletedOrder, path)
-      touch()
+      touchNode(nodeId)
       return
     }
 
     if (bucket.temp.delete(path)) {
       removeFromOrder(bucket.tempOrder, path)
-      touch()
+      touchNode(nodeId)
     }
   }
 
@@ -217,7 +237,7 @@ export function useImageManager() {
     removeFromOrder(bucket.deletedOrder, path)
     bucket.saved.set(path, normalizeImage(deleted))
     pushUnique(bucket.savedOrder, path)
-    touch()
+    touchNode(nodeId)
   }
 
   const applyNodeImageChanges = (nodeId: string, changes: ApplyImageChangesPayload) => {
@@ -242,7 +262,7 @@ export function useImageManager() {
       bucket.deletedOrder,
       deletedImages.filter(image => (image as TemplateImage & { _source?: string })._source !== 'temp')
     )
-    touch()
+    touchNode(nodeId)
   }
 
   const getPendingImageChanges = (): ImageDataPayload => {
@@ -265,7 +285,8 @@ export function useImageManager() {
   }
 
   const commitPendingImageChanges = () => {
-    buckets.forEach((bucket) => {
+    buckets.forEach((bucket, nodeId) => {
+      const changed = bucket.tempOrder.length > 0 || bucket.deletedOrder.length > 0
       bucket.tempOrder.forEach((path) => {
         const image = bucket.temp.get(path)
         if (!image) return
@@ -276,8 +297,8 @@ export function useImageManager() {
       bucket.tempOrder = []
       bucket.deleted.clear()
       bucket.deletedOrder = []
+      if (changed) touchNode(nodeId)
     })
-    touch()
   }
 
   const clearTempImageData = () => {
@@ -308,18 +329,20 @@ export function useImageManager() {
     }
 
     buckets.delete(oldId)
-    touch()
+    touchNode(oldId)
+    touchNode(newId)
   }
 
   const removeNodeState = (nodeId: string) => {
-    if (buckets.delete(nodeId)) touch()
+    if (buckets.delete(nodeId)) touchNode(nodeId)
   }
 
   const clearAll = () => {
     currentFile.value = null
     buckets.clear()
     imageUrlCache.clear()
-    touch()
+    nodeRevisions.clear()
+    touchAll()
   }
 
   const getImagePaths = (nodeId: string): string[] => {
@@ -330,6 +353,7 @@ export function useImageManager() {
 
   const getImagesForTemplatePaths = (nodeId: string, templatePaths: string[], limit = 16): TemplateImage[] => {
     void version.value
+    void getNodeVersion(nodeId)
     const bucket = getBucket(nodeId)
     if (!bucket || !templatePaths.length || limit <= 0) return []
 
@@ -371,8 +395,14 @@ export function useImageManager() {
   })
 
   const restoreState = (snapshot?: ImageManagerSnapshot) => {
-    clearAll()
-    if (!snapshot) return
+    currentFile.value = null
+    buckets.clear()
+    imageUrlCache.clear()
+    nodeRevisions.clear()
+    if (!snapshot) {
+      touchAll()
+      return
+    }
 
     currentFile.value = snapshot.currentFile ? { ...snapshot.currentFile } : null
     snapshot.nodeImageStates?.forEach(([nodeId, state]) => {
@@ -381,7 +411,7 @@ export function useImageManager() {
       setCollection(bucket.temp, bucket.tempOrder, state.tempImages || [])
       setCollection(bucket.deleted, bucket.deletedOrder, state.delImages || [])
     })
-    touch()
+    touchAll()
   }
 
   const setNodeImageChanges = (nodeId: string, images: TemplateImage[], tempImages: TemplateImage[]) => {
@@ -391,6 +421,7 @@ export function useImageManager() {
   return {
     imageUrlCache,
     version,
+    getNodeVersion,
     currentFile,
     resetForFile,
     replaceLoadedImages,

@@ -61,6 +61,31 @@ describe('flowSubgraph', () => {
     expect(Array.from(collectReachableNodeIds('a', nodes, edges)).sort()).toEqual(['a', 'b', 'c'])
   })
 
+  it('indexes a large edge set once instead of rescanning it for every visited node', () => {
+    const size = 2_000
+    const nodes = Array.from({ length: size }, (_, index) => node(`node-${index}`))
+    const reads = { source: 0, target: 0 }
+    const edges = Array.from({ length: size - 1 }, (_, index) => {
+      const values = edge(`node-${index}`, `node-${index + 1}`)
+      return Object.defineProperties({ ...values }, {
+        source: {
+          enumerable: true,
+          get: () => { reads.source++; return values.source }
+        },
+        target: {
+          enumerable: true,
+          get: () => { reads.target++; return values.target }
+        }
+      }) as FlowEdge
+    })
+
+    const reachable = collectReachableNodeIds('node-0', nodes, edges)
+
+    expect(reachable.size).toBe(size)
+    expect(reachable.has(`node-${size - 1}`)).toBe(true)
+    expect(reads).toEqual({ source: edges.length, target: edges.length })
+  })
+
   it('filters edges to only connections where both endpoints are visible', () => {
     const edges = [
       edge('a', 'b'),

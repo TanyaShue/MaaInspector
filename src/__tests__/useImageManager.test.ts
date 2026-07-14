@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { computed } from 'vue'
 import { useImageManager } from '@/composables/useImageManager'
 import type { TemplateImage } from '@/utils/flowTypes'
 
@@ -40,11 +41,13 @@ describe('useImageManager', () => {
       expect(images[0].url).toBe('tauri://localhost/assets/test.png')
     })
 
-    it('should increment version on set', () => {
+    it('should increment only the affected node revision on set', () => {
       const manager = createManager()
-      const initialVersion = manager.version.value
+      const initialGlobalVersion = manager.version.value
+      const initialNodeVersion = manager.getNodeVersion('node-1')
       manager.setNodeImages('node-1', [{ path: 'test.png' }])
-      expect(manager.version.value).toBeGreaterThan(initialVersion)
+      expect(manager.getNodeVersion('node-1')).toBeGreaterThan(initialNodeVersion)
+      expect(manager.version.value).toBe(initialGlobalVersion)
     })
   })
 
@@ -85,6 +88,34 @@ describe('useImageManager', () => {
       expect(manager.getNodeSavedImages('new-id').map(img => img.path)).toEqual(['saved.png'])
       expect(manager.getNodeTempImages('new-id').map(img => img.path)).toEqual(['temp.png'])
       expect(manager.getNodeDeletedImages('new-id').map(img => img.path)).toEqual(['deleted.png'])
+    })
+
+    it('invalidates the old and new node only when image state is migrated', () => {
+      const manager = createManager()
+      manager.setNodeImages('old-id', [{ path: 'old.png', found: true }])
+      manager.setNodeImages('new-id', [{ path: 'new.png', found: true }])
+      manager.setNodeImages('other-id', [{ path: 'other.png', found: true }])
+
+      const readOld = vi.fn(() => manager.getImagesForTemplatePaths('old-id', ['old.png']))
+      const readNew = vi.fn(() => manager.getImagesForTemplatePaths('new-id', ['new.png', 'old.png']))
+      const readOther = vi.fn(() => manager.getImagesForTemplatePaths('other-id', ['other.png']))
+      const oldImages = computed(readOld)
+      const newImages = computed(readNew)
+      const otherImages = computed(readOther)
+      void oldImages.value
+      void newImages.value
+      void otherImages.value
+      const otherVersion = manager.getNodeVersion('other-id')
+
+      manager.migrateNodeState('old-id', 'new-id')
+
+      expect(oldImages.value).toEqual([])
+      expect(newImages.value.map(image => image.path)).toEqual(['new.png', 'old.png'])
+      void otherImages.value
+      expect(readOld).toHaveBeenCalledTimes(2)
+      expect(readNew).toHaveBeenCalledTimes(2)
+      expect(readOther).toHaveBeenCalledTimes(1)
+      expect(manager.getNodeVersion('other-id')).toBe(otherVersion)
     })
   })
 
@@ -270,21 +301,23 @@ describe('useImageManager', () => {
       })
     })
 
-    it('should increment version for every display-affecting change', () => {
+    it('should increment the node revision for every display-affecting change', () => {
       const manager = createManager()
-      const versions: number[] = [manager.version.value]
+      const globalVersion = manager.version.value
+      const versions: number[] = [manager.getNodeVersion('node-1')]
 
       manager.setNodeImages('node-1', [{ path: 'a.png' }])
-      versions.push(manager.version.value)
+      versions.push(manager.getNodeVersion('node-1'))
       manager.addTempImage('node-1', 'b.png', undefined, 'base64data')
-      versions.push(manager.version.value)
+      versions.push(manager.getNodeVersion('node-1'))
       manager.deleteImage('node-1', 'a.png')
-      versions.push(manager.version.value)
+      versions.push(manager.getNodeVersion('node-1'))
       manager.restoreImage('node-1', 'a.png')
-      versions.push(manager.version.value)
+      versions.push(manager.getNodeVersion('node-1'))
 
       expect(versions).toEqual([...versions].sort((a, b) => a - b))
       expect(new Set(versions).size).toBe(versions.length)
+      expect(manager.version.value).toBe(globalVersion)
     })
 
     it('should keep temp images pending when validPaths is omitted', () => {
@@ -362,6 +395,53 @@ describe('useImageManager', () => {
       const result = manager.getImagesForTemplatePaths('node-1', ['d.png', 'c.png', 'b.png', 'a.png'], 2)
 
       expect(result.map(img => img.path)).toEqual(['d.png', 'b.png'])
+    })
+
+    it('does not invalidate another node display computed for a node-local update', () => {
+      const manager = createManager()
+      manager.setNodeImages('node-a', [{ path: 'a.png', found: true }])
+      manager.setNodeImages('node-b', [{ path: 'b.png', found: true }])
+
+      const readA = vi.fn(() => manager.getImagesForTemplatePaths('node-a', ['a.png']))
+      const readB = vi.fn(() => manager.getImagesForTemplatePaths('node-b', ['b.png']))
+      const imagesA = computed(readA)
+      const imagesB = computed(readB)
+      expect(imagesA.value[0].path).toBe('a.png')
+      expect(imagesB.value[0].path).toBe('b.png')
+
+      const globalVersion = manager.version.value
+      const nodeBVersion = manager.getNodeVersion('node-b')
+      manager.addTempImage('node-a', 'a-2.png', undefined, 'base64data')
+
+      void imagesA.value
+      void imagesB.value
+      expect(readA).toHaveBeenCalledTimes(2)
+      expect(readB).toHaveBeenCalledTimes(1)
+      expect(manager.getNodeVersion('node-b')).toBe(nodeBVersion)
+      expect(manager.version.value).toBe(globalVersion)
+    })
+
+    it('globally invalidates all node display computeds when loaded images are replaced', () => {
+      const manager = createManager()
+      manager.setNodeImages('node-a', [{ path: 'a.png', found: true }])
+      manager.setNodeImages('node-b', [{ path: 'b.png', found: true }])
+
+      const readA = vi.fn(() => manager.getImagesForTemplatePaths('node-a', ['a.png']))
+      const readB = vi.fn(() => manager.getImagesForTemplatePaths('node-b', ['b.png']))
+      const imagesA = computed(readA)
+      const imagesB = computed(readB)
+      void imagesA.value
+      void imagesB.value
+
+      manager.replaceLoadedImages({
+        'node-a': [{ path: 'a.png', found: true }],
+        'node-b': [{ path: 'b.png', found: true }]
+      })
+
+      void imagesA.value
+      void imagesB.value
+      expect(readA).toHaveBeenCalledTimes(2)
+      expect(readB).toHaveBeenCalledTimes(2)
     })
   })
 
