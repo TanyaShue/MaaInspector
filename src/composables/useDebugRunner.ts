@@ -9,13 +9,23 @@ export interface DebugRunnerDeps {
   nodes: { value: FlowNode[] }
   currentSource: { value: string }
   currentFilename: { value: string }
-  onSaveNodes: (config: { source: string; filename: string }, onSnapshotState: () => void) => Promise<void>
-  onSnapshotState: () => void
+  onSaveNodes: (
+    config: { source: string; filename: string },
+    onSnapshotState?: () => void
+  ) => Promise<void>
+  onSnapshotState?: () => void
   setNodeStatus: (nodeId: string, status: NodeStatus) => void
 }
-
 export function useDebugRunner(deps: DebugRunnerDeps) {
-  const { findNode, nodes, currentSource, currentFilename, onSaveNodes, onSnapshotState, setNodeStatus } = deps
+  const {
+    findNode,
+    nodes,
+    currentSource,
+    currentFilename,
+    onSaveNodes,
+    onSnapshotState,
+    setNodeStatus,
+  } = deps
 
   const handleDebugNode = async (nodeId: string, mode: DebugMode = 'standard') => {
     const node = findNode(nodeId)
@@ -59,11 +69,14 @@ export function useDebugRunner(deps: DebugRunnerDeps) {
     })
 
     try {
-      await onSaveNodes({ source: currentSource.value, filename: currentFilename.value }, onSnapshotState)
+      await onSaveNodes(
+        { source: currentSource.value, filename: currentFilename.value },
+        onSnapshotState
+      )
       await debugApi.runNode({
         node: node.data.data,
         debug_mode: mode,
-        context: { source: currentSource.value, filename: currentFilename.value }
+        context: { source: currentSource.value, filename: currentFilename.value },
       })
 
       await taskComplete
@@ -73,17 +86,17 @@ export function useDebugRunner(deps: DebugRunnerDeps) {
       node.data._result = { success: false, error: err?.message || 'Network/Server Error' }
     } finally {
       if (streamCleanup && !resolved) {
-        (streamCleanup as () => void)()
+        ;(streamCleanup as () => void)()
       }
       nodes.value = [...nodes.value]
-      onSnapshotState()
+      onSnapshotState?.()
     }
   }
 
   const handleUpdateNodeStatus = ({ nodeId, status }: { nodeId: string; status: NodeStatus }) => {
     if (!nodeId || status === undefined) return
     setNodeStatus(nodeId, status)
-    onSnapshotState()
+    onSnapshotState?.()
   }
 
   const handleDebugNodeFromPanel = (nodeId: string) => handleDebugNode(nodeId, 'standard')
@@ -91,6 +104,6 @@ export function useDebugRunner(deps: DebugRunnerDeps) {
   return {
     handleDebugNode,
     handleUpdateNodeStatus,
-    handleDebugNodeFromPanel
+    handleDebugNodeFromPanel,
   }
 }

@@ -11,16 +11,16 @@ import type {
   FlowEdge,
   FlowEdgeChange,
   FlowNode,
-  FlowNodeMeta,
   ImageDataPayload,
   LoadNodesPayload,
   NodeStatus,
   NodeUpdatePayload,
   SpacingKey,
   LayoutAlgorithm,
-  LayoutDirection
+  LayoutDirection,
 } from '@/utils/flowTypes'
 import CustomNode from '@/components/Flow/CustomNode.vue'
+import { ensureNodeMeta } from '@/utils/nodeHelpers'
 import {
   PORT_MAPPING,
   getEdgeStyle,
@@ -29,27 +29,27 @@ import {
   normalizeLinksAcrossNodes,
   isAnchorNode,
   parseLinkFlags,
-  buildLinkId
+  buildLinkId,
 } from './flowGraph/useConnectionManager'
 import {
   getNodesData,
   UNKNOWN_NODE_ID_PREFIX,
   setNodeStatus as setNodeStatusImpl,
   selectNodeById as selectNodeByIdImpl,
-  createNodeObject
+  createNodeObject,
 } from './flowGraph/useNodeStateManager'
 import {
   layoutTaskChain as layoutTaskChainImpl,
-  layoutChainFromNode as layoutChainFromNodeImpl
+  layoutChainFromNode as layoutChainFromNodeImpl,
 } from './flowGraph/useFlowLayout'
 import { useFlowStateExport } from './flowGraph/useFlowStateExport'
 import { handleSpecialAction as handleSpecialActionImpl } from './flowGraph/useTemplateManager'
 import { useViewportSync } from './flowGraph/useViewportSync'
 
-  /**
-   * Creates and manages the flow graph state, providing node/edge manipulation,
-   * layout, connection handling, and state export/restore capabilities.
-   */
+/**
+ * Creates and manages the flow graph state, providing node/edge manipulation,
+ * layout, connection handling, and state export/restore capabilities.
+ */
 export function useFlowGraph() {
   const nodes = ref<FlowNode[]>([])
   const edges = ref<FlowEdge[]>([])
@@ -71,21 +71,11 @@ export function useFlowGraph() {
   const onlyRenderVisibleElements = ref(true)
   const viewportSync = useViewportSync({
     onlyRenderVisibleElements,
-    updateNodeInternals
+    updateNodeInternals,
   })
-  const {
-    elkLayout,
-    applyLayoutOnRefs,
-    applyOrderedChainLayout
-  } = useLayout()
+  const { elkLayout, applyLayoutOnRefs, applyOrderedChainLayout } = useLayout()
 
-  const {
-    isDirty,
-    exportState,
-    restoreState,
-    markDataChanged,
-    clearDirty
-  } = useFlowStateExport(
+  const { isDirty, exportState, restoreState, markDataChanged, clearDirty } = useFlowStateExport(
     nodes,
     edges,
     currentEdgeType,
@@ -124,8 +114,11 @@ export function useFlowGraph() {
    * @param params - Connection parameters containing source, target, and handle info
    */
   const handleConnect = (params: FlowConnection) => {
-    const existingEdge = edges.value.find(e =>
-      e.source === params.source && e.target === params.target && e.sourceHandle === params.sourceHandle
+    const existingEdge = edges.value.find(
+      (e) =>
+        e.source === params.source &&
+        e.target === params.target &&
+        e.sourceHandle === params.sourceHandle
     )
     const portConfig = PORT_MAPPING[params.sourceHandle || '']
     const sourceNode = findNode(params.source)
@@ -136,13 +129,35 @@ export function useFlowGraph() {
     if (existingEdge) {
       removeEdges([existingEdge.id])
       if (sourceNode && portConfig) {
-        updateNodeDataConnection(findNode, sourceNode, portConfig.field, params.target, portConfig.type === 'array', false, false, isAnchorTarget)
+        updateNodeDataConnection(
+          findNode,
+          sourceNode,
+          portConfig.field,
+          params.target,
+          portConfig.type === 'array',
+          false,
+          false,
+          isAnchorTarget
+        )
         changed = true
       }
     } else {
-      addEdges({ ...params, ...getEdgeStyle(params.sourceHandle || '', false, currentEdgeType.value), label: portConfig?.field })
+      addEdges({
+        ...params,
+        ...getEdgeStyle(params.sourceHandle || '', false, currentEdgeType.value),
+        label: portConfig?.field,
+      })
       if (sourceNode && portConfig) {
-        updateNodeDataConnection(findNode, sourceNode, portConfig.field, params.target, portConfig.type === 'array', true, false, isAnchorTarget)
+        updateNodeDataConnection(
+          findNode,
+          sourceNode,
+          portConfig.field,
+          params.target,
+          portConfig.type === 'array',
+          true,
+          false,
+          isAnchorTarget
+        )
         changed = true
       }
     }
@@ -155,16 +170,25 @@ export function useFlowGraph() {
    */
   const handleEdgesChange = (changes: FlowEdgeChange[]) => {
     let changed = false
-    changes.forEach(change => {
+    changes.forEach((change) => {
       if (change.type === 'remove') {
-        const edge = edges.value.find(e => e.id === change.id)
+        const edge = edges.value.find((e) => e.id === change.id)
         if (edge) {
           const sourceNode = findNode(edge.source)
           const portConfig = PORT_MAPPING[edge.sourceHandle || '']
           if (sourceNode && portConfig) {
             const targetNode = findNode(edge.target)
             const isAnchorTarget = isAnchorNode(targetNode)
-            updateNodeDataConnection(findNode, sourceNode, portConfig.field, edge.target, portConfig.type === 'array', false, false, isAnchorTarget)
+            updateNodeDataConnection(
+              findNode,
+              sourceNode,
+              portConfig.field,
+              edge.target,
+              portConfig.type === 'array',
+              false,
+              false,
+              isAnchorTarget
+            )
             changed = true
           }
         }
@@ -179,7 +203,7 @@ export function useFlowGraph() {
    * @param isJumpBack - Whether the edge should be marked as a jump-back connection
    */
   const setEdgeJumpBack = (edgeId: string, isJumpBack: boolean) => {
-    const edge = edges.value.find(e => e.id === edgeId)
+    const edge = edges.value.find((e) => e.id === edgeId)
     if (!edge) return
 
     const sourceNode = findNode(edge.source)
@@ -188,14 +212,23 @@ export function useFlowGraph() {
     const isAnchorTarget = isAnchorNode(targetNode)
 
     edge.data = { ...edge.data, isJumpBack }
-    edge.label = isJumpBack ? 'JumpBack' : (portConfig?.field || '')
+    edge.label = isJumpBack ? 'JumpBack' : portConfig?.field || ''
 
     const newStyle = getEdgeStyle(edge.sourceHandle || '', isJumpBack, currentEdgeType.value)
     edge.style = newStyle.style
     edge.animated = newStyle.animated
 
     if (sourceNode && portConfig) {
-      updateNodeDataConnection(findNode, sourceNode, portConfig.field, edge.target, portConfig.type === 'array', true, isJumpBack, isAnchorTarget)
+      updateNodeDataConnection(
+        findNode,
+        sourceNode,
+        portConfig.field,
+        edge.target,
+        portConfig.type === 'array',
+        true,
+        isJumpBack,
+        isAnchorTarget
+      )
       markDataChanged()
     }
   }
@@ -249,12 +282,15 @@ export function useFlowGraph() {
             let index = -1
             if (typeof linkIndex === 'number') {
               const indexedValue = fieldVal[linkIndex]
-              if (typeof indexedValue === 'string' && (parseLinkFlags(indexedValue).id || indexedValue) === originalId) {
+              if (
+                typeof indexedValue === 'string' &&
+                (parseLinkFlags(indexedValue).id || indexedValue) === originalId
+              ) {
                 index = linkIndex
               }
             }
             if (index < 0) {
-              index = fieldVal.findIndex(val => {
+              index = fieldVal.findIndex((val) => {
                 if (typeof val !== 'string') return false
                 const flags = parseLinkFlags(val)
                 return (flags.id || val) === originalId
@@ -262,19 +298,27 @@ export function useFlowGraph() {
             }
             if (index >= 0) {
               const flags = parseLinkFlags(String(fieldVal[index]))
-              fieldVal[index] = buildLinkId(newId, flags.anchor || isAnchorTarget, flags.jumpBack || isJumpBack)
+              fieldVal[index] = buildLinkId(
+                newId,
+                flags.anchor || isAnchorTarget,
+                flags.jumpBack || isJumpBack
+              )
             }
           } else if (typeof fieldVal === 'string') {
             const flags = parseLinkFlags(fieldVal)
             if ((flags.id || fieldVal) === originalId) {
-              d[field] = buildLinkId(newId, flags.anchor || isAnchorTarget, flags.jumpBack || isJumpBack)
+              d[field] = buildLinkId(
+                newId,
+                flags.anchor || isAnchorTarget,
+                flags.jumpBack || isJumpBack
+              )
             }
           }
         }
 
         edges.value
-          .filter(e => e.target === oldId)
-          .forEach(edge => {
+          .filter((e) => e.target === oldId)
+          .forEach((edge) => {
             const sourceNode = findNode(edge.source)
             const sourceMeta = ensureNodeMeta(sourceNode)
             const portConfig = PORT_MAPPING[edge.sourceHandle || '']
@@ -297,24 +341,29 @@ export function useFlowGraph() {
         return
       }
 
-      if (findNode(newId)) { ElMessage.error(`ID "${newId}" already exists!`); return }
+      if (findNode(newId)) {
+        ElMessage.error(`ID "${newId}" already exists!`)
+        return
+      }
 
       imageManager.migrateNodeState(oldId, newId)
       node.id = newId
       nodeMeta.id = newId
       if (nodeMeta.data) nodeMeta.data.id = newId
 
-      edges.value = edges.value.map(e => {
+      edges.value = edges.value.map((e) => {
         const update: Partial<FlowEdge> = {}
         if (e.source === oldId) update.source = newId
         if (e.target === oldId) update.target = newId
-        return (update.source || update.target) ? { ...e, ...update, id: e.id.replace(oldId, newId) } : e
+        return update.source || update.target
+          ? { ...e, ...update, id: e.id.replace(oldId, newId) }
+          : e
       })
 
-      nodes.value.forEach(n => {
+      nodes.value.forEach((n) => {
         if (!n.data?.data) return
         const d = n.data.data as Record<string, unknown>
-        ;(['next', 'on_error', 'timeout_next'] as const).forEach(f => replaceField(d, f))
+        ;(['next', 'on_error', 'timeout_next'] as const).forEach((f) => replaceField(d, f))
       })
     }
 
@@ -358,10 +407,13 @@ export function useFlowGraph() {
     }
 
     for (const [nodeId, nodeContent] of Object.entries(rawNodesData)) {
-      const linkFields: Array<{ key: 'next' | 'on_error' | 'timeout_next'; handle: keyof typeof PORT_MAPPING }> = [
+      const linkFields: Array<{
+        key: 'next' | 'on_error' | 'timeout_next'
+        handle: keyof typeof PORT_MAPPING
+      }> = [
         { key: 'next', handle: 'source-a' },
         { key: 'on_error', handle: 'source-c' },
-        { key: 'timeout_next', handle: 'source-c' }
+        { key: 'timeout_next', handle: 'source-c' },
       ]
 
       linkFields.forEach(({ key, handle }) => {
@@ -380,12 +432,16 @@ export function useFlowGraph() {
 
             if (!isRealNode) {
               const missingNodeId = createMissingNodeId(targetId)
-              newNodes.push(createNodeObject(
-                missingNodeId,
-                isAnchorTarget ? { id: targetId, anchor: true } as FlowBusinessData : { id: targetId } as FlowBusinessData,
-                true,
-                targetId
-              ))
+              newNodes.push(
+                createNodeObject(
+                  missingNodeId,
+                  isAnchorTarget
+                    ? ({ id: targetId, anchor: true } as FlowBusinessData)
+                    : ({ id: targetId } as FlowBusinessData),
+                  true,
+                  targetId
+                )
+              )
               createdNodeIds.add(missingNodeId)
               targetId = missingNodeId
             }
@@ -401,8 +457,8 @@ export function useFlowGraph() {
               ...edgeStyle,
               data: {
                 ...edgeStyle.data,
-                linkIndex: targetIndex
-              }
+                linkIndex: targetIndex,
+              },
             })
           })
         }
@@ -414,17 +470,20 @@ export function useFlowGraph() {
     const layoutOptions: LayoutOptions = {
       algorithm: currentAlgorithm.value,
       direction: currentDirection.value,
-      spacing: currentSpacing.value
+      spacing: currentSpacing.value,
     }
     nodes.value = newNodes
     edges.value = newEdges
 
     const layoutedNodes = await elkLayout(newNodes, newEdges, layoutOptions)
-    await viewportSync.withPausedVisibility(async () => {
-      nodes.value = layoutedNodes
-      await viewportSync.refreshNodeInternals(layoutedNodes.map(node => node.id))
-      await fitView({ padding: 0.2, duration: 800 })
-    }, layoutedNodes.map(node => node.id))
+    await viewportSync.withPausedVisibility(
+      async () => {
+        nodes.value = layoutedNodes
+        await viewportSync.refreshNodeInternals(layoutedNodes.map((node) => node.id))
+        await fitView({ padding: 0.2, duration: 800 })
+      },
+      layoutedNodes.map((node) => node.id)
+    )
 
     currentFilename.value = filename || ''
     currentSource.value = source || ''
@@ -433,7 +492,11 @@ export function useFlowGraph() {
     dataSnapshot.value = snapshot
     originalDataSnapshot.value = snapshot
     selectedNodeId.value = null
-    perfLog('useFlowGraph.loadNodes.total', totalStart, { filename, nodeCount: nodes.value.length, edgeCount: edges.value.length })
+    perfLog('useFlowGraph.loadNodes.total', totalStart, {
+      filename,
+      nodeCount: nodes.value.length,
+      edgeCount: edges.value.length,
+    })
   }
 
   /**
@@ -526,30 +589,21 @@ export function useFlowGraph() {
       const layoutOptions: LayoutOptions = {
         algorithm: options?.algorithm || currentAlgorithm.value,
         direction: options?.direction || currentDirection.value,
-        spacing: options?.spacing || currentSpacing.value
+        spacing: options?.spacing || currentSpacing.value,
       }
-      await viewportSync.withPausedVisibility(async () => {
-        await applyLayoutOnRefs(nodes, edges, layoutOptions)
-        await viewportSync.refreshNodeInternals(nodes.value.map(node => node.id))
-        await fitView({ padding: 0.2, duration: 500 })
-      }, nodes.value.map(node => node.id))
+      await viewportSync.withPausedVisibility(
+        async () => {
+          await applyLayoutOnRefs(nodes, edges, layoutOptions)
+          await viewportSync.refreshNodeInternals(nodes.value.map((node) => node.id))
+          await fitView({ padding: 0.2, duration: 500 })
+        },
+        nodes.value.map((node) => node.id)
+      )
     },
     layoutChainFromNode,
     imageManager,
     exportState,
     restoreState,
-    refreshNodeInternals: viewportSync.refreshNodeInternals
+    refreshNodeInternals: viewportSync.refreshNodeInternals,
   }
-}
-
-/**
- * Ensures a node has valid data and data.data properties, initializing them if missing.
- * @param node - The node to validate/initialize
- * @returns The node's data meta object, or null if node is invalid
- */
-const ensureNodeMeta = (node?: FlowNode | null): FlowNodeMeta | null => {
-  if (!node) return null
-  if (!node.data) node.data = { id: node.id, type: 'Unknown', data: {} }
-  if (!node.data.data) node.data.data = {}
-  return node.data
 }

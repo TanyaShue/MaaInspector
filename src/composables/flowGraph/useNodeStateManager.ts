@@ -10,11 +10,10 @@ const ensureNodeMeta = (node?: FlowNode | null): FlowNodeMeta | null => {
   if (!node.data.data) node.data.data = {}
   return node.data
 }
-
 export const getNodesData = (nodes: FlowNode[]): Record<string, FlowBusinessData> => {
   const start = perfNow()
   const result: Record<string, FlowBusinessData> = {}
-  nodes.forEach(node => {
+  nodes.forEach((node) => {
     if (node.data?._isMissing) return
     if (node.data?.type === 'Unknown') return
 
@@ -28,7 +27,10 @@ export const getNodesData = (nodes: FlowNode[]): Record<string, FlowBusinessData
     else nodeData.template = template
     result[node.id] = nodeData
   })
-  perfLog('useFlowGraph.getNodesData', start, { nodeCount: nodes.length, outputCount: Object.keys(result).length })
+  perfLog('useFlowGraph.getNodesData', start, {
+    nodeCount: nodes.length,
+    outputCount: Object.keys(result).length,
+  })
   return result
 }
 
@@ -58,12 +60,12 @@ export const selectNodeById = (
 
   if (selectedNodeId.value) {
     const prevId = selectedNodeId.value
-    nodesRef.value = nodesRef.value.map(n => n.id === prevId ? { ...n, selected: false } : n)
+    nodesRef.value = nodesRef.value.map((n) => (n.id === prevId ? { ...n, selected: false } : n))
     changed = true
   }
 
   if (nextId) {
-    nodesRef.value = nodesRef.value.map(n => n.id === nextId ? { ...n, selected: true } : n)
+    nodesRef.value = nodesRef.value.map((n) => (n.id === nextId ? { ...n, selected: true } : n))
     changed = true
   }
 
@@ -71,11 +73,16 @@ export const selectNodeById = (
   return changed
 }
 
-export const createNodeObject = (id: string, rawContent: FlowBusinessData, isMissing = false, originalId?: string): FlowNode => {
+export const createNodeObject = (
+  id: string,
+  rawContent: FlowBusinessData,
+  isMissing = false,
+  originalId?: string
+): FlowNode => {
   const sanitizedContent = { ...rawContent }
   delete (sanitizedContent as Record<string, unknown>).interrupt
   const contentId = typeof sanitizedContent.id === 'string' ? sanitizedContent.id : undefined
-  const representedId = isMissing ? (originalId || contentId || id) : id
+  const representedId = isMissing ? originalId || contentId || id : id
 
   let logicType = sanitizedContent.recognition || 'DirectHit'
   if (isMissing) logicType = 'Unknown'
@@ -94,12 +101,15 @@ export const createNodeObject = (id: string, rawContent: FlowBusinessData, isMis
       id,
       type: logicType,
       data: isUnknown
-        ? { id: representedId, ...(sanitizedContent.anchor ? { anchor: sanitizedContent.anchor } : {}) }
+        ? {
+            id: representedId,
+            ...(sanitizedContent.anchor ? { anchor: sanitizedContent.anchor } : {}),
+          }
         : { ...sanitizedContent, id, recognition: logicType },
       _isMissing: isMissing,
       _originalId: isMissing ? representedId : originalId,
-      status: 'idle'
-    }
+      status: 'idle',
+    },
   }
   return node
 }

@@ -1,8 +1,18 @@
 import { nextTick, ref } from 'vue'
 import type { EdgeMouseEvent, NodeMouseEvent } from '@vue-flow/core'
-import type { FlowNode, FlowEdge, FlowBusinessData, SpacingKey, LayoutAlgorithm, LayoutDirection, MenuType, TemplateImage } from '@/utils/flowTypes'
+import type {
+  FlowNode,
+  FlowEdge,
+  FlowBusinessData,
+  SpacingKey,
+  LayoutAlgorithm,
+  LayoutDirection,
+  MenuType,
+  TemplateImage,
+} from '@/utils/flowTypes'
 import type { EdgeType } from '@/utils/flowOptions'
 import { isEdgeType, isSpacingKey, isLayoutAlgorithm, isLayoutDirection } from '@/utils/typeGuards'
+import { waitForFrame, deepClone } from '@/utils/nodeHelpers'
 
 type MenuData = FlowNode | FlowEdge | null
 
@@ -24,15 +34,33 @@ export interface EditorActionsDeps {
   currentAlgorithm: { value: LayoutAlgorithm }
   currentDirection: { value: LayoutDirection }
   isFileLoaded: { value: boolean }
-  createNodeObject: (id: string, rawContent: FlowBusinessData, isMissing?: boolean, originalId?: string) => FlowNode
-  applyLayout: (options?: Partial<{ algorithm: LayoutAlgorithm; direction: LayoutDirection; spacing: SpacingKey }>) => Promise<void>
+  createNodeObject: (
+    id: string,
+    rawContent: FlowBusinessData,
+    isMissing?: boolean,
+    originalId?: string
+  ) => FlowNode
+  applyLayout: (
+    options?: Partial<{
+      algorithm: LayoutAlgorithm
+      direction: LayoutDirection
+      spacing: SpacingKey
+    }>
+  ) => Promise<void>
   removeEdges: (ids: string[]) => void
   setEdgeJumpBack: (edgeId: string, isJumpBack: boolean) => void
-  layoutChainFromNode: (startId: string, spacingKey?: SpacingKey, algorithm?: LayoutAlgorithm) => Promise<void>
+  layoutChainFromNode: (
+    startId: string,
+    spacingKey?: SpacingKey,
+    algorithm?: LayoutAlgorithm
+  ) => Promise<void>
   markDataChanged: () => void
   fitView: (options?: Record<string, unknown>) => void
   getViewport?: () => { x: number; y: number; zoom: number }
-  setViewport?: (viewport: { x: number; y: number; zoom: number }, options?: { duration?: number }) => Promise<boolean> | void
+  setViewport?: (
+    viewport: { x: number; y: number; zoom: number },
+    options?: { duration?: number }
+  ) => Promise<boolean> | void
   updateNodeInternals?: (nodeIds?: string[]) => void
   screenToFlowCoordinate: (pos: { x: number; y: number }) => { x: number; y: number }
   getSelectedNodes: { value: FlowNode[] }
@@ -40,7 +68,7 @@ export interface EditorActionsDeps {
     getNodeImages: (nodeId: string) => TemplateImage[]
     setNodeImages: (nodeId: string, images: TemplateImage[]) => void
   }
-  snapshotState: () => void
+  snapshotState?: () => void
   requestClearCanvas?: () => void
   onOpenSubCanvas?: (payload: { nodeId: string; algorithm?: LayoutAlgorithm }) => void
   onDebugNode: (nodeId: string, mode: 'standard' | 'recognition_only') => void
@@ -58,17 +86,46 @@ interface ClipboardNode {
 export function useEditorActions(deps: EditorActionsDeps) {
   const {
     mode = 'main',
-    nodes, edges, currentEdgeType, currentSpacing, currentAlgorithm, currentDirection,
-    isFileLoaded, createNodeObject, applyLayout, removeEdges, setEdgeJumpBack,
-    layoutChainFromNode, markDataChanged, fitView, screenToFlowCoordinate,
-    getSelectedNodes, imageManager, snapshotState, requestClearCanvas, onOpenSubCanvas, onDebugNode, onOpenDebugPanel, onCloseDebugPanel, onIncrementCloseAllDetails
+    nodes,
+    edges,
+    currentEdgeType,
+    currentSpacing,
+    currentAlgorithm,
+    currentDirection,
+    isFileLoaded,
+    createNodeObject,
+    applyLayout,
+    removeEdges,
+    setEdgeJumpBack,
+    layoutChainFromNode,
+    markDataChanged,
+    fitView,
+    screenToFlowCoordinate,
+    getSelectedNodes,
+    imageManager,
+    snapshotState,
+    requestClearCanvas,
+    onOpenSubCanvas,
+    onDebugNode,
+    onOpenDebugPanel,
+    onCloseDebugPanel,
+    onIncrementCloseAllDetails,
   } = deps
 
-  const menu = ref<MenuState>({ visible: false, x: 0, y: 0, type: 'pane', data: null, flowPos: { x: 0, y: 0 } })
+  const menu = ref<MenuState>({
+    visible: false,
+    x: 0,
+    y: 0,
+    type: 'pane',
+    data: null,
+    flowPos: { x: 0, y: 0 },
+  })
   const searchVisible = ref(false)
   const copiedNodes = ref<ClipboardNode[]>([])
 
-  const closeMenu = () => { menu.value.visible = false }
+  const closeMenu = () => {
+    menu.value.visible = false
+  }
 
   const getEvent = (params: MouseEvent | NodeMouseEvent | EdgeMouseEvent): MouseEvent => {
     if ('event' in params && params.event instanceof MouseEvent) return params.event
@@ -80,37 +137,49 @@ export function useEditorActions(deps: EditorActionsDeps) {
     const event = getEvent(params)
     event.preventDefault()
     menu.value = {
-      visible: true, x: event.clientX, y: event.clientY, type: 'pane', data: null,
-      flowPos: screenToFlowCoordinate({ x: event.clientX, y: event.clientY })
+      visible: true,
+      x: event.clientX,
+      y: event.clientY,
+      type: 'pane',
+      data: null,
+      flowPos: screenToFlowCoordinate({ x: event.clientX, y: event.clientY }),
     }
   }
 
   const onNodeContextMenu = (params: NodeMouseEvent) => {
     const event = getEvent(params)
     event.preventDefault()
-    menu.value = { visible: true, x: event.clientX, y: event.clientY, type: 'node', data: params.node, flowPos: null }
+    menu.value = {
+      visible: true,
+      x: event.clientX,
+      y: event.clientY,
+      type: 'node',
+      data: params.node,
+      flowPos: null,
+    }
   }
 
   const onEdgeContextMenu = (params: EdgeMouseEvent) => {
     const event = getEvent(params)
     event.preventDefault()
-    menu.value = { visible: true, x: event.clientX, y: event.clientY, type: 'edge', data: params.edge, flowPos: null }
+    menu.value = {
+      visible: true,
+      x: event.clientX,
+      y: event.clientY,
+      type: 'edge',
+      data: params.edge,
+      flowPos: null,
+    }
   }
 
   const isFlowNodeData = (value: MenuData): value is FlowNode => !!value && 'position' in value
 
-  const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
+  const clone = <T>(value: T): T => deepClone(value)
 
-  const waitForFrame = () => new Promise<void>((resolve) => {
-    if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
-      setTimeout(resolve, 0)
-      return
-    }
-
-    window.requestAnimationFrame(() => resolve())
-  })
-
-  const stabilizeViewportAfterNodeMutation = async (previousViewport: { x: number; y: number; zoom: number } | null, nodeIds?: string[]) => {
+  const stabilizeViewportAfterNodeMutation = async (
+    previousViewport: { x: number; y: number; zoom: number } | null,
+    nodeIds?: string[]
+  ) => {
     if (!previousViewport || !deps.setViewport) return
 
     await nextTick()
@@ -124,7 +193,7 @@ export function useEditorActions(deps: EditorActionsDeps) {
 
   const createUniqueNodeId = () => {
     let id = `N-${Date.now()}-${Math.floor(Math.random() * 1000)}`
-    while (nodes.value.some(node => node.id === id)) {
+    while (nodes.value.some((node) => node.id === id)) {
       id = `N-${Date.now()}-${Math.floor(Math.random() * 1000)}`
     }
     return id
@@ -139,7 +208,7 @@ export function useEditorActions(deps: EditorActionsDeps) {
     return {
       data,
       position: { ...node.position },
-      images: imageManager.getNodeImages(node.id)
+      images: imageManager.getNodeImages(node.id),
     }
   }
 
@@ -147,13 +216,11 @@ export function useEditorActions(deps: EditorActionsDeps) {
     if (!isFileLoaded.value) return 0
     const selectedNodes = getSelectedNodes.value
     const shouldCopySelection = targetNode
-      ? selectedNodes.some(node => node.id === targetNode.id)
+      ? selectedNodes.some((node) => node.id === targetNode.id)
       : selectedNodes.length > 0
-    const sourceNodes = shouldCopySelection
-      ? selectedNodes
-      : (targetNode ? [targetNode] : [])
+    const sourceNodes = shouldCopySelection ? selectedNodes : targetNode ? [targetNode] : []
     const normalized = sourceNodes
-      .filter(node => !node.data?._isMissing)
+      .filter((node) => !node.data?._isMissing)
       .map(toClipboardNode)
       .filter((node): node is ClipboardNode => !!node)
 
@@ -167,8 +234,8 @@ export function useEditorActions(deps: EditorActionsDeps) {
     if (!pastePosition) return []
     const previousViewport = deps.getViewport?.() || null
 
-    const minX = Math.min(...copiedNodes.value.map(node => node.position.x))
-    const minY = Math.min(...copiedNodes.value.map(node => node.position.y))
+    const minX = Math.min(...copiedNodes.value.map((node) => node.position.x))
+    const minY = Math.min(...copiedNodes.value.map((node) => node.position.y))
     const nextNodes: FlowNode[] = []
 
     copiedNodes.value.forEach((clipboardNode) => {
@@ -177,7 +244,7 @@ export function useEditorActions(deps: EditorActionsDeps) {
       const newNode = createNodeObject(nodeId, copyData)
       newNode.position = {
         x: pastePosition.x + (clipboardNode.position.x - minX),
-        y: pastePosition.y + (clipboardNode.position.y - minY)
+        y: pastePosition.y + (clipboardNode.position.y - minY),
       }
       nextNodes.push(newNode)
       if (clipboardNode.images.length > 0) {
@@ -186,12 +253,15 @@ export function useEditorActions(deps: EditorActionsDeps) {
     })
 
     nodes.value = [
-      ...nodes.value.map(node => ({ ...node, selected: false })),
-      ...nextNodes.map(node => ({ ...node, selected: true }))
+      ...nodes.value.map((node) => ({ ...node, selected: false })),
+      ...nextNodes.map((node) => ({ ...node, selected: true })),
     ]
     markDataChanged()
-    void stabilizeViewportAfterNodeMutation(previousViewport, nextNodes.map(node => node.id))
-    snapshotState()
+    void stabilizeViewportAfterNodeMutation(
+      previousViewport,
+      nextNodes.map((node) => node.id)
+    )
+    snapshotState?.()
     return nextNodes
   }
 
@@ -208,33 +278,49 @@ export function useEditorActions(deps: EditorActionsDeps) {
       case 'add': {
         const recognition = typeof payload === 'string' ? payload : undefined
         const newId = `N-${Date.now()}`
-        const newNode = createNodeObject(newId, { id: newId, recognition: recognition || 'DirectHit' })
+        const newNode = createNodeObject(newId, {
+          id: newId,
+          recognition: recognition || 'DirectHit',
+        })
         const previousViewport = deps.getViewport?.() || null
         if (menu.value.flowPos) newNode.position = { ...menu.value.flowPos }
         nodes.value = [...nodes.value, newNode]
         markDataChanged()
-        void stabilizeViewportAfterNodeMutation(previousViewport, nodes.value.map(node => node.id))
+        void stabilizeViewportAfterNodeMutation(
+          previousViewport,
+          nodes.value.map((node) => node.id)
+        )
         break
       }
       case 'add_anchor': {
         const anchorId = `A-${Date.now()}`
-        const anchorNode = createNodeObject(anchorId, { id: anchorId, recognition: 'Anchor', anchor: true })
+        const anchorNode = createNodeObject(anchorId, {
+          id: anchorId,
+          recognition: 'Anchor',
+          anchor: true,
+        })
         const previousViewport = deps.getViewport?.() || null
         if (menu.value.flowPos) anchorNode.position = { ...menu.value.flowPos }
         anchorNode.data = { ...(anchorNode.data || {}), type: 'Anchor', id: anchorId }
         nodes.value = [...nodes.value, anchorNode]
         markDataChanged()
-        void stabilizeViewportAfterNodeMutation(previousViewport, nodes.value.map(node => node.id))
+        void stabilizeViewportAfterNodeMutation(
+          previousViewport,
+          nodes.value.map((node) => node.id)
+        )
         break
       }
       case 'debug_this_node':
-        if (type === 'node' && isFlowNodeData(data) && data.id) onDebugNode(String(data.id), 'standard')
+        if (type === 'node' && isFlowNodeData(data) && data.id)
+          onDebugNode(String(data.id), 'standard')
         break
       case 'debug_this_node_reco':
-        if (type === 'node' && isFlowNodeData(data) && data.id) onDebugNode(String(data.id), 'recognition_only')
+        if (type === 'node' && isFlowNodeData(data) && data.id)
+          onDebugNode(String(data.id), 'recognition_only')
         break
       case 'debug_in_panel':
-        if (type === 'node' && isFlowNodeData(data) && data.id) onOpenDebugPanel({ nodeId: String(data.id) })
+        if (type === 'node' && isFlowNodeData(data) && data.id)
+          onOpenDebugPanel({ nodeId: String(data.id) })
         break
       case 'edit':
         break
@@ -248,9 +334,11 @@ export function useEditorActions(deps: EditorActionsDeps) {
         break
       case 'delete':
         if (type === 'node' && data?.id) {
-          const edgeIds = edges.value.filter(e => e.source === data.id || e.target === data.id).map(e => e.id)
+          const edgeIds = edges.value
+            .filter((e) => e.source === data.id || e.target === data.id)
+            .map((e) => e.id)
           removeEdges(edgeIds)
-          nodes.value = nodes.value.filter(n => n.id !== data.id)
+          nodes.value = nodes.value.filter((n) => n.id !== data.id)
           markDataChanged()
         } else if (type === 'edge' && data?.id) {
           removeEdges([data.id])
@@ -285,16 +373,28 @@ export function useEditorActions(deps: EditorActionsDeps) {
         applyLayout()
         break
       case 'changeAlgorithm':
-        if (isLayoutAlgorithm(payload)) { currentAlgorithm.value = payload; applyLayout({ algorithm: payload }) }
+        if (isLayoutAlgorithm(payload)) {
+          currentAlgorithm.value = payload
+          applyLayout({ algorithm: payload })
+        }
         break
       case 'changeDirection':
-        if (isLayoutDirection(payload)) { currentDirection.value = payload; applyLayout({ direction: payload }) }
+        if (isLayoutDirection(payload)) {
+          currentDirection.value = payload
+          applyLayout({ direction: payload })
+        }
         break
       case 'changeSpacing':
-        if (isSpacingKey(payload)) { currentSpacing.value = payload; applyLayout({ spacing: payload }) }
+        if (isSpacingKey(payload)) {
+          currentSpacing.value = payload
+          applyLayout({ spacing: payload })
+        }
         break
       case 'changeEdgeType':
-        if (isEdgeType(payload)) { currentEdgeType.value = payload; edges.value = edges.value.map(e => ({ ...e, type: payload })) }
+        if (isEdgeType(payload)) {
+          currentEdgeType.value = payload
+          edges.value = edges.value.map((e) => ({ ...e, type: payload }))
+        }
         break
       case 'reset':
         fitView({ padding: 0.2, duration: 500 })
@@ -318,7 +418,7 @@ export function useEditorActions(deps: EditorActionsDeps) {
         onIncrementCloseAllDetails()
         break
     }
-    snapshotState()
+    snapshotState?.()
   }
 
   return {
@@ -331,6 +431,6 @@ export function useEditorActions(deps: EditorActionsDeps) {
     handleMenuAction,
     copyNodesToClipboard,
     pasteNodesFromClipboard,
-    isFlowNodeData
+    isFlowNodeData,
   }
 }

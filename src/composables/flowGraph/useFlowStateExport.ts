@@ -1,5 +1,6 @@
 import { computed } from 'vue'
 import { perfLog, perfNow } from '@/utils/perfTrace'
+import { deepClone } from '@/utils/nodeHelpers'
 import type { Ref } from 'vue'
 import type { FlowNode, FlowEdge, FlowBusinessData } from '@/utils/flowTypes'
 import type { EdgeType } from '@/utils/flowOptions'
@@ -51,8 +52,8 @@ export const useFlowStateExport = (
   const exportState = (): FlowGraphExportState => {
     const start = perfNow()
     const state: FlowGraphExportState = {
-      nodes: JSON.parse(JSON.stringify(nodes.value)) as FlowNode[],
-      edges: JSON.parse(JSON.stringify(edges.value)) as FlowEdge[],
+      nodes: deepClone(nodes.value),
+      edges: deepClone(edges.value),
       currentEdgeType: currentEdgeType.value,
       currentSpacing: currentSpacing.value,
       currentAlgorithm: currentAlgorithm.value,
@@ -62,12 +63,12 @@ export const useFlowStateExport = (
       originalDataSnapshot: originalDataSnapshot.value,
       dataSnapshot: dataSnapshot.value,
       selectedNodeId: selectedNodeId.value,
-      imageState: imageManager.exportState()
+      imageState: imageManager.exportState(),
     }
     perfLog('useFlowGraph.exportState', start, {
       filename: currentFilename.value,
       nodeCount: state.nodes.length,
-      edgeCount: state.edges.length
+      edgeCount: state.edges.length,
     })
     return state
   }
@@ -75,8 +76,8 @@ export const useFlowStateExport = (
   const restoreState = (snapshot?: FlowGraphExportState) => {
     if (!snapshot) return
     const start = perfNow()
-    nodes.value = JSON.parse(JSON.stringify(snapshot.nodes || [])) as FlowNode[]
-    edges.value = JSON.parse(JSON.stringify(snapshot.edges || [])) as FlowEdge[]
+    nodes.value = deepClone(snapshot.nodes || [])
+    edges.value = deepClone(snapshot.edges || [])
     currentEdgeType.value = snapshot.currentEdgeType || 'smoothstep'
     currentSpacing.value = snapshot.currentSpacing || 'normal'
     currentAlgorithm.value = snapshot.currentAlgorithm || 'layered'
@@ -91,7 +92,7 @@ export const useFlowStateExport = (
     perfLog('useFlowGraph.restoreState', start, {
       filename: currentFilename.value,
       nodeCount: nodes.value.length,
-      edgeCount: edges.value.length
+      edgeCount: edges.value.length,
     })
   }
 
@@ -110,6 +111,6 @@ export const useFlowStateExport = (
     exportState,
     restoreState,
     markDataChanged,
-    clearDirty
+    clearDirty,
   }
 }

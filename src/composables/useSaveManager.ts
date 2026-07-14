@@ -1,6 +1,13 @@
 import { ref, computed } from 'vue'
 import { useAppConfigStore } from '@/stores/appConfig'
-import type { FlowBusinessData, SpacingKey, LayoutAlgorithm, LayoutDirection, UsedImageInfo, TemplateImage } from '@/utils/flowTypes'
+import type {
+  FlowBusinessData,
+  SpacingKey,
+  LayoutAlgorithm,
+  LayoutDirection,
+  UsedImageInfo,
+  TemplateImage,
+} from '@/utils/flowTypes'
 import type { EdgeType } from '@/utils/flowOptions'
 import { isEdgeType, isSpacingKey, isLayoutAlgorithm, isLayoutDirection } from '@/utils/typeGuards'
 import { resourceApi } from '@/services/api'
@@ -15,7 +22,6 @@ interface PendingSwitchConfig {
   source: string
   nodeId?: string
 }
-
 interface PendingSaveConfig {
   source: string
   filename: string
@@ -32,7 +38,10 @@ export interface SaveManagerDeps {
   exportState: () => FlowGraphState
   restoreState: (snapshot?: FlowGraphState) => void
   getNodesData: () => Record<string, FlowBusinessData>
-  getImageData: () => { delImages: { path: string }[]; tempImages: { path: string; base64: string; nodeId?: string }[] }
+  getImageData: () => {
+    delImages: { path: string }[]
+    tempImages: { path: string; base64: string; nodeId?: string }[]
+  }
   clearTempImageData: () => void
   clearDirty: () => void
   imageManager: {
@@ -44,10 +53,16 @@ export interface SaveManagerDeps {
 
 export function useSaveManager(deps: SaveManagerDeps) {
   const {
-    currentEdgeType, currentSpacing, currentAlgorithm, currentDirection,
+    currentEdgeType,
+    currentSpacing,
+    currentAlgorithm,
+    currentDirection,
     isDirty,
-    getNodesData, getImageData, clearTempImageData, clearDirty,
-    imageManager
+    getNodesData,
+    getImageData,
+    clearTempImageData,
+    clearDirty,
+    imageManager,
   } = deps
 
   const store = useAppConfigStore()
@@ -55,7 +70,9 @@ export function useSaveManager(deps: SaveManagerDeps) {
   const loadedFileVersion = ref<'V1' | 'V2' | ''>('')
   const isDeviceConnected = ref(false)
 
-  const isFormatDirty = computed(() => !!loadedFileVersion.value && store.canvas.pipelineVersion !== loadedFileVersion.value)
+  const isFormatDirty = computed(
+    () => !!loadedFileVersion.value && store.canvas.pipelineVersion !== loadedFileVersion.value
+  )
   const isDirtyCombined = computed(() => isDirty.value || isFormatDirty.value)
 
   const showSaveModal = ref(false)
@@ -76,10 +93,12 @@ export function useSaveManager(deps: SaveManagerDeps) {
   }
 
   const isTemplateImageArray = (value: unknown): value is TemplateImage[] =>
-    Array.isArray(value) && value.every(item => typeof item === 'object' && !!item && 'path' in item)
+    Array.isArray(value) &&
+    value.every((item) => typeof item === 'object' && !!item && 'path' in item)
 
   const isUsedImageInfoArray = (value: unknown): value is UsedImageInfo[] =>
-    Array.isArray(value) && value.every(item => typeof item === 'object' && !!item && 'path' in item && 'used_by' in item)
+    Array.isArray(value) &&
+    value.every((item) => typeof item === 'object' && !!item && 'path' in item && 'used_by' in item)
 
   const handleLoadImages = (imageDataMap: Record<string, unknown>, _basePath?: string) => {
     if (!imageDataMap) return
@@ -94,18 +113,24 @@ export function useSaveManager(deps: SaveManagerDeps) {
     }
   }
 
-  const saveNodesOnly = async (source: string, filename: string, onSnapshotState: () => void) => {
+  const saveNodesOnly = async (source: string, filename: string, onSnapshotState?: () => void) => {
     const rawNodes = getNodesData()
     const payload = store.canvas.pipelineVersion === 'V2' ? toPipelineV2Nodes(rawNodes) : rawNodes
     const res = await resourceApi.saveFileNodes(source, filename, payload)
     if (res.success) {
       clearDirty()
       loadedFileVersion.value = store.canvas.pipelineVersion
-      onSnapshotState()
+      onSnapshotState?.()
     }
   }
 
-  const processImagesAndSave = async (source: string, filename: string, deletePaths: string[], tempImages: { path: string; base64: string; nodeId?: string }[], onSnapshotState: () => void) => {
+  const processImagesAndSave = async (
+    source: string,
+    filename: string,
+    deletePaths: string[],
+    tempImages: { path: string; base64: string; nodeId?: string }[],
+    onSnapshotState?: () => void
+  ) => {
     try {
       if (deletePaths.length > 0 || tempImages.length > 0) {
         await resourceApi.processImages(source, deletePaths, tempImages)
@@ -118,7 +143,10 @@ export function useSaveManager(deps: SaveManagerDeps) {
     }
   }
 
-  const handleSaveNodes = async ({ source, filename }: { source: string; filename: string }, onSnapshotState: () => void) => {
+  const handleSaveNodes = async (
+    { source, filename }: { source: string; filename: string },
+    onSnapshotState?: () => void
+  ) => {
     try {
       const { delImages, tempImages } = getImageData()
       if (delImages.length > 0 || tempImages.length > 0) {
@@ -127,7 +155,10 @@ export function useSaveManager(deps: SaveManagerDeps) {
           const checkRes = await resourceApi.checkUnusedImages(source, filename, delImages)
           unusedImages.value = checkRes.unused_images || []
           usedImages.value = isUsedImageInfoArray(checkRes.used_images) ? checkRes.used_images : []
-          if (unusedImages.value.length > 0) { showDeleteImagesModal.value = true; return }
+          if (unusedImages.value.length > 0) {
+            showDeleteImagesModal.value = true
+            return
+          }
         }
         await processImagesAndSave(source, filename, [], tempImages, onSnapshotState)
       } else {
@@ -139,11 +170,17 @@ export function useSaveManager(deps: SaveManagerDeps) {
     }
   }
 
-  const handleConfirmDeleteImages = async (onSnapshotState: () => void) => {
+  const handleConfirmDeleteImages = async (onSnapshotState?: () => void) => {
     if (!pendingSaveConfig.value) return
     isProcessingImages.value = true
     try {
-      await processImagesAndSave(pendingSaveConfig.value.source, pendingSaveConfig.value.filename, unusedImages.value, getImageData().tempImages, onSnapshotState)
+      await processImagesAndSave(
+        pendingSaveConfig.value.source,
+        pendingSaveConfig.value.filename,
+        unusedImages.value,
+        getImageData().tempImages,
+        onSnapshotState
+      )
       showDeleteImagesModal.value = false
       pendingSaveConfig.value = null
     } catch (e: unknown) {
@@ -154,11 +191,17 @@ export function useSaveManager(deps: SaveManagerDeps) {
     }
   }
 
-  const handleSkipDeleteImages = async (onSnapshotState: () => void) => {
+  const handleSkipDeleteImages = async (onSnapshotState?: () => void) => {
     if (!pendingSaveConfig.value) return
     isProcessingImages.value = true
     try {
-      await processImagesAndSave(pendingSaveConfig.value.source, pendingSaveConfig.value.filename, [], getImageData().tempImages, onSnapshotState)
+      await processImagesAndSave(
+        pendingSaveConfig.value.source,
+        pendingSaveConfig.value.filename,
+        [],
+        getImageData().tempImages,
+        onSnapshotState
+      )
       showDeleteImagesModal.value = false
       pendingSaveConfig.value = null
     } catch (e: unknown) {
@@ -169,13 +212,25 @@ export function useSaveManager(deps: SaveManagerDeps) {
     }
   }
 
-  const handleCancelDeleteImages = () => { showDeleteImagesModal.value = false; pendingSaveConfig.value = null }
+  const handleCancelDeleteImages = () => {
+    showDeleteImagesModal.value = false
+    pendingSaveConfig.value = null
+  }
 
-  const handleUpdateCanvasConfig = ({
-    edgeType, spacing, layoutAlgorithm, layoutDirection
-  }: {
-    edgeType?: string; spacing?: string; layoutAlgorithm?: string; layoutDirection?: string
-  }, onSnapshotState: () => void) => {
+  const handleUpdateCanvasConfig = (
+    {
+      edgeType,
+      spacing,
+      layoutAlgorithm,
+      layoutDirection,
+    }: {
+      edgeType?: string
+      spacing?: string
+      layoutAlgorithm?: string
+      layoutDirection?: string
+    },
+    onSnapshotState?: () => void
+  ) => {
     const nextEdgeType = isEdgeType(edgeType) ? edgeType : undefined
     const nextSpacing = isSpacingKey(spacing) ? spacing : undefined
     const nextAlgorithm = isLayoutAlgorithm(layoutAlgorithm) ? layoutAlgorithm : undefined
@@ -184,23 +239,29 @@ export function useSaveManager(deps: SaveManagerDeps) {
       currentEdgeType.value = nextEdgeType
     }
     if (nextSpacing && nextSpacing !== currentSpacing.value) currentSpacing.value = nextSpacing
-    if (nextAlgorithm && nextAlgorithm !== currentAlgorithm.value) currentAlgorithm.value = nextAlgorithm
-    if (nextDirection && nextDirection !== currentDirection.value) currentDirection.value = nextDirection
-    onSnapshotState()
+    if (nextAlgorithm && nextAlgorithm !== currentAlgorithm.value)
+      currentAlgorithm.value = nextAlgorithm
+    if (nextDirection && nextDirection !== currentDirection.value)
+      currentDirection.value = nextDirection
+    onSnapshotState?.()
   }
 
-  const handleUpdatePipelineVersion = (val: 'V1' | 'V2', onSnapshotState: () => void) => {
+  const handleUpdatePipelineVersion = (val: 'V1' | 'V2', onSnapshotState?: () => void) => {
     store.updateCanvasSettings({ pipelineVersion: val })
-    onSnapshotState()
+    onSnapshotState?.()
   }
 
-  const handleDeviceConnected = (val: boolean, onSnapshotState: () => void) => {
+  const handleDeviceConnected = (val: boolean, onSnapshotState?: () => void) => {
     isDeviceConnected.value = val
-    onSnapshotState()
+    onSnapshotState?.()
   }
 
   const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-    if (isDirtyCombined.value) { e.preventDefault(); e.returnValue = ''; return '' }
+    if (isDirtyCombined.value) {
+      e.preventDefault()
+      e.returnValue = ''
+      return ''
+    }
     return undefined
   }
 
@@ -226,6 +287,6 @@ export function useSaveManager(deps: SaveManagerDeps) {
     handleUpdateCanvasConfig,
     handleUpdatePipelineVersion,
     handleDeviceConnected,
-    handleBeforeUnload
+    handleBeforeUnload,
   }
 }

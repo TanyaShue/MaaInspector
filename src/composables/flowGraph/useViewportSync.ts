@@ -1,18 +1,10 @@
 import { nextTick, type Ref } from 'vue'
+import { waitForFrame } from '@/utils/nodeHelpers'
 
 export interface ViewportSyncDeps {
   onlyRenderVisibleElements: Ref<boolean>
   updateNodeInternals?: (nodeIds?: string[]) => void
 }
-
-const waitForFrame = () => new Promise<void>((resolve) => {
-  if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
-    setTimeout(resolve, 0)
-    return
-  }
-
-  window.requestAnimationFrame(() => resolve())
-})
 
 export function useViewportSync(deps: ViewportSyncDeps) {
   let previousOnlyRenderVisibleElements = deps.onlyRenderVisibleElements.value
@@ -26,10 +18,7 @@ export function useViewportSync(deps: ViewportSyncDeps) {
   const refreshNodeInternals = async (nodeIds?: string[]) => {
     await nextTick()
     deps.updateNodeInternals?.(nodeIds)
-    await nextTick()
     await waitForFrame()
-    deps.updateNodeInternals?.(nodeIds)
-    await nextTick()
   }
 
   const end = async (nodeIds?: string[]) => {
@@ -52,6 +41,6 @@ export function useViewportSync(deps: ViewportSyncDeps) {
     begin,
     end,
     refreshNodeInternals,
-    withPausedVisibility
+    withPausedVisibility,
   }
 }

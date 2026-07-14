@@ -6,8 +6,9 @@ import { useEditorActions } from '@/composables/useEditorActions'
 import { useSaveManager } from '@/composables/useSaveManager'
 import { useDebugRunner } from '@/composables/useDebugRunner'
 import { resourceApi } from '@/services/api'
+import { useEditorModals } from '@/composables/useEditorModals'
 import { parseFileId } from '@/utils/fileId'
-import type { FlowEdge, FlowNode, LayoutAlgorithm, LoadNodesPayload, TemplateImage } from '@/utils/flowTypes'
+import type { FlowEdge, FlowNode, LoadNodesPayload, TemplateImage } from '@/utils/flowTypes'
 import { isPipelineV2Nodes, toPipelineV1Nodes } from '@/utils/pipelineTransform'
 import { perfLog, perfMark, perfNow } from '@/utils/perfTrace'
 import type { FlowEditorPort } from './types'
@@ -23,16 +24,37 @@ interface UseFlowEditorVmOptions {
 
 export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
   const {
-    nodes, edges, nodeTypes, currentEdgeType, currentSpacing, currentAlgorithm, currentDirection, isDirty, currentFilename, currentSource, onlyRenderVisibleElements,
+    nodes,
+    edges,
+    nodeTypes,
+    currentEdgeType,
+    currentSpacing,
+    currentAlgorithm,
+    currentDirection,
+    isDirty,
+    currentFilename,
+    currentSource,
+    onlyRenderVisibleElements,
     onValidateConnection,
-    handleConnect, handleEdgesChange, handleNodeUpdate, loadNodes, createNodeObject, applyLayout,
-    getNodesData, getImageData, clearTempImageData, clearDirty, markDataChanged,
-    setNodeStatus, selectNodeById,
-    setEdgeJumpBack, layoutChainFromNode,
+    handleConnect,
+    handleEdgesChange,
+    handleNodeUpdate,
+    loadNodes,
+    createNodeObject,
+    applyLayout,
+    getNodesData,
+    getImageData,
+    clearTempImageData,
+    clearDirty,
+    markDataChanged,
+    setNodeStatus,
+    selectNodeById,
+    setEdgeJumpBack,
+    layoutChainFromNode,
     imageManager,
     exportState,
     restoreState,
-    refreshNodeInternals
+    refreshNodeInternals,
   } = useFlowGraph()
   const nodeTypesObject = nodeTypes as unknown as NodeTypesObject
   const {
@@ -44,7 +66,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     getSelectedEdges,
     getViewport,
     setViewport,
-    updateNodeInternals
+    updateNodeInternals,
   } = useVueFlow()
   const isFileLoaded = computed<boolean>(() => !!currentFilename.value)
 
@@ -52,11 +74,8 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
   const isBulkLoading = ref(false)
   const pendingFocusNodeId = ref<string | null>(null)
   const lastPointerPosition = ref<{ x: number; y: number } | null>(null)
-  const showClearCanvasModal = ref(false)
-  const subCanvas = ref<{ visible: boolean; nodeId: string; algorithm?: LayoutAlgorithm }>({
-    visible: false,
-    nodeId: ''
-  })
+  const { showClearCanvasModal, subCanvas, openClearCanvasModal, openSubCanvas, closeSubCanvas } =
+    useEditorModals()
 
   provide('closeAllDetailsSignal', closeAllDetailsSignal)
   provide('currentFilename', currentFilename)
@@ -64,14 +83,24 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
   provide('imageManager', imageManager)
 
   const saveManager = useSaveManager({
-    currentEdgeType, currentSpacing, currentAlgorithm, currentDirection,
-    currentFilename, currentSource, isDirty,
-    exportState, restoreState, getNodesData, getImageData, clearTempImageData, clearDirty,
+    currentEdgeType,
+    currentSpacing,
+    currentAlgorithm,
+    currentDirection,
+    currentFilename,
+    currentSource,
+    isDirty,
+    exportState,
+    restoreState,
+    getNodesData,
+    getImageData,
+    clearTempImageData,
+    clearDirty,
     imageManager: imageManager as unknown as {
       setNodeImages: (nodeId: string, images: TemplateImage[]) => void
       replaceLoadedImages: (imageMap: Record<string, TemplateImage[] | unknown>) => void
     },
-    tabId: options.tabId
+    tabId: options.tabId,
   })
 
   provide('pipelineVersion', saveManager.loadedFileVersion)
@@ -82,40 +111,71 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     currentSource,
     currentFilename,
     onSaveNodes: saveManager.handleSaveNodes,
-    onSnapshotState: () => {},
-    setNodeStatus
+
+    setNodeStatus,
   })
 
   const editorActions = useEditorActions({
-    nodes, edges, currentEdgeType, currentSpacing, currentAlgorithm, currentDirection,
-    isFileLoaded, createNodeObject, applyLayout, removeEdges, setEdgeJumpBack,
-    layoutChainFromNode, markDataChanged, fitView, screenToFlowCoordinate,
-    getViewport, setViewport, updateNodeInternals,
+    nodes,
+    edges,
+    currentEdgeType,
+    currentSpacing,
+    currentAlgorithm,
+    currentDirection,
+    isFileLoaded,
+    createNodeObject,
+    applyLayout,
+    removeEdges,
+    setEdgeJumpBack,
+    layoutChainFromNode,
+    markDataChanged,
+    fitView,
+    screenToFlowCoordinate,
+    getViewport,
+    setViewport,
+    updateNodeInternals,
     getSelectedNodes,
     imageManager,
-    snapshotState: () => {},
-    requestClearCanvas: () => { showClearCanvasModal.value = true },
+    requestClearCanvas: openClearCanvasModal,
     onDebugNode: debugRunner.handleDebugNode,
     onOpenDebugPanel: (payload) => options.emit('open-debug-panel', payload),
-    onOpenSubCanvas: (payload) => {
-      subCanvas.value = {
-        visible: true,
-        nodeId: payload.nodeId,
-        algorithm: payload.algorithm
-      }
-    },
+    onOpenSubCanvas: (payload) => openSubCanvas(payload.nodeId, payload.algorithm),
     onCloseDebugPanel: () => options.emit('close-debug-panel'),
-    onIncrementCloseAllDetails: () => { closeAllDetailsSignal.value++ }
+    onIncrementCloseAllDetails: () => {
+      closeAllDetailsSignal.value++
+    },
   })
 
-  const { menu, searchVisible, closeMenu, onPaneContextMenu, onNodeContextMenu, onEdgeContextMenu, handleMenuAction, copyNodesToClipboard, pasteNodesFromClipboard } = editorActions
   const {
-    loadedFileVersion, isDirtyCombined,
-    showSaveModal, isSavingModal, pendingSwitchConfig, showDeleteImagesModal,
-    isProcessingImages, unusedImages, usedImages,
+    menu,
+    searchVisible,
+    closeMenu,
+    onPaneContextMenu,
+    onNodeContextMenu,
+    onEdgeContextMenu,
+    handleMenuAction,
+    copyNodesToClipboard,
+    pasteNodesFromClipboard,
+  } = editorActions
+  const {
+    loadedFileVersion,
+    isDirtyCombined,
+    showSaveModal,
+    isSavingModal,
+    pendingSwitchConfig,
+    showDeleteImagesModal,
+    isProcessingImages,
+    unusedImages,
+    usedImages,
     handleLoadImages,
-    handleSaveNodes, handleConfirmDeleteImages, handleSkipDeleteImages, handleCancelDeleteImages,
-    handleUpdateCanvasConfig, handleUpdatePipelineVersion, handleDeviceConnected, handleBeforeUnload
+    handleSaveNodes,
+    handleConfirmDeleteImages,
+    handleSkipDeleteImages,
+    handleCancelDeleteImages,
+    handleUpdateCanvasConfig,
+    handleUpdatePipelineVersion,
+    handleDeviceConnected,
+    handleBeforeUnload,
   } = saveManager
   const { handleDebugNodeFromPanel, handleUpdateNodeStatus } = debugRunner
 
@@ -132,7 +192,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
   }
 
   const refreshCurrentNodeInternals = async () => {
-    await refreshNodeInternals(nodes.value.map(node => node.id))
+    await refreshNodeInternals(nodes.value.map((node) => node.id))
   }
 
   const executeSwitch = async (config: { filename: string; source: string; nodeId?: string }) => {
@@ -163,7 +223,10 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
   const handleSaveAndSwitch = async () => {
     isSavingModal.value = true
     try {
-      await handleSaveNodes({ source: currentSource.value, filename: currentFilename.value }, () => {})
+      await handleSaveNodes(
+        { source: currentSource.value, filename: currentFilename.value },
+        () => {}
+      )
       showSaveModal.value = false
       if (pendingSwitchConfig.value) {
         await executeSwitch(pendingSwitchConfig.value)
@@ -183,10 +246,12 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
 
   const isEditableTarget = (target: EventTarget | null): boolean => {
     if (!(target instanceof HTMLElement)) return false
-    return target.tagName === 'INPUT' ||
+    return (
+      target.tagName === 'INPUT' ||
       target.tagName === 'TEXTAREA' ||
       target.tagName === 'SELECT' ||
       target.isContentEditable
+    )
   }
 
   const handlePointerMove = (e: PointerEvent) => {
@@ -241,11 +306,16 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
         const selectedEdges = getSelectedEdges.value
         if (selectedNodes.length > 0) {
           selectedNodes.forEach((node: FlowNode) => {
-            const edgeIds = edges.value.filter((edge: FlowEdge) => edge.source === node.id || edge.target === node.id).map((edge: FlowEdge) => edge.id)
+            const edgeIds = edges.value
+              .filter((edge: FlowEdge) => edge.source === node.id || edge.target === node.id)
+              .map((edge: FlowEdge) => edge.id)
             removeEdges(edgeIds)
             imageManager.removeNodeState(node.id)
           })
-          nodes.value = nodes.value.filter((node: FlowNode) => !selectedNodes.find((selectedNode: FlowNode) => selectedNode.id === node.id))
+          nodes.value = nodes.value.filter(
+            (node: FlowNode) =>
+              !selectedNodes.find((selectedNode: FlowNode) => selectedNode.id === node.id)
+          )
           markDataChanged()
         } else if (selectedEdges.length > 0) {
           removeEdges(selectedEdges.map((edge: FlowEdge) => edge.id))
@@ -288,14 +358,10 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
 
   const handleLocateNode = (nodeId: string) => {
     selectNodeById(nodeId)
-    setTimeout(() => fitView({ nodes: [nodeId], padding: 0.5, maxZoom: 1.5, minZoom: 0.8, duration: 600 }), 50)
-  }
-
-  const closeSubCanvas = () => {
-    subCanvas.value = {
-      visible: false,
-      nodeId: ''
-    }
+    setTimeout(
+      () => fitView({ nodes: [nodeId], padding: 0.5, maxZoom: 1.5, minZoom: 0.8, duration: 600 }),
+      50
+    )
   }
 
   const handleCancelClearCanvas = () => {
@@ -314,7 +380,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     perfMark('FlowEditor.handleLoadNodesWrapper.start', {
       tabId: options.tabId,
       filename: payload.filename,
-      nodeCount: Object.keys(payload.nodes).length
+      nodeCount: Object.keys(payload.nodes).length,
     })
     isBulkLoading.value = true
     try {
@@ -331,7 +397,10 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     } finally {
       isBulkLoading.value = false
     }
-    perfLog('FlowEditor.handleLoadNodesWrapper.total', start, { tabId: options.tabId, filename: payload.filename })
+    perfLog('FlowEditor.handleLoadNodesWrapper.total', start, {
+      tabId: options.tabId,
+      filename: payload.filename,
+    })
   }
 
   const loadResourceFile = async (fileId: string) => {
@@ -353,7 +422,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
           filename,
           source,
           nodes: processedNodes,
-          fileVersion
+          fileVersion,
         })
 
         const imgRes = await resourceApi.getTemplateImages(source, filename)
@@ -375,19 +444,21 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     getEditorStatus: () => ({
       isDirty: isDirtyCombined.value,
       nodeCount: nodes.value.length,
-      edgeCount: edges.value.length
+      edgeCount: edges.value.length,
     }),
     loadResourceFile,
     handleLoadNodesWrapper,
     handleLoadImages,
-    handleSaveNodes: (config: { source: string; filename: string }) => handleSaveNodes(config, () => {}),
+    handleSaveNodes: (config: { source: string; filename: string }) =>
+      handleSaveNodes(config, () => {}),
     handleDeviceConnected: (val: boolean) => handleDeviceConnected(val, () => {}),
-    handleUpdateCanvasConfig: (config: Parameters<typeof handleUpdateCanvasConfig>[0]) => handleUpdateCanvasConfig(config, () => {}),
+    handleUpdateCanvasConfig: (config: Parameters<typeof handleUpdateCanvasConfig>[0]) =>
+      handleUpdateCanvasConfig(config, () => {}),
     handleUpdatePipelineVersion: (val: 'V1' | 'V2') => handleUpdatePipelineVersion(val, () => {}),
     handleApplyLayout: () => applyLayout(),
     handleLocateNode,
     handleDebugNodeFromPanel,
-    handleUpdateNodeStatus
+    handleUpdateNodeStatus,
   }
 
   return {
@@ -412,7 +483,8 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     markDataChanged,
     imageManager,
     handleDebugNode: debugRunner.handleDebugNode,
-    handleOpenDebugPanel: (payload?: { nodeId?: string }) => options.emit('open-debug-panel', payload),
+    handleOpenDebugPanel: (payload?: { nodeId?: string }) =>
+      options.emit('open-debug-panel', payload),
     handleNodesChange,
     menu,
     searchVisible,
@@ -440,6 +512,6 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     handleSkipDeleteImages,
     subCanvas,
     closeSubCanvas,
-    editorPort
+    editorPort,
   }
 }
