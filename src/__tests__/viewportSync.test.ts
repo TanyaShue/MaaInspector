@@ -16,7 +16,7 @@ describe('useViewportSync', () => {
     expect(updateNodeInternals).toHaveBeenCalledWith(['a', 'b'])
   })
 
-  it('temporarily disables visible-only rendering and restores it after the task', async () => {
+  it('keeps visible-only rendering enabled while synchronizing a layout task', async () => {
     const onlyRenderVisibleElements = ref(true)
     const updateNodeInternals = vi.fn().mockResolvedValue(undefined)
     const sync = useViewportSync({
@@ -24,8 +24,8 @@ describe('useViewportSync', () => {
       updateNodeInternals,
     })
 
-    await sync.withPausedVisibility(async () => {
-      expect(onlyRenderVisibleElements.value).toBe(false)
+    await sync.withPreservedVisibility(async () => {
+      expect(onlyRenderVisibleElements.value).toBe(true)
       await nextTick()
     }, ['a', 'b'])
 

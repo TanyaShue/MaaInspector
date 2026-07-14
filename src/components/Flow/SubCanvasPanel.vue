@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
-import { SelectionMode, VueFlow, useNodesInitialized, useVueFlow, type EdgeMouseEvent, type NodeMouseEvent, type NodeTypesObject } from '@vue-flow/core'
+import { SelectionMode, VueFlow, useNodesInitialized, useVueFlow, type EdgeMouseEvent, type NodeChange, type NodeDragEvent, type NodeMouseEvent, type NodeTypesObject, type XYPosition } from '@vue-flow/core'
 import { Maximize2, Move, RefreshCw, X } from 'lucide-vue-next'
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import ContextMenu from './ContextMenu.vue'
@@ -16,8 +16,16 @@ import {
   LAYOUT_DIRECTION_OPTIONS,
   SPACING_TYPE_OPTIONS
 } from '@/utils/flowOptions'
-import { collectReachableNodeIds, filterSubgraphEdges, resolveSubgraphNodeChanges } from '@/utils/flowSubgraph'
+import {
+  collectReachableNodeIds,
+  consumeSubgraphPositionChanges,
+  filterSubgraphEdges,
+  resolveSubgraphNodeChanges,
+  stageSubgraphPositionChanges,
+  type SubgraphNodePositionCommit
+} from '@/utils/flowSubgraph'
 import type { EdgeType } from '@/utils/flowOptions'
+import { useNodeDetailsController } from '@/composables/useNodeDetailsController'
 import type {
   FlowBusinessData,
   FlowConnection,
@@ -64,10 +72,13 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'root-renamed', nodeId: string): void
+  (e: 'replace-nodes', nodes: FlowNode[]): void
+  (e: 'replace-edges', edges: FlowEdge[]): void
+  (e: 'commit-node-positions', commits: SubgraphNodePositionCommit[]): void
 }>()
 
 const flowId = `sub-canvas-${Math.random().toString(36).slice(2)}`
-const closeAllDetailsSignal = ref(0)
+const nodeDetailsController = useNodeDetailsController()
 const sessionNodeIds = ref<Set<string>>(new Set())
 const localNodeState = ref<Record<string, Partial<FlowNode>>>({})
 const activeAlgorithm = ref<LayoutAlgorithm>(props.initialAlgorithm || props.currentAlgorithm)
@@ -76,6 +87,7 @@ const activeDirection = ref<LayoutDirection>(props.currentDirection)
 const activeEdgeType = ref<EdgeType>(props.currentEdgeType)
 const onlyRenderVisibleElements = ref(true)
 const pendingInitialLayout = ref(false)
+const pendingNodePositions = new Map<string, XYPosition>()
 
 const {
   fitView,
@@ -130,7 +142,7 @@ const removeMainNodes = (nodeIds: Set<string>) => {
     .filter(edge => nodeIds.has(edge.source) || nodeIds.has(edge.target))
     .map(edge => edge.id)
   removeMainEdges(edgeIds)
-  props.nodes.splice(0, props.nodes.length, ...props.nodes.filter(node => !nodeIds.has(node.id)))
+  emit('replace-nodes', props.nodes.filter(node => !nodeIds.has(node.id)))
   nodeIds.forEach(id => props.imageManager.removeNodeState?.(id))
   sessionNodeIds.value = new Set([...sessionNodeIds.value].filter(id => !nodeIds.has(id)))
 
@@ -142,7 +154,7 @@ const removeMainNodes = (nodeIds: Set<string>) => {
 
 const refreshSubCanvasRenderWindow = async (nodeIds: string[]) => {
   const previousViewport = getViewport()
-  await viewportSync.withPausedVisibility(async () => {
+  await viewportSync.withPreservedVisibility(async () => {
     await nextTick()
   }, nodeIds)
   await setViewport(previousViewport, { duration: 0 })
@@ -175,7 +187,7 @@ const subNodes = computed<FlowNode[]>({
     if (addedNodes.length > 0) {
       sessionNodeIds.value = new Set([...sessionNodeIds.value, ...addedNodes.map(node => node.id)])
       const mergedNodes = [...props.nodes, ...addedNodes]
-      props.nodes.splice(0, props.nodes.length, ...mergedNodes)
+      emit('replace-nodes', mergedNodes)
       props.markDataChanged()
     }
     localNodeState.value = nextLocalState
@@ -202,7 +214,7 @@ const subEdges = computed<FlowEdge[]>({
       ...hiddenEdges,
       ...nextEdges.filter(edge => visibleIds.has(edge.source) && visibleIds.has(edge.target))
     ]
-    props.edges.splice(0, props.edges.length, ...merged)
+    emit('replace-edges', merged)
   }
 })
 
@@ -220,7 +232,6 @@ const handleNodeUpdate = (payload: NodeUpdatePayload) => {
   refreshVisibleNodeIds()
 }
 
-provide('closeAllDetailsSignal', closeAllDetailsSignal)
 provide('currentFilename', computed(() => props.currentFilename))
 provide('currentDirection', activeDirection)
 provide('imageManager', props.imageManager)
@@ -232,7 +243,7 @@ const layoutVisibleChain = async (
 ) => {
   const previousViewport = options.preserveViewport ? getViewport() : null
   activeAlgorithm.value = algorithm
-  await viewportSync.withPausedVisibility(async () => {
+  await viewportSync.withPreservedVisibility(async () => {
     const layouted = await elkLayout(subNodes.value, subEdges.value, {
       algorithm,
       direction: activeDirection.value,
@@ -269,7 +280,7 @@ const handleDirectionChange = (value: PropertyKey) => {
 const handleEdgeTypeChange = (value: PropertyKey) => {
   activeEdgeType.value = value as EdgeType
   const visibleIds = visibleNodeIds.value
-  props.edges.splice(0, props.edges.length, ...props.edges.map(edge => (
+  emit('replace-edges', props.edges.map(edge => (
     visibleIds.has(edge.source) && visibleIds.has(edge.target)
       ? { ...edge, type: activeEdgeType.value }
       : edge
@@ -317,7 +328,7 @@ const editorActions = useEditorActions({
   onDebugNode: props.handleDebugNode,
   onOpenDebugPanel: props.handleOpenDebugPanel,
   onCloseDebugPanel: () => {},
-  onIncrementCloseAllDetails: () => { closeAllDetailsSignal.value++ }
+  onIncrementCloseAllDetails: () => { nodeDetailsController?.close() }
 })
 
 const {
@@ -343,7 +354,30 @@ const handleEdgesChange = (changes: FlowEdgeChange[]) => {
   }
 }
 
-const handleNodesChange = () => {}
+const handleNodesChange = (changes: NodeChange[]) => {
+  stageSubgraphPositionChanges(changes, pendingNodePositions)
+}
+
+const handleNodeDragStop = (event: NodeDragEvent) => {
+  const draggedNodes = event.nodes.length > 0 ? event.nodes : [event.node]
+  draggedNodes.forEach(node => {
+    pendingNodePositions.set(node.id, { ...node.position })
+  })
+
+  const commits = consumeSubgraphPositionChanges(pendingNodePositions)
+  if (commits.length === 0) return
+
+  const nextLocalState = { ...localNodeState.value }
+  commits.forEach(({ id, position }) => {
+    nextLocalState[id] = {
+      ...(nextLocalState[id] || {}),
+      position: { ...position }
+    }
+  })
+  localNodeState.value = nextLocalState
+  emit('commit-node-positions', commits)
+  props.markDataChanged()
+}
 
 const isEditableTarget = (target: EventTarget | null): boolean => {
   if (!(target instanceof HTMLElement)) return false
@@ -384,13 +418,17 @@ const handleKeyDown = (e: KeyboardEvent) => {
 }
 
 watch(() => props.visible, async (visible) => {
-  if (!visible) return
+  if (!visible) {
+    nodeDetailsController?.close()
+    return
+  }
   activeAlgorithm.value = props.initialAlgorithm || props.currentAlgorithm
   activeSpacing.value = props.currentSpacing
   activeDirection.value = props.currentDirection
   activeEdgeType.value = props.currentEdgeType
   sessionNodeIds.value = new Set()
   localNodeState.value = {}
+  pendingNodePositions.clear()
   refreshVisibleNodeIds()
   panel.loadLayout()
   pendingInitialLayout.value = true
@@ -538,7 +576,7 @@ onBeforeUnmount(() => {
         <div class="absolute inset-x-0 bottom-0 top-11 bg-slate-50">
           <VueFlow
             :id="flowId"
-            v-model:nodes="subNodes"
+            :nodes="subNodes"
             v-model:edges="subEdges"
             :node-types="nodeTypesObject"
             :default-zoom="1"
@@ -557,7 +595,7 @@ onBeforeUnmount(() => {
             @connect="handleConnect"
             @edges-change="handleEdgesChange"
             @nodes-change="handleNodesChange"
-            @node-drag-stop="handleNodesChange"
+            @node-drag-stop="handleNodeDragStop"
             @pane-context-menu="onPaneContextMenu"
             @node-context-menu="(params: NodeMouseEvent) => onNodeContextMenu(params)"
             @edge-context-menu="(params: EdgeMouseEvent) => onEdgeContextMenu(params)"

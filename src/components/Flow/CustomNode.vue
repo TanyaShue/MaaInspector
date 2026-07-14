@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, inject, watch, type Ref } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
-import { Anchor as AnchorIcon } from 'lucide-vue-next'
-import NodeDetails from './NodeDetails.vue'
+import { Anchor as AnchorIcon, SlidersHorizontal } from 'lucide-vue-next'
 import LazyImage from '@/components/Common/LazyImage.vue'
 import { NODE_CONFIG_MAP, ACTION_CONFIG_MAP, STATUS_ICONS } from '@/utils/node-config'
 import { normalizeTemplateList } from '@/utils/templateUtils'
 import type { useImageManager } from '@/composables/useImageManager'
+import { useNodeDetailsController } from '@/composables/useNodeDetailsController'
 import type { FlowBusinessData, FlowNodeMeta, TemplateImage, NodeUpdatePayload, LayoutDirection } from '@/utils/flowTypes'
 
 const props = defineProps<{
@@ -16,16 +16,13 @@ const props = defineProps<{
 }>()
 
 const updateNode = inject<(payload: NodeUpdatePayload) => void>('updateNode', () => console.warn('updateNode not provided'))
-const closeAllDetailsSignal = inject<Ref<number>>('closeAllDetailsSignal', ref(0))
-const currentFilename = inject<Ref<string>>('currentFilename', ref(''))
 const currentDirection = inject<Ref<LayoutDirection>>('currentDirection', ref('TB'))
-const pipelineVersion = inject<Ref<'V1' | 'V2'>>('pipelineVersion', ref('V1'))
 
 const imageManager = inject<ReturnType<typeof useImageManager>>('imageManager')!
+const nodeDetailsController = useNodeDetailsController()
 
 // 获取 UI 配置
 const config = computed(() => NODE_CONFIG_MAP[props.data.type] || NODE_CONFIG_MAP['DirectHit'])
-const availableTypes = Object.keys(NODE_CONFIG_MAP).filter(t => t !== 'Unknown')
 
 const businessData = computed<FlowBusinessData>(() => (props.data.data || {}) as FlowBusinessData)
 const displayId = computed(() => props.data._originalId || businessData.value.id || props.id)
@@ -47,22 +44,14 @@ const currentActionConfig = computed(() => {
   return ACTION_CONFIG_MAP[actionKey] || ACTION_CONFIG_MAP['Custom']
 })
 
-const showDetails = ref(false)
 const toggleDetails = () => {
   if (isUnknown.value || isAnchorType.value) return
-  showDetails.value = !showDetails.value
+  nodeDetailsController?.toggle({ nodeId: props.id, updateNode })
 }
 const getFileName = (path?: string) => (!path || false) ? '未选择图片' : (path.split('/').pop() || '未选择图片')
 
-watch(closeAllDetailsSignal, () => showDetails.value = false)
-
 const handleUpdateId = ({ oldId, newId }: { oldId?: string; newId: string }) =>
   updateNode({ oldId: oldId ?? props.id, newId, newType: props.data.type })
-const handleUpdateType = (newType: string) => updateNode({ oldId: props.id, newId: props.id, newType })
-const handleUpdateData = (newData: FlowBusinessData) => updateNode({
-  oldId: props.id, newId: props.id, newType: newData.recognition || props.data.type, newData
-})
-
 const applyIdChange = () => {
   const newId = editingId.value?.trim()
   if (!newId || newId === displayId.value) return
@@ -140,21 +129,6 @@ const contentHeightClass = computed(() => {
     :class="[selected ? 'ring-2 ring-offset-2 ring-blue-400 border-blue-500' : 'border-slate-100 hover:border-slate-300', data._isMissing ? 'opacity-80' : '']"
     @dblclick.stop="toggleDetails"
   >
-    <NodeDetails
-      :visible="showDetails"
-      :node-id="id"
-      :node-data="data"
-      :node-type="data.type"
-      :available-types="availableTypes"
-      :type-config="NODE_CONFIG_MAP"
-      :current-filename="currentFilename"
-      :pipeline-version="pipelineVersion"
-      @close="showDetails = false"
-      @update-id="handleUpdateId"
-      @update-type="handleUpdateType"
-      @update-data="handleUpdateData"
-    />
-
     <Handle
       id="in"
       type="target"
@@ -196,16 +170,27 @@ const contentHeightClass = computed(() => {
           </div>
         </div>
       </div>
-      <div
-        v-if="statusConfig"
-        class="flex items-center p-1 -mr-1 rounded-md"
-      >
-        <component
-          :is="statusConfig.icon"
-          v-if="statusConfig.icon"
-          :size="18"
-          :class="[statusConfig.color, statusConfig.spin ? 'animate-spin' : '']"
-        />
+      <div class="flex items-center gap-1 -mr-1">
+        <div
+          v-if="statusConfig"
+          class="flex items-center p-1 rounded-md"
+        >
+          <component
+            :is="statusConfig.icon"
+            v-if="statusConfig.icon"
+            :size="18"
+            :class="[statusConfig.color, statusConfig.spin ? 'animate-spin' : '']"
+          />
+        </div>
+        <button
+          v-if="!isUnknown && !isAnchorType"
+          type="button"
+          title="打开节点属性"
+          class="nodrag flex items-center justify-center rounded-md p-1 text-slate-400 transition-colors hover:bg-white/70 hover:text-indigo-600"
+          @click.stop="toggleDetails"
+        >
+          <SlidersHorizontal :size="16" />
+        </button>
       </div>
     </div>
 

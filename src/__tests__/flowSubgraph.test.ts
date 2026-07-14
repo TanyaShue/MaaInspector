@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { collectReachableNodeIds, filterSubgraphEdges, resolveSubgraphNodeChanges } from '@/utils/flowSubgraph'
+import {
+  applySubgraphPositionCommits,
+  collectReachableNodeIds,
+  consumeSubgraphPositionChanges,
+  filterSubgraphEdges,
+  resolveSubgraphNodeChanges,
+  stageSubgraphPositionChanges
+} from '@/utils/flowSubgraph'
 import type { FlowEdge, FlowNode } from '@/utils/flowTypes'
 
 const node = (id: string): FlowNode => ({
@@ -99,5 +106,67 @@ describe('flowSubgraph', () => {
     expect(Array.from(result.removedVisibleIds)).toEqual(['child'])
     expect(result.nextLocalState.root?.position).toEqual({ x: 12, y: 16 })
     expect(result.nextLocalState.child).toBeUndefined()
+  })
+
+  it('stages only changed positions without reading or rebuilding the full node array', () => {
+    const pending = new Map([['untouched', { x: 1, y: 2 }]])
+    const position = { x: 24, y: 48 }
+
+    const stagedCount = stageSubgraphPositionChanges([
+      {
+        id: 'dragged',
+        type: 'position',
+        position,
+        from: { x: 0, y: 0 },
+        dragging: true
+      },
+      { id: 'selected', type: 'select', selected: true }
+    ], pending)
+
+    expect(stagedCount).toBe(1)
+    expect(pending.size).toBe(2)
+    expect(pending.get('untouched')).toEqual({ x: 1, y: 2 })
+    expect(pending.get('dragged')).toEqual(position)
+    expect(pending.get('dragged')).not.toBe(position)
+  })
+
+  it('coalesces repeated drag frames and clears pending positions after commit', () => {
+    const pending = new Map<string, { x: number; y: number }>()
+
+    stageSubgraphPositionChanges([{
+      id: 'dragged',
+      type: 'position',
+      position: { x: 10, y: 20 },
+      from: { x: 0, y: 0 },
+      dragging: true
+    }], pending)
+    stageSubgraphPositionChanges([{
+      id: 'dragged',
+      type: 'position',
+      position: { x: 30, y: 40 },
+      from: { x: 10, y: 20 },
+      dragging: false
+    }], pending)
+
+    expect(consumeSubgraphPositionChanges(pending)).toEqual([
+      { id: 'dragged', position: { x: 30, y: 40 } }
+    ])
+    expect(pending.size).toBe(0)
+  })
+
+  it('commits final positions without replacing the parent node array or untouched nodes', () => {
+    const nodes = [positionedNode('dragged', 0, 0), positionedNode('untouched', 5, 6)]
+    const originalArray = nodes
+    const untouchedNode = nodes[1]
+
+    expect(applySubgraphPositionCommits(nodes, [
+      { id: 'dragged', position: { x: 30, y: 40 } },
+      { id: 'missing', position: { x: 99, y: 99 } }
+    ])).toBe(1)
+
+    expect(nodes).toBe(originalArray)
+    expect(nodes[0].position).toEqual({ x: 30, y: 40 })
+    expect(nodes[1]).toBe(untouchedNode)
+    expect(nodes[1].position).toEqual({ x: 5, y: 6 })
   })
 })

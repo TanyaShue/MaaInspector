@@ -23,6 +23,7 @@ const props = defineProps<{
   typeConfig?: Record<string, unknown>
   currentFilename?: string
   pipelineVersion?: 'V1' | 'V2'
+  placement?: 'node' | 'canvas'
 }>()
 
 const emit = defineEmits<{
@@ -184,7 +185,8 @@ watch(() => props.visible, (val) => {
   >
     <div
       v-if="visible"
-      class="absolute left-[105%] top-0 w-[440px] bg-white rounded-2xl shadow-2xl border border-slate-200/80 z-50 nodrag cursor-default flex flex-col overflow-hidden max-h-[70vh] h-auto"
+      class="w-[440px] bg-white rounded-2xl shadow-2xl border border-slate-200/80 z-[80] nodrag cursor-default flex flex-col overflow-hidden max-h-[70vh] h-auto"
+      :class="placement === 'canvas' ? 'fixed right-4 top-4' : 'absolute left-[105%] top-0'"
       @dblclick.stop
       @wheel.stop
     >

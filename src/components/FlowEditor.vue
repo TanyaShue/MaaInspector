@@ -6,7 +6,10 @@ import { Controls } from '@vue-flow/controls'
 import { FolderSearch } from 'lucide-vue-next'
 import ContextMenu from './Flow/ContextMenu.vue'
 import SubCanvasPanel from './Flow/SubCanvasPanel.vue'
+import NodeDetailsHost from './Flow/NodeDetailsHost.vue'
 import { useFlowEditorVm } from '@/composables/viewModels/useFlowEditorVm'
+import { applySubgraphPositionCommits, type SubgraphNodePositionCommit } from '@/utils/flowSubgraph'
+import type { FlowEdge, FlowNode } from '@/utils/flowTypes'
 
 const NodeSearch = defineAsyncComponent(() => import('./Flow/NodeSearch.vue'))
 const SaveConfirmModal = defineAsyncComponent(() => import('./Flow/Modals/SaveConfirmModal.vue'))
@@ -83,6 +86,18 @@ const {
 })
 
 defineExpose(editorPort)
+
+const replaceSubCanvasNodes = (nextNodes: FlowNode[]) => {
+  nodes.value = nextNodes
+}
+
+const replaceSubCanvasEdges = (nextEdges: FlowEdge[]) => {
+  edges.value = nextEdges
+}
+
+const commitSubCanvasNodePositions = (commits: SubgraphNodePositionCommit[]) => {
+  applySubgraphPositionCommits(nodes.value, commits)
+}
 </script>
 
 <template>
@@ -162,6 +177,9 @@ defineExpose(editorPort)
       @locate-node="handleLocateNode"
       @switch-file="handleRequestSwitch"
     />
+    <NodeDetailsHost
+      :nodes="nodes"
+    />
     <SaveConfirmModal
       :visible="showSaveModal"
       :filename="currentFilename"
@@ -212,6 +230,9 @@ defineExpose(editorPort)
       :handle-open-debug-panel="handleOpenDebugPanel"
       @close="closeSubCanvas"
       @root-renamed="(nodeId) => { subCanvas.nodeId = nodeId }"
+      @replace-nodes="replaceSubCanvasNodes"
+      @replace-edges="replaceSubCanvasEdges"
+      @commit-node-positions="commitSubCanvasNodePositions"
     />
   </div>
 </template>

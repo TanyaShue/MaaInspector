@@ -12,6 +12,7 @@ import type { FlowEdge, FlowNode, LoadNodesPayload, TemplateImage } from '@/util
 import { isPipelineV2Nodes, toPipelineV1Nodes } from '@/utils/pipelineTransform'
 import { perfLog, perfMark, perfNow } from '@/utils/perfTrace'
 import { onlyWhenEditorActive, type EditorActiveState } from '@/utils/editorInteraction'
+import { provideNodeDetailsController } from '@/composables/useNodeDetailsController'
 import type { FlowEditorPort } from './types'
 
 interface UseFlowEditorVmOptions {
@@ -72,7 +73,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
   } = useVueFlow()
   const isFileLoaded = computed<boolean>(() => !!currentFilename.value)
 
-  const closeAllDetailsSignal = ref<number>(0)
+  const nodeDetailsController = provideNodeDetailsController()
   const isBulkLoading = ref(false)
   const initialLayoutPending = ref(false)
   let initialLayoutPromise: Promise<void> | null = null
@@ -81,7 +82,6 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
   const { showClearCanvasModal, subCanvas, openClearCanvasModal, openSubCanvas, closeSubCanvas } =
     useEditorModals()
 
-  provide('closeAllDetailsSignal', closeAllDetailsSignal)
   provide('currentFilename', currentFilename)
   provide('currentDirection', currentDirection)
   provide('imageManager', imageManager)
@@ -146,7 +146,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     onOpenSubCanvas: (payload) => openSubCanvas(payload.nodeId, payload.algorithm),
     onCloseDebugPanel: () => options.emit('close-debug-panel'),
     onIncrementCloseAllDetails: () => {
-      closeAllDetailsSignal.value++
+      nodeDetailsController.close()
     },
   })
 

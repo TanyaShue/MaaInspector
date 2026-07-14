@@ -480,7 +480,7 @@ export function useFlowGraph() {
         spacing: currentSpacing.value,
       }
       const layoutedNodes = await elkLayout(newNodes, newEdges, layoutOptions)
-      await viewportSync.withPausedVisibility(
+      await viewportSync.withPreservedVisibility(
         async () => {
           nodes.value = layoutedNodes
           await viewportSync.refreshNodeInternals(layoutedNodes.map((node) => node.id))
@@ -594,7 +594,7 @@ export function useFlowGraph() {
         direction: options?.direction || currentDirection.value,
         spacing: options?.spacing || currentSpacing.value,
       }
-      await viewportSync.withPausedVisibility(
+      await viewportSync.withPreservedVisibility(
         async () => {
           await applyLayoutOnRefs(nodes, edges, layoutOptions)
           await viewportSync.refreshNodeInternals(nodes.value.map((node) => node.id))

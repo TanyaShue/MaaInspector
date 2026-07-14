@@ -1,3 +1,4 @@
+import type { NodeChange, XYPosition } from '@vue-flow/core'
 import type { FlowEdge, FlowNode } from './flowTypes'
 
 interface ResolveSubgraphNodeChangesOptions {
@@ -5,6 +6,60 @@ interface ResolveSubgraphNodeChangesOptions {
   nextNodes: FlowNode[]
   visibleNodeIds: Set<string>
   localNodeState: Record<string, Partial<FlowNode>>
+}
+
+export interface SubgraphNodePositionCommit {
+  id: string
+  position: XYPosition
+}
+
+/**
+ * Capture only positions present in a Vue Flow change batch. The map is
+ * mutated in place so pointer-move events do not invalidate the computed
+ * subgraph array; Vue Flow owns the live drag preview until drag-stop.
+ */
+export const stageSubgraphPositionChanges = (
+  changes: NodeChange[],
+  pendingPositions: Map<string, XYPosition>
+): number => {
+  let stagedCount = 0
+
+  changes.forEach(change => {
+    if (change.type !== 'position' || !change.position) return
+    pendingPositions.set(change.id, { ...change.position })
+    stagedCount++
+  })
+
+  return stagedCount
+}
+
+export const consumeSubgraphPositionChanges = (
+  pendingPositions: Map<string, XYPosition>
+): SubgraphNodePositionCommit[] => {
+  const commits = Array.from(pendingPositions, ([id, position]) => ({
+    id,
+    position: { ...position }
+  }))
+  pendingPositions.clear()
+  return commits
+}
+
+/** Apply a completed drag batch without replacing the parent node array. */
+export const applySubgraphPositionCommits = (
+  nodes: FlowNode[],
+  commits: SubgraphNodePositionCommit[]
+): number => {
+  if (commits.length === 0) return 0
+
+  const nodesById = new Map(nodes.map(node => [node.id, node]))
+  let appliedCount = 0
+  commits.forEach(({ id, position }) => {
+    const node = nodesById.get(id)
+    if (!node) return
+    node.position = { ...position }
+    appliedCount++
+  })
+  return appliedCount
 }
 
 export const collectReachableNodeIds = (
