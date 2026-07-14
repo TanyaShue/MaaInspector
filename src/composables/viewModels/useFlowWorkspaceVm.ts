@@ -205,9 +205,10 @@ export function useFlowWorkspaceVm() {
         }
 
         try {
-          await editor.loadResourceFile(lastTabs[i].resourceFile)
-          if (tab.id === activeTabId.value) {
-            await applyVisibleTabLayout(tab.id, { allowWhileLoading: true })
+          const deferLayout = tab.id !== activeTabId.value
+          await editor.loadResourceFile(lastTabs[i].resourceFile, { deferLayout })
+          if (!deferLayout) {
+            clearTabLayoutPending(tab.id)
           }
         } catch (error) {
           console.warn(`Failed to load resource for tab ${tab.title}`, error)

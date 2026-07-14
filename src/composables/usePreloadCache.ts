@@ -141,12 +141,15 @@ export function usePreloadCache(options: UsePreloadCacheOptions) {
       rm?.setMessage(`已加载: ${Object.keys(nodes).length} 节点`)
 
       resourceApi.getTemplateImages(src, fname).then(imgRes => {
-        if (imgRes.results) {
-          const basePath = (imgRes as Record<string, unknown>).base_image_path as string | undefined
-          options.emit('load-images', imgRes.results as Record<string, TemplateImage[]>, basePath)
-        }
+        const basePath = (imgRes as Record<string, unknown>).base_image_path as string | undefined
+        options.emit(
+          'load-images',
+          (imgRes.results as Record<string, TemplateImage[]> | undefined) ?? {},
+          basePath
+        )
       }).catch(imgError => {
         console.warn("图片加载失败", imgError)
+        options.emit('load-images', {})
       })
 
       void preloadAllTabFiles()

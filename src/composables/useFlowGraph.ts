@@ -381,7 +381,10 @@ export function useFlowGraph() {
    * applies initial layout, and resets the dirty state.
    * @param payload - Object containing filename, source, and nodes data
    */
-  const loadNodes = async ({ filename, source, nodes: rawNodesData }: LoadNodesPayload) => {
+  const loadNodes = async (
+    { filename, source, nodes: rawNodesData }: LoadNodesPayload,
+    options: { applyInitialLayout?: boolean } = {}
+  ) => {
     const totalStart = perfNow()
     imageManager.resetForFile({ source, filename })
     const newNodes: FlowNode[] = []
@@ -467,30 +470,30 @@ export function useFlowGraph() {
 
     normalizeLinksAcrossNodes(newNodes)
 
-    const layoutOptions: LayoutOptions = {
-      algorithm: currentAlgorithm.value,
-      direction: currentDirection.value,
-      spacing: currentSpacing.value,
-    }
     nodes.value = newNodes
     edges.value = newEdges
 
-    const layoutedNodes = await elkLayout(newNodes, newEdges, layoutOptions)
-    await viewportSync.withPausedVisibility(
-      async () => {
-        nodes.value = layoutedNodes
-        await viewportSync.refreshNodeInternals(layoutedNodes.map((node) => node.id))
-        await fitView({ padding: 0.2, duration: 800 })
-      },
-      layoutedNodes.map((node) => node.id)
-    )
+    if (options.applyInitialLayout !== false) {
+      const layoutOptions: LayoutOptions = {
+        algorithm: currentAlgorithm.value,
+        direction: currentDirection.value,
+        spacing: currentSpacing.value,
+      }
+      const layoutedNodes = await elkLayout(newNodes, newEdges, layoutOptions)
+      await viewportSync.withPausedVisibility(
+        async () => {
+          nodes.value = layoutedNodes
+          await viewportSync.refreshNodeInternals(layoutedNodes.map((node) => node.id))
+          await fitView({ padding: 0.2, duration: 800 })
+        },
+        layoutedNodes.map((node) => node.id)
+      )
+    }
 
     currentFilename.value = filename || ''
     currentSource.value = source || ''
 
-    const snapshot = JSON.stringify(getNodesData(nodes.value))
-    dataSnapshot.value = snapshot
-    originalDataSnapshot.value = snapshot
+    clearDirty()
     selectedNodeId.value = null
     perfLog('useFlowGraph.loadNodes.total', totalStart, {
       filename,

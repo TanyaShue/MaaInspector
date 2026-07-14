@@ -16,6 +16,7 @@ const ClearCanvasConfirmModal = defineAsyncComponent(() => import('./Flow/Modals
 const props = defineProps<{
   tabId?: string
   debugPanelVisible?: boolean
+  isActive?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -75,7 +76,11 @@ const {
   subCanvas,
   closeSubCanvas,
   editorPort
-} = useFlowEditorVm({ tabId: props.tabId, emit })
+} = useFlowEditorVm({
+  tabId: props.tabId,
+  isActive: () => props.isActive !== false,
+  emit,
+})
 
 defineExpose(editorPort)
 </script>

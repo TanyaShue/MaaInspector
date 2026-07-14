@@ -11,10 +11,12 @@ import { parseFileId } from '@/utils/fileId'
 import type { FlowEdge, FlowNode, LoadNodesPayload, TemplateImage } from '@/utils/flowTypes'
 import { isPipelineV2Nodes, toPipelineV1Nodes } from '@/utils/pipelineTransform'
 import { perfLog, perfMark, perfNow } from '@/utils/perfTrace'
+import { onlyWhenEditorActive, type EditorActiveState } from '@/utils/editorInteraction'
 import type { FlowEditorPort } from './types'
 
 interface UseFlowEditorVmOptions {
   tabId?: string
+  isActive?: EditorActiveState
   emit: {
     (e: 'request-switch-file', payload: { filename: string; source: string }): void
     (e: 'open-debug-panel', payload?: { nodeId?: string }): void
@@ -72,6 +74,8 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
 
   const closeAllDetailsSignal = ref<number>(0)
   const isBulkLoading = ref(false)
+  const initialLayoutPending = ref(false)
+  let initialLayoutPromise: Promise<void> | null = null
   const pendingFocusNodeId = ref<string | null>(null)
   const lastPointerPosition = ref<{ x: number; y: number } | null>(null)
   const { showClearCanvasModal, subCanvas, openClearCanvasModal, openSubCanvas, closeSubCanvas } =
@@ -167,7 +171,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     isProcessingImages,
     unusedImages,
     usedImages,
-    handleLoadImages,
+    handleLoadImages: applyLoadedImages,
     handleSaveNodes,
     handleConfirmDeleteImages,
     handleSkipDeleteImages,
@@ -193,6 +197,36 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
 
   const refreshCurrentNodeInternals = async () => {
     await refreshNodeInternals(nodes.value.map((node) => node.id))
+  }
+
+  const finalizeInitialLayout = async () => {
+    if (!initialLayoutPending.value) return
+    if (initialLayoutPromise) return initialLayoutPromise
+
+    initialLayoutPromise = (async () => {
+      await nextTick()
+      await nextTick()
+      await refreshCurrentNodeInternals()
+      await applyLayout()
+      initialLayoutPending.value = false
+    })()
+
+    try {
+      await initialLayoutPromise
+    } finally {
+      initialLayoutPromise = null
+    }
+  }
+
+  const handleLoadImages = async (
+    imageDataMap: Record<string, unknown>,
+    basePath?: string,
+    options: { finalizeLayout?: boolean } = {}
+  ) => {
+    applyLoadedImages(imageDataMap, basePath)
+    if (options.finalizeLayout !== false) {
+      await finalizeInitialLayout()
+    }
   }
 
   const executeSwitch = async (config: { filename: string; source: string; nodeId?: string }) => {
@@ -254,11 +288,11 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     )
   }
 
-  const handlePointerMove = (e: PointerEvent) => {
+  const updatePointerPosition = (e: PointerEvent) => {
     lastPointerPosition.value = { x: e.clientX, y: e.clientY }
   }
 
-  const handleKeyDown = (e: KeyboardEvent) => {
+  const processKeyDown = (e: KeyboardEvent) => {
     const isMod = e.ctrlKey || e.metaKey
     const key = e.key.toLowerCase()
 
@@ -345,6 +379,9 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     }
   }
 
+  const handlePointerMove = onlyWhenEditorActive(options.isActive, updatePointerPosition)
+  const handleKeyDown = onlyWhenEditorActive(options.isActive, processKeyDown)
+
   onMounted(() => {
     window.addEventListener('beforeunload', handleBeforeUnload)
     window.addEventListener('keydown', handleKeyDown)
@@ -384,7 +421,8 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     })
     isBulkLoading.value = true
     try {
-      await loadNodes(payload)
+      initialLayoutPending.value = true
+      await loadNodes(payload, { applyInitialLayout: false })
       perfLog('FlowEditor.loadNodes', start, { tabId: options.tabId, filename: payload.filename })
       loadedFileVersion.value = payload.fileVersion ?? 'V1'
       if (pendingFocusNodeId.value) {
@@ -394,6 +432,9 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
           pendingFocusNodeId.value = null
         }, 300)
       }
+    } catch (error) {
+      initialLayoutPending.value = false
+      throw error
     } finally {
       isBulkLoading.value = false
     }
@@ -403,7 +444,10 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     })
   }
 
-  const loadResourceFile = async (fileId: string) => {
+  const loadResourceFile = async (
+    fileId: string,
+    options: { deferLayout?: boolean } = {}
+  ) => {
     const { source, filename } = parseFileId(fileId)
     if (!source || !filename) {
       ElMessage.error('无效的资源文件标识')
@@ -425,14 +469,15 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
           fileVersion,
         })
 
-        const imgRes = await resourceApi.getTemplateImages(source, filename)
-        if (imgRes?.results) {
-          handleLoadImages(imgRes.results as Record<string, unknown>)
-          await nextTick()
-          await nextTick()
-          await refreshCurrentNodeInternals()
-          await applyLayout()
-        }
+        const imgRes = await resourceApi.getTemplateImages(source, filename).catch((error) => {
+          console.warn('Failed to load template images:', error)
+          return null
+        })
+        await handleLoadImages(
+          (imgRes?.results as Record<string, unknown> | undefined) ?? {},
+          undefined,
+          { finalizeLayout: !options.deferLayout }
+        )
       }
     } catch (e) {
       console.error('Failed to load resource file:', e)
@@ -455,7 +500,13 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     handleUpdateCanvasConfig: (config: Parameters<typeof handleUpdateCanvasConfig>[0]) =>
       handleUpdateCanvasConfig(config, () => {}),
     handleUpdatePipelineVersion: (val: 'V1' | 'V2') => handleUpdatePipelineVersion(val, () => {}),
-    handleApplyLayout: () => applyLayout(),
+    handleApplyLayout: async () => {
+      if (initialLayoutPending.value) {
+        await finalizeInitialLayout()
+        return
+      }
+      await applyLayout()
+    },
     handleLocateNode,
     handleDebugNodeFromPanel,
     handleUpdateNodeStatus,

@@ -12,14 +12,14 @@ export interface FlowEditorPort {
     nodeCount: number
     edgeCount: number
   }
-  loadResourceFile: (fileId: string) => Promise<void>
+  loadResourceFile: (fileId: string, options?: { deferLayout?: boolean }) => Promise<void>
   handleLoadNodesWrapper: (payload: {
     filename: string
     source: string
     nodes: Record<string, FlowBusinessData>
     fileVersion?: 'V1' | 'V2'
   }) => Promise<void>
-  handleLoadImages: (imageDataMap: Record<string, TemplateImage[] | unknown>, basePath?: string) => void
+  handleLoadImages: (imageDataMap: Record<string, TemplateImage[] | unknown>, basePath?: string) => void | Promise<void>
   handleSaveNodes: (payload: { source: string; filename: string }) => Promise<void>
   handleDeviceConnected: (val: boolean) => void
   handleUpdateCanvasConfig: (payload: {

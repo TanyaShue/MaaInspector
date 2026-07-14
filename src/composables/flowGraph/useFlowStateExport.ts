@@ -1,4 +1,4 @@
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { perfLog, perfNow } from '@/utils/perfTrace'
 import { deepClone } from '@/utils/nodeHelpers'
 import type { Ref } from 'vue'
@@ -18,6 +18,8 @@ export interface FlowGraphExportState {
   currentSource: string
   originalDataSnapshot: string
   dataSnapshot: string
+  dataRevision?: number
+  cleanRevision?: number
   selectedNodeId: string | null
   imageState: ReturnType<ReturnType<typeof useImageManager>['exportState']>
 }
@@ -37,9 +39,12 @@ export const useFlowStateExport = (
   imageManager: ReturnType<typeof useImageManager>,
   getNodesData: () => Record<string, FlowBusinessData>
 ) => {
+  const dataRevision = ref(0)
+  const cleanRevision = ref(0)
+
   const isDirty = computed(() => {
     if (!originalDataSnapshot.value) return false
-    return dataSnapshot.value !== originalDataSnapshot.value
+    return dataRevision.value !== cleanRevision.value
   })
 
   const recalcDataSnapshot = () => {
@@ -62,6 +67,8 @@ export const useFlowStateExport = (
       currentSource: currentSource.value,
       originalDataSnapshot: originalDataSnapshot.value,
       dataSnapshot: dataSnapshot.value,
+      dataRevision: dataRevision.value,
+      cleanRevision: cleanRevision.value,
       selectedNodeId: selectedNodeId.value,
       imageState: imageManager.exportState(),
     }
@@ -86,6 +93,8 @@ export const useFlowStateExport = (
     currentSource.value = snapshot.currentSource || ''
     originalDataSnapshot.value = snapshot.originalDataSnapshot || ''
     dataSnapshot.value = snapshot.dataSnapshot || ''
+    dataRevision.value = snapshot.dataRevision ?? (dataSnapshot.value === originalDataSnapshot.value ? 0 : 1)
+    cleanRevision.value = snapshot.cleanRevision ?? 0
     selectedNodeId.value = snapshot.selectedNodeId || null
     imageManager.restoreState(snapshot.imageState)
 
@@ -97,12 +106,13 @@ export const useFlowStateExport = (
   }
 
   const markDataChanged = () => {
-    recalcDataSnapshot()
+    dataRevision.value++
   }
 
   const clearDirty = () => {
     recalcDataSnapshot()
     originalDataSnapshot.value = dataSnapshot.value
+    cleanRevision.value = dataRevision.value
   }
 
   return {

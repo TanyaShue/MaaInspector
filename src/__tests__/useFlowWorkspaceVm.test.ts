@@ -163,9 +163,12 @@ describe('useFlowWorkspaceVm', () => {
     expect(vm.debugPanel.value).toEqual({ visible: false, nodeId: '' })
   })
 
-  it('loads restored tab resources and reapplies layout after startup restore', async () => {
+  it('lets the restored active editor perform exactly one initial layout after loading resources', async () => {
     const vm = useFlowWorkspaceVm()
     const editor = createEditorPort()
+    editor.loadResourceFile = vi.fn(async (_fileId, options) => {
+      if (!options?.deferLayout) await editor.handleApplyLayout()
+    })
     const tabs = [
       { id: 'tab-1', title: 'pipeline.json', resourceFile: 'D:/maa|pipeline.json' }
     ]
@@ -175,8 +178,10 @@ describe('useFlowWorkspaceVm', () => {
     vm.registerEditor('tab-1', editor)
     await restorePromise
 
-    expect(editor.loadResourceFile).toHaveBeenCalledWith('D:/maa|pipeline.json')
-    expect(editor.handleApplyLayout).toHaveBeenCalled()
+    expect(editor.loadResourceFile).toHaveBeenCalledWith('D:/maa|pipeline.json', {
+      deferLayout: false
+    })
+    expect(editor.handleApplyLayout).toHaveBeenCalledTimes(1)
     expect(vm.isRestoringWorkspace.value).toBe(false)
   })
 
@@ -184,6 +189,12 @@ describe('useFlowWorkspaceVm', () => {
     const vm = useFlowWorkspaceVm()
     const firstEditor = createEditorPort()
     const secondEditor = createEditorPort()
+    firstEditor.loadResourceFile = vi.fn(async (_fileId, options) => {
+      if (!options?.deferLayout) await firstEditor.handleApplyLayout()
+    })
+    secondEditor.loadResourceFile = vi.fn(async (_fileId, options) => {
+      if (!options?.deferLayout) await secondEditor.handleApplyLayout()
+    })
     const tabs = [
       { id: 'tab-1', title: 'a.json', resourceFile: 'D:/maa|a.json' },
       { id: 'tab-2', title: 'b.json', resourceFile: 'D:/maa|b.json' }
@@ -197,6 +208,9 @@ describe('useFlowWorkspaceVm', () => {
 
     expect(firstEditor.handleApplyLayout).toHaveBeenCalledTimes(1)
     expect(secondEditor.handleApplyLayout).not.toHaveBeenCalled()
+    expect(secondEditor.loadResourceFile).toHaveBeenCalledWith('D:/maa|b.json', {
+      deferLayout: true
+    })
 
     await vm.selectTab('tab-2')
 
