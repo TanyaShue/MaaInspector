@@ -1,18 +1,282 @@
 use regex::Regex;
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
+use std::fmt;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
+use std::sync::{Arc, RwLock};
 use walkdir::WalkDir;
 
+use crate::config::write_file_atomically;
 use crate::response::ResourceFileInfo;
 
+#[derive(Debug)]
+pub enum ResourceError {
+    UnknownSource(String),
+    InvalidRelativePath(String),
+    PathEscapesBase(PathBuf),
+    AlreadyExists(PathBuf),
+    InvalidData(String),
+    Io {
+        operation: &'static str,
+        path: PathBuf,
+        source: std::io::Error,
+    },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn manager_for(root: &Path) -> ResourcesManager {
+        ResourcesManager::new(vec![root.to_string_lossy().to_string()])
+    }
+
+    #[test]
+    fn rejects_unknown_sources_and_parent_traversal() {
+        let dir = tempdir().expect("create resource directory");
+        fs::create_dir_all(dir.path().join("pipeline")).expect("create pipeline directory");
+        fs::create_dir_all(dir.path().join("image")).expect("create image directory");
+        let mut manager = manager_for(dir.path());
+
+        assert!(matches!(
+            manager.get_nodes_by_file("D:/not-loaded", "pipeline.json"),
+            Err(ResourceError::UnknownSource(_))
+        ));
+        assert!(matches!(
+            manager.save_nodes(
+                &dir.path().to_string_lossy(),
+                "../outside.json",
+                serde_json::json!({})
+            ),
+            Err(ResourceError::InvalidRelativePath(_))
+        ));
+        assert!(matches!(
+            manager.save_image(&dir.path().to_string_lossy(), "../outside.png", "aGVsbG8="),
+            Err(ResourceError::InvalidRelativePath(_))
+        ));
+    }
+
+    #[test]
+    fn creates_a_file_for_a_loaded_source_without_an_existing_cache_entry() {
+        let dir = tempdir().expect("create resource directory");
+        let mut manager = manager_for(dir.path());
+
+        let filename = manager
+            .create_file(&dir.path().to_string_lossy(), "nested/new")
+            .expect("create pipeline file");
+
+        assert_eq!(filename, "nested/new.json");
+        assert!(dir.path().join("pipeline/nested/new.json").is_file());
+        assert_eq!(
+            manager
+                .get_nodes_by_file(&dir.path().to_string_lossy(), &filename)
+                .expect("read created file")
+                .expect("created file exists")
+                .len(),
+            0
+        );
+    }
+
+    #[test]
+    fn saving_an_empty_pipeline_is_successful_and_distinct_from_io_failure() {
+        let dir = tempdir().expect("create resource directory");
+        fs::create_dir_all(dir.path().join("pipeline")).expect("create pipeline directory");
+        let mut manager = manager_for(dir.path());
+        let source = dir.path().to_string_lossy();
+
+        assert_eq!(
+            manager
+                .save_nodes(&source, "empty.json", serde_json::json!({}))
+                .expect("save empty pipeline"),
+            0
+        );
+        let saved = fs::read_to_string(dir.path().join("pipeline/empty.json"))
+            .expect("read saved pipeline");
+        assert_eq!(
+            serde_json::from_str::<JsonValue>(&saved).unwrap(),
+            serde_json::json!({})
+        );
+
+        fs::create_dir(dir.path().join("pipeline/empty.json.bak"))
+            .expect("create backup-path obstacle");
+        let original = fs::read(dir.path().join("pipeline/empty.json")).unwrap();
+        assert!(
+            manager
+                .save_nodes(&source, "empty.json", serde_json::json!({ "node": {} }))
+                .is_err()
+        );
+        assert_eq!(
+            fs::read(dir.path().join("pipeline/empty.json")).unwrap(),
+            original
+        );
+    }
+
+    #[test]
+    fn rejects_absolute_pipeline_and_image_paths() {
+        let dir = tempdir().expect("create resource directory");
+        fs::create_dir_all(dir.path().join("pipeline")).expect("create pipeline directory");
+        fs::create_dir_all(dir.path().join("image")).expect("create image directory");
+        let manager = manager_for(dir.path());
+        let absolute = dir
+            .path()
+            .join("outside.json")
+            .to_string_lossy()
+            .to_string();
+        let source = dir.path().to_string_lossy();
+
+        assert!(matches!(
+            manager.get_nodes_by_file(&source, &absolute),
+            Err(ResourceError::InvalidRelativePath(_))
+        ));
+        assert!(matches!(
+            manager.get_image_full_path(&source, &absolute),
+            Err(ResourceError::InvalidRelativePath(_))
+        ));
+    }
+
+    #[test]
+    fn saving_nodes_replaces_the_search_index_for_that_file() {
+        let dir = tempdir().expect("create resource directory");
+        fs::create_dir_all(dir.path().join("pipeline")).expect("create pipeline directory");
+        let mut manager = manager_for(dir.path());
+        let source = dir.path().to_string_lossy();
+
+        manager
+            .save_nodes(
+                &source,
+                "search.json",
+                serde_json::json!({ "old_node": { "recognition": "OCR" } }),
+            )
+            .expect("save initial nodes");
+        assert_eq!(manager.search_nodes("old_node", false, "", "", 10).len(), 1);
+
+        manager
+            .save_nodes(
+                &source,
+                "search.json",
+                serde_json::json!({ "new_node": { "recognition": "OCR" } }),
+            )
+            .expect("replace nodes");
+
+        assert!(
+            manager
+                .search_nodes("old_node", false, "", "", 10)
+                .is_empty()
+        );
+        assert_eq!(manager.search_nodes("new_node", false, "", "", 10).len(), 1);
+    }
+
+    #[test]
+    fn rejects_escaping_directory_links_before_creating_outside_directories() {
+        let dir = tempdir().expect("create resource directory");
+        let outside = tempdir().expect("create outside directory");
+        let image_dir = dir.path().join("image");
+        fs::create_dir_all(&image_dir).expect("create image directory");
+        let link = image_dir.join("escape");
+
+        #[cfg(windows)]
+        let link_result = std::os::windows::fs::symlink_dir(outside.path(), &link);
+        #[cfg(unix)]
+        let link_result = std::os::unix::fs::symlink(outside.path(), &link);
+        if link_result.is_err() {
+            // Creating symlinks may require Developer Mode or elevated rights on Windows.
+            return;
+        }
+
+        let manager = manager_for(dir.path());
+        let result = manager.save_image(
+            &dir.path().to_string_lossy(),
+            "escape/nested/image.png",
+            "aGVsbG8=",
+        );
+
+        assert!(matches!(result, Err(ResourceError::PathEscapesBase(_))));
+        assert!(!outside.path().join("nested").exists());
+    }
+}
+
+impl ResourceError {
+    pub fn status_code(&self) -> u16 {
+        match self {
+            Self::UnknownSource(_)
+            | Self::InvalidRelativePath(_)
+            | Self::PathEscapesBase(_)
+            | Self::InvalidData(_) => 400,
+            Self::AlreadyExists(_) => 409,
+            Self::Io { .. } => 500,
+        }
+    }
+
+    fn io(operation: &'static str, path: impl Into<PathBuf>, source: std::io::Error) -> Self {
+        Self::Io {
+            operation,
+            path: path.into(),
+            source,
+        }
+    }
+}
+
+impl fmt::Display for ResourceError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnknownSource(path) => write!(f, "Resource source is not loaded: {path}"),
+            Self::InvalidRelativePath(path) => write!(f, "Invalid relative resource path: {path}"),
+            Self::PathEscapesBase(path) => {
+                write!(
+                    f,
+                    "Resolved resource path escapes its allowed base: {}",
+                    path.display()
+                )
+            }
+            Self::AlreadyExists(path) => {
+                write!(f, "Resource path already exists: {}", path.display())
+            }
+            Self::InvalidData(message) => write!(f, "Invalid resource data: {message}"),
+            Self::Io {
+                operation,
+                path,
+                source,
+            } => write!(f, "Failed to {operation} {}: {source}", path.display()),
+        }
+    }
+}
+
+impl std::error::Error for ResourceError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Io { source, .. } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+fn validate_relative_path(path: &str) -> Result<&Path, ResourceError> {
+    let relative = Path::new(path);
+    if path.trim().is_empty()
+        || relative.is_absolute()
+        || relative.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
+    {
+        return Err(ResourceError::InvalidRelativePath(path.to_string()));
+    }
+    Ok(relative)
+}
+
 /// ResourcesManager - manages pipeline JSON files and images
+#[derive(Clone)]
 pub struct ResourcesManager {
     resource_paths: Vec<PathBuf>,
     files_cache: HashMap<PathBuf, HashMap<String, HashMap<String, JsonValue>>>,
     node_index: Vec<NodeIndexEntry>,
 }
+
+pub type ResourcesManagerState = Arc<RwLock<Option<ResourcesManager>>>;
 
 #[derive(Debug, Clone)]
 struct NodeIndexEntry {
@@ -49,6 +313,102 @@ impl ResourcesManager {
 
     fn get_image_dir(&self, resource_path: &Path) -> PathBuf {
         resource_path.join("image")
+    }
+
+    fn resolve_source(&self, resource_path: &str) -> Result<PathBuf, ResourceError> {
+        let requested = PathBuf::from(resource_path);
+        let normalized = requested
+            .canonicalize()
+            .unwrap_or_else(|_| requested.clone());
+        self.resource_paths
+            .iter()
+            .find(|known| **known == normalized || **known == requested)
+            .cloned()
+            .ok_or_else(|| ResourceError::UnknownSource(resource_path.to_string()))
+    }
+
+    fn resolve_contained_path(
+        &self,
+        base: &Path,
+        relative_path: &str,
+        create_parent: bool,
+    ) -> Result<PathBuf, ResourceError> {
+        let relative = validate_relative_path(relative_path)?;
+        if create_parent {
+            fs::create_dir_all(base)
+                .map_err(|error| ResourceError::io("create directory", base, error))?;
+        }
+        let canonical_base = base
+            .canonicalize()
+            .map_err(|error| ResourceError::io("resolve base directory", base, error))?;
+        let target = base.join(relative);
+
+        let parent = target
+            .parent()
+            .ok_or_else(|| ResourceError::InvalidRelativePath(relative_path.to_string()))?;
+        let mut existing_ancestor = Some(parent);
+        while existing_ancestor.is_some_and(|path| !path.exists()) {
+            existing_ancestor = existing_ancestor.and_then(Path::parent);
+        }
+        let ancestor =
+            existing_ancestor.ok_or_else(|| ResourceError::PathEscapesBase(target.clone()))?;
+        let canonical_ancestor = ancestor
+            .canonicalize()
+            .map_err(|error| ResourceError::io("resolve parent directory", ancestor, error))?;
+        if !canonical_ancestor.starts_with(&canonical_base) {
+            return Err(ResourceError::PathEscapesBase(target));
+        }
+
+        // Validate the nearest existing ancestor before creating directories.
+        // Otherwise create_dir_all could follow an escaping symlink and mutate
+        // a location outside the resource root before we reject the path.
+        if create_parent {
+            fs::create_dir_all(parent)
+                .map_err(|error| ResourceError::io("create parent directory", parent, error))?;
+            let canonical_parent = parent
+                .canonicalize()
+                .map_err(|error| ResourceError::io("resolve parent directory", parent, error))?;
+            if !canonical_parent.starts_with(&canonical_base) {
+                return Err(ResourceError::PathEscapesBase(target));
+            }
+        }
+
+        if target.exists() {
+            let canonical_target = target
+                .canonicalize()
+                .map_err(|error| ResourceError::io("resolve resource path", &target, error))?;
+            if !canonical_target.starts_with(&canonical_base) {
+                return Err(ResourceError::PathEscapesBase(target));
+            }
+        }
+        Ok(target)
+    }
+
+    fn resolve_pipeline_path(
+        &self,
+        resource_path: &str,
+        filename: &str,
+        create_parent: bool,
+    ) -> Result<(PathBuf, PathBuf), ResourceError> {
+        let source = self.resolve_source(resource_path)?;
+        let full_path =
+            self.resolve_contained_path(&self.get_pipeline_dir(&source), filename, create_parent)?;
+        Ok((source, full_path))
+    }
+
+    fn resolve_image_path(
+        &self,
+        resource_path: &str,
+        relative_path: &str,
+        create_parent: bool,
+    ) -> Result<(PathBuf, PathBuf), ResourceError> {
+        let source = self.resolve_source(resource_path)?;
+        let full_path = self.resolve_contained_path(
+            &self.get_image_dir(&source),
+            relative_path,
+            create_parent,
+        )?;
+        Ok((source, full_path))
     }
 
     fn load_all(&mut self) {
@@ -149,6 +509,23 @@ impl ResourcesManager {
         }
     }
 
+    fn replace_file_index(
+        &mut self,
+        resource_path: &Path,
+        filename: &str,
+        nodes: &HashMap<String, JsonValue>,
+    ) {
+        self.node_index
+            .retain(|entry| entry.resource_path != resource_path || entry.filename != filename);
+        self.node_index
+            .extend(nodes.iter().map(|(node_id, data)| NodeIndexEntry {
+                resource_path: resource_path.to_path_buf(),
+                filename: filename.to_string(),
+                node_id: node_id.clone(),
+                data: data.clone(),
+            }));
+    }
+
     pub fn list_all_files(&self) -> Vec<ResourceFileInfo> {
         let mut results = Vec::new();
 
@@ -209,52 +586,37 @@ impl ResourcesManager {
         &self,
         resource_path: &str,
         filename: &str,
-    ) -> Option<HashMap<String, JsonValue>> {
-        let path = PathBuf::from(resource_path)
-            .canonicalize()
-            .unwrap_or_else(|_| PathBuf::from(resource_path));
+    ) -> Result<Option<HashMap<String, JsonValue>>, ResourceError> {
+        let (path, full_path) = self.resolve_pipeline_path(resource_path, filename, false)?;
 
         // Try cache first
         if let Some(files) = self.files_cache.get(&path)
             && let Some(nodes) = files.get(filename)
         {
-            return Some(nodes.clone());
+            return Ok(Some(nodes.clone()));
         }
 
         // Read from file
-        let pipeline_path = self.get_pipeline_dir(&path);
-        let full_path = pipeline_path.join(filename);
-
         if !full_path.exists() {
-            return None;
+            return Ok(None);
         }
 
-        if let Ok(content) = fs::read_to_string(&full_path)
-            && let Ok(json) = serde_json::from_str::<JsonValue>(&content)
-        {
-            return Some(self.normalize_data(json));
-        }
-
-        None
+        let content = fs::read_to_string(&full_path)
+            .map_err(|error| ResourceError::io("read pipeline file", &full_path, error))?;
+        let json = serde_json::from_str::<JsonValue>(&content)
+            .map_err(|error| ResourceError::InvalidData(error.to_string()))?;
+        Ok(Some(self.normalize_data(json)))
     }
 
-    pub fn save_nodes(&mut self, resource_path: &str, filename: &str, content: JsonValue) -> usize {
-        let path = PathBuf::from(resource_path)
-            .canonicalize()
-            .unwrap_or_else(|_| PathBuf::from(resource_path));
+    pub fn save_nodes(
+        &mut self,
+        resource_path: &str,
+        filename: &str,
+        content: JsonValue,
+    ) -> Result<usize, ResourceError> {
+        let (path, full_path) = self.resolve_pipeline_path(resource_path, filename, true)?;
         let mut normalized = self.normalize_data(content);
         self.normalize_template_paths(&mut normalized);
-
-        let pipeline_path = self.get_pipeline_dir(&path);
-        let full_path = pipeline_path.join(filename);
-
-        // Ensure directory exists (including subdirectories)
-        if let Some(parent) = full_path.parent()
-            && let Err(e) = fs::create_dir_all(parent)
-        {
-            crate::backend_log_debug!("stderr", "Failed to create pipeline directory: {}", e);
-            return 0;
-        }
 
         // Convert HashMap to JsonValue for saving
         let json_value: JsonValue = normalized
@@ -263,57 +625,49 @@ impl ResourcesManager {
             .collect::<serde_json::Map<String, JsonValue>>()
             .into();
 
-        if let Ok(json_str) = serde_json::to_string_pretty(&json_value)
-            && let Err(e) = fs::write(&full_path, json_str)
-        {
-            crate::backend_log_debug!("stderr", "Failed to write file: {}", e);
-            return 0;
-        }
+        let json_str = serde_json::to_string_pretty(&json_value)
+            .map_err(|error| ResourceError::InvalidData(error.to_string()))?;
+        write_file_atomically(&full_path, json_str.as_bytes())
+            .map_err(|error| ResourceError::io("write pipeline file", &full_path, error))?;
 
         // Update cache
         self.files_cache
-            .get_mut(&path)
-            .unwrap()
+            .entry(path.clone())
+            .or_default()
             .insert(filename.to_string(), normalized.clone());
+        self.replace_file_index(&path, filename, &normalized);
 
-        normalized.len()
+        Ok(normalized.len())
     }
 
-    pub fn create_file(&mut self, resource_path: &str, filename: &str) -> bool {
-        let path = PathBuf::from(resource_path)
-            .canonicalize()
-            .unwrap_or_else(|_| PathBuf::from(resource_path));
+    pub fn create_file(
+        &mut self,
+        resource_path: &str,
+        filename: &str,
+    ) -> Result<String, ResourceError> {
         let fname = if filename.to_lowercase().ends_with(".json") {
             filename.to_string()
         } else {
             format!("{}.json", filename)
         };
-
-        let pipeline_path = self.get_pipeline_dir(&path);
-        let full_path = pipeline_path.join(&fname);
+        let (path, full_path) = self.resolve_pipeline_path(resource_path, &fname, true)?;
 
         if full_path.exists() {
-            return false;
-        }
-
-        if let Err(e) = fs::create_dir_all(&pipeline_path) {
-            crate::backend_log_debug!("stderr", "Failed to create pipeline directory: {}", e);
-            return false;
+            return Err(ResourceError::AlreadyExists(full_path));
         }
 
         // Write empty JSON object
-        if let Err(e) = fs::write(&full_path, "{}") {
-            crate::backend_log_debug!("stderr", "Failed to write file: {}", e);
-            return false;
-        }
+        write_file_atomically(&full_path, b"{}")
+            .map_err(|error| ResourceError::io("create pipeline file", &full_path, error))?;
 
         // Update cache
         self.files_cache
-            .get_mut(&path)
-            .unwrap()
-            .insert(fname, HashMap::new());
+            .entry(path.clone())
+            .or_default()
+            .insert(fname.clone(), HashMap::new());
+        self.replace_file_index(&path, &fname, &HashMap::new());
 
-        true
+        Ok(fname)
     }
 
     pub fn search_nodes(
@@ -398,28 +752,27 @@ impl ResourcesManager {
         results
     }
 
-    pub fn get_image_full_path(&self, resource_path: &str, relative_path: &str) -> PathBuf {
-        let path = PathBuf::from(resource_path);
-        let image_base = self.get_image_dir(&path);
-        image_base.join(relative_path)
+    pub fn get_image_full_path(
+        &self,
+        resource_path: &str,
+        relative_path: &str,
+    ) -> Result<PathBuf, ResourceError> {
+        self.resolve_image_path(resource_path, relative_path, false)
+            .map(|(_, full_path)| full_path)
     }
 
-    pub fn get_image_base_path(&self, resource_path: &str) -> PathBuf {
-        let path = PathBuf::from(resource_path);
-        self.get_image_dir(&path)
+    pub fn get_image_base_path(&self, resource_path: &str) -> Result<PathBuf, ResourceError> {
+        let path = self.resolve_source(resource_path)?;
+        Ok(self.get_image_dir(&path))
     }
 
-    pub fn save_image(&self, resource_path: &str, relative_path: &str, base64_data: &str) -> bool {
-        let full_path = self.get_image_full_path(resource_path, relative_path);
-
-        // Ensure parent directory exists
-        let parent = full_path.parent();
-        if let Some(p) = parent
-            && let Err(e) = fs::create_dir_all(p)
-        {
-            crate::backend_log_debug!("stderr", "Failed to create image directory: {}", e);
-            return false;
-        }
+    pub fn save_image(
+        &self,
+        resource_path: &str,
+        relative_path: &str,
+        base64_data: &str,
+    ) -> Result<(), ResourceError> {
+        let (_, full_path) = self.resolve_image_path(resource_path, relative_path, true)?;
 
         // Decode base64
         let data = if base64_data.contains(";base64,") {
@@ -433,31 +786,26 @@ impl ResourcesManager {
             base64_data
         };
 
-        if let Ok(decoded) =
-            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, data)
-        {
-            if let Err(e) = fs::write(&full_path, decoded) {
-                crate::backend_log_debug!("stderr", "Failed to write image: {}", e);
-                return false;
-            }
-            return true;
-        }
-
-        false
+        let decoded = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, data)
+            .map_err(|error| ResourceError::InvalidData(error.to_string()))?;
+        write_file_atomically(&full_path, &decoded)
+            .map_err(|error| ResourceError::io("write image", &full_path, error))?;
+        Ok(())
     }
 
-    pub fn delete_image(&self, resource_path: &str, relative_path: &str) -> bool {
-        let path = PathBuf::from(resource_path);
-        let full_path = self.get_image_full_path(resource_path, relative_path);
+    pub fn delete_image(
+        &self,
+        resource_path: &str,
+        relative_path: &str,
+    ) -> Result<bool, ResourceError> {
+        let (path, full_path) = self.resolve_image_path(resource_path, relative_path, false)?;
 
         if !full_path.exists() {
-            return false;
+            return Ok(false);
         }
 
-        if let Err(e) = fs::remove_file(&full_path) {
-            crate::backend_log_debug!("stderr", "Failed to delete image: {}", e);
-            return false;
-        }
+        fs::remove_file(&full_path)
+            .map_err(|error| ResourceError::io("delete image", &full_path, error))?;
 
         // Try to remove empty parent directories
         let parent = full_path.parent();
@@ -476,7 +824,7 @@ impl ResourcesManager {
             }
         }
 
-        true
+        Ok(true)
     }
 
     pub fn check_image_references(
@@ -484,10 +832,8 @@ impl ResourcesManager {
         resource_path: &str,
         image_paths: &[String],
         exclude_file: &str,
-    ) -> HashMap<String, Vec<String>> {
-        let path = PathBuf::from(resource_path)
-            .canonicalize()
-            .unwrap_or_else(|_| PathBuf::from(resource_path));
+    ) -> Result<HashMap<String, Vec<String>>, ResourceError> {
+        let path = self.resolve_source(resource_path)?;
         let mut used_map: HashMap<String, Vec<String>> = HashMap::new();
 
         let empty_map = HashMap::new();
@@ -531,6 +877,6 @@ impl ResourcesManager {
             }
         }
 
-        used_map
+        Ok(used_map)
     }
 }

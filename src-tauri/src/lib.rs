@@ -18,9 +18,9 @@ use commands::{
 };
 use events::DebugEventBroker;
 use maafw::MaaFrameworkWrapper;
-use resources::ResourcesManager;
+use resources::ResourcesManagerState;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use tauri::Manager;
 use tokio::sync::Mutex;
 
@@ -110,7 +110,7 @@ fn load_maa_library<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let maafw: Mutex<Option<MaaFrameworkWrapper>> = Mutex::new(None);
-    let resources_manager: Mutex<Option<ResourcesManager>> = Mutex::new(None);
+    let resources_manager: ResourcesManagerState = Arc::new(RwLock::new(None));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())

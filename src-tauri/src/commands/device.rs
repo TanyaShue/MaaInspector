@@ -1,4 +1,4 @@
-use super::{MaaFrameworkState, maafw_mut};
+use super::{MaaFrameworkState, maafw_mut, maafw_ref};
 use crate::response::{ApiResponse, ScreenshotResponse};
 use tauri::State;
 
@@ -73,10 +73,12 @@ pub async fn device_connect_win32(
 pub async fn device_screenshot(
     maafw: State<'_, MaaFrameworkState>,
 ) -> Result<ScreenshotResponse, String> {
-    let mut fw = maafw.lock().await;
-    let fw = maafw_mut(&mut fw)?;
+    let mut worker = {
+        let fw = maafw.lock().await;
+        maafw_ref(&fw)?.detached_worker()
+    };
 
-    if let Some((image_base64, size)) = fw.screencap_async().await {
+    if let Some((image_base64, size)) = worker.screencap_async().await {
         Ok(ScreenshotResponse {
             success: true,
             message: Some("OK".to_string()),

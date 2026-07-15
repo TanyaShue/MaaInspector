@@ -66,6 +66,7 @@ pub struct MaaFrameworkWrapper {
     controller: Option<Controller>,
     tasker: Option<Tasker>,
     event_broker: Option<Arc<DebugEventBroker>>,
+    controller_operation_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl MaaFrameworkWrapper {
@@ -81,6 +82,21 @@ impl MaaFrameworkWrapper {
             controller: None,
             tasker: None,
             event_broker: None,
+            controller_operation_lock: Arc::new(tokio::sync::Mutex::new(())),
+        }
+    }
+
+    /// Create an independent worker for read-oriented controller operations.
+    /// The worker deliberately does not share the active debug tasker so a
+    /// screenshot or OCR request cannot keep the global state lock occupied or
+    /// interfere with stop/status commands.
+    pub fn detached_worker(&self) -> Self {
+        Self {
+            resource: self.resource.clone(),
+            controller: self.controller.clone(),
+            tasker: None,
+            event_broker: None,
+            controller_operation_lock: self.controller_operation_lock.clone(),
         }
     }
 
@@ -153,6 +169,7 @@ impl MaaFrameworkWrapper {
 
     /// Take screenshot and return as base64 with image size (async version)
     pub async fn screencap_async(&mut self) -> Option<(String, Vec<i32>)> {
+        let _operation_guard = self.controller_operation_lock.lock().await;
         let controller = self.controller.as_ref()?;
         let ctrl_clone = controller.clone();
 
@@ -263,6 +280,7 @@ impl MaaFrameworkWrapper {
         &mut self,
         roi: [i32; 4],
     ) -> Result<OcrRecognitionResponse, String> {
+        let _operation_guard = self.controller_operation_lock.lock().await;
         crate::backend_log_debug!(
             "stderr",
             "[OCR] start roi={:?}, resource_bound={}, tasker_ready={}",
@@ -322,7 +340,12 @@ impl MaaFrameworkWrapper {
 
         match tasker.post_task_json("__OCRDebug", &ocr_pipeline) {
             Ok(job) => {
-                let wait_status = job.wait();
+                let (wait_status, job) = tokio::task::spawn_blocking(move || {
+                    let wait_status = job.wait();
+                    (wait_status, job)
+                })
+                .await
+                .map_err(|error| format!("OCR task wait failed: {error}"))?;
                 crate::backend_log_debug!("stderr", "[OCR] task wait status: {}", wait_status);
 
                 match job.get(false) {
@@ -490,7 +513,12 @@ impl MaaFrameworkWrapper {
             .post_recognition("OCR", &ocr_params.to_string(), &img_buffer)
             .map_err(|e| format!("OCR recognition failed: {}", e))?;
 
-        let wait_status = job.wait();
+        let (wait_status, job) = tokio::task::spawn_blocking(move || {
+            let wait_status = job.wait();
+            (wait_status, job)
+        })
+        .await
+        .map_err(|error| format!("OCR recognition wait failed: {error}"))?;
         crate::backend_log_debug!("stderr", "[OCR] direct wait status: {}", wait_status);
 
         match job.get(false) {
