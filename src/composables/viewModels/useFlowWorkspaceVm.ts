@@ -44,6 +44,12 @@ export function useFlowWorkspaceVm() {
   const registerEditor = (tabId: string, editor: FlowEditorPort | null) => {
     if (editor) {
       editorRefs.value.set(tabId, editor)
+      void editor.handleUpdateCanvasConfig({
+        edgeType: appSettings.value.edgeType,
+        spacing: appSettings.value.spacing,
+        layoutAlgorithm: appSettings.value.layoutAlgorithm,
+        layoutDirection: appSettings.value.layoutDirection
+      }, { applyLayout: false })
     } else {
       editorRefs.value.delete(tabId)
     }
@@ -170,14 +176,18 @@ export function useFlowWorkspaceVm() {
     await activeEditorRef.value?.handleApplyLayout()
   }
 
-  const handleUpdateCanvasConfig = (payload: {
+  const handleUpdateCanvasConfig = async (payload: {
     edgeType?: EdgeType
     spacing?: SpacingKey
     layoutAlgorithm?: LayoutAlgorithm
     layoutDirection?: LayoutDirection
   }) => {
     appConfig.updateCanvasSettings(payload)
-    activeEditorRef.value?.handleUpdateCanvasConfig(payload)
+    const activeId = activeTabId.value
+    const updates = Array.from(editorRefs.value.entries()).map(([tabId, editor]) =>
+      editor.handleUpdateCanvasConfig(payload, { applyLayout: tabId === activeId })
+    )
+    await Promise.all(updates)
   }
 
   const handleUpdatePipelineVersion = (val: 'V1' | 'V2') => {

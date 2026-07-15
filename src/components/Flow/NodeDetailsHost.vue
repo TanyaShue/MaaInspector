@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { computed, inject, ref, watch, type Ref } from 'vue'
+import { computed, inject, ref, shallowRef, watch, type Ref } from 'vue'
 import NodeDetails from './NodeDetails.vue'
 import { NODE_CONFIG_MAP } from '@/utils/node-config'
 import { useNodeDetailsController } from '@/composables/useNodeDetailsController'
 import type { NodeDetailsTarget } from '@/composables/useNodeDetailsController'
 import type { FlowBusinessData, FlowNode, FlowNodeMeta } from '@/utils/flowTypes'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   nodes: FlowNode[]
-}>()
+  nodeStructureVersion?: number
+}>(), {
+  nodeStructureVersion: 0,
+})
 
 const controller = useNodeDetailsController()
 const currentFilename = inject<Ref<string>>('currentFilename', ref(''))
@@ -20,22 +23,29 @@ interface NodeDetailsEntry {
   node: ActiveFlowNode
 }
 
+const nodeIndexes = shallowRef<Map<string, number>>(new Map())
+
+const rebuildNodeIndexes = () => {
+  nodeIndexes.value = new Map(props.nodes.map((node, index) => [node.id, index]))
+}
+
 const detailsEntries = computed<NodeDetailsEntry[]>(() => {
-  if (!controller) return []
-  const nodesById = new Map(props.nodes.map(node => [node.id, node]))
+  if (!controller || controller.targets.value.length === 0) return []
   return controller.targets.value.flatMap(target => {
-    const node = nodesById.get(target.nodeId)
+    const index = nodeIndexes.value.get(target.nodeId)
+    const node = index === undefined ? undefined : props.nodes[index]
     return node?.data ? [{ target, node: node as ActiveFlowNode }] : []
   })
 })
 
-watch(() => props.nodes.map(node => node.id), (nodeIds) => {
+watch(() => props.nodeStructureVersion, () => {
+  rebuildNodeIndexes()
   if (!controller) return
-  const availableIds = new Set(nodeIds)
+  const availableIds = new Set(nodeIndexes.value.keys())
   controller.targets.value
     .filter(target => !availableIds.has(target.nodeId))
     .forEach(target => controller.closeTarget(target.instanceId))
-}, { flush: 'post' })
+}, { flush: 'post', immediate: true })
 
 const handleUpdateId = (
   { target, node }: NodeDetailsEntry,

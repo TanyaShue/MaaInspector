@@ -21,6 +21,7 @@ const createActions = () => {
   ] as FlowEdge[])
   const requestClearCanvas = vi.fn()
   const markDataChanged = vi.fn()
+  const markNodeStructureChanged = vi.fn()
   const snapshotState = vi.fn()
   const getViewport = vi.fn(() => ({ x: 12, y: 34, zoom: 1.5 }))
   const setViewport = vi.fn().mockResolvedValue(true)
@@ -40,6 +41,7 @@ const createActions = () => {
     setEdgeJumpBack: vi.fn(),
     layoutChainFromNode: vi.fn().mockResolvedValue(undefined),
     markDataChanged,
+    markNodeStructureChanged,
     fitView: vi.fn(),
     screenToFlowCoordinate: ({ x, y }) => ({ x: x + 10, y: y + 20 }),
     getSelectedNodes: ref([]),
@@ -58,7 +60,7 @@ const createActions = () => {
     onIncrementCloseAllDetails: vi.fn()
   })
 
-  return { actions, nodes, edges, requestClearCanvas, markDataChanged, snapshotState, getViewport, setViewport, updateNodeInternals }
+  return { actions, nodes, edges, requestClearCanvas, markDataChanged, markNodeStructureChanged, snapshotState, getViewport, setViewport, updateNodeInternals }
 }
 
 describe('useEditorActions', () => {
@@ -81,7 +83,7 @@ describe('useEditorActions', () => {
   })
 
   it('adds pane nodes at the stored flow coordinate', () => {
-    const { actions, nodes } = createActions()
+    const { actions, nodes, markNodeStructureChanged } = createActions()
 
     actions.onPaneContextMenu(new MouseEvent('contextmenu', { clientX: 30, clientY: 40 }))
     actions.handleMenuAction({ action: 'add', type: 'pane', data: null, payload: 'OCR' })
@@ -89,6 +91,7 @@ describe('useEditorActions', () => {
     const addedNode = nodes.value[nodes.value.length - 1]
     expect(addedNode?.position).toEqual({ x: 40, y: 60 })
     expect(addedNode?.data?.data?.recognition).toBe('OCR')
+    expect(markNodeStructureChanged).toHaveBeenCalledTimes(1)
   })
 
   it('preserves the viewport when adding a node', async () => {

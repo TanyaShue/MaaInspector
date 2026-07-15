@@ -55,6 +55,7 @@ export interface EditorActionsDeps {
     algorithm?: LayoutAlgorithm
   ) => Promise<void>
   markDataChanged: () => void
+  markNodeStructureChanged?: () => void
   fitView: (options?: Record<string, unknown>) => void
   getViewport?: () => { x: number; y: number; zoom: number }
   setViewport?: (
@@ -99,6 +100,7 @@ export function useEditorActions(deps: EditorActionsDeps) {
     setEdgeJumpBack,
     layoutChainFromNode,
     markDataChanged,
+    markNodeStructureChanged,
     fitView,
     screenToFlowCoordinate,
     getSelectedNodes,
@@ -256,6 +258,7 @@ export function useEditorActions(deps: EditorActionsDeps) {
       ...nodes.value.map((node) => ({ ...node, selected: false })),
       ...nextNodes.map((node) => ({ ...node, selected: true })),
     ]
+    markNodeStructureChanged?.()
     markDataChanged()
     void stabilizeViewportAfterNodeMutation(
       previousViewport,
@@ -285,6 +288,7 @@ export function useEditorActions(deps: EditorActionsDeps) {
         const previousViewport = deps.getViewport?.() || null
         if (menu.value.flowPos) newNode.position = { ...menu.value.flowPos }
         nodes.value = [...nodes.value, newNode]
+        markNodeStructureChanged?.()
         markDataChanged()
         void stabilizeViewportAfterNodeMutation(
           previousViewport,
@@ -303,6 +307,7 @@ export function useEditorActions(deps: EditorActionsDeps) {
         if (menu.value.flowPos) anchorNode.position = { ...menu.value.flowPos }
         anchorNode.data = { ...(anchorNode.data || {}), type: 'Anchor', id: anchorId }
         nodes.value = [...nodes.value, anchorNode]
+        markNodeStructureChanged?.()
         markDataChanged()
         void stabilizeViewportAfterNodeMutation(
           previousViewport,
@@ -339,6 +344,7 @@ export function useEditorActions(deps: EditorActionsDeps) {
             .map((e) => e.id)
           removeEdges(edgeIds)
           nodes.value = nodes.value.filter((n) => n.id !== data.id)
+          markNodeStructureChanged?.()
           markDataChanged()
         } else if (type === 'edge' && data?.id) {
           removeEdges([data.id])

@@ -163,6 +163,54 @@ describe('useFlowWorkspaceVm', () => {
     expect(vm.debugPanel.value).toEqual({ visible: false, nodeId: '' })
   })
 
+  it('syncs canvas settings to newly registered editors without laying out hidden canvases', () => {
+    const store = useAppConfigStore()
+    store.updateCanvasSettings({
+      edgeType: 'default',
+      spacing: 'compact',
+      layoutAlgorithm: 'stress',
+      layoutDirection: 'LR'
+    })
+    const vm = useFlowWorkspaceVm()
+    const tab = store.ensureWorkspaceTab()
+    const editor = createEditorPort()
+
+    vm.registerEditor(tab.id, editor)
+
+    expect(editor.handleUpdateCanvasConfig).toHaveBeenCalledWith({
+      edgeType: 'default',
+      spacing: 'compact',
+      layoutAlgorithm: 'stress',
+      layoutDirection: 'LR'
+    }, { applyLayout: false })
+  })
+
+  it('updates every editor config but only lays out the active canvas', async () => {
+    const vm = useFlowWorkspaceVm()
+    vm.addTab()
+    vm.addTab()
+    await nextTick()
+    const [firstTab, secondTab] = vm.tabs.value.items
+    const firstEditor = createEditorPort()
+    const secondEditor = createEditorPort()
+    vm.registerEditor(firstTab.id, firstEditor)
+    vm.registerEditor(secondTab.id, secondEditor)
+    vm.selectTab(secondTab.id)
+    vi.mocked(firstEditor.handleUpdateCanvasConfig).mockClear()
+    vi.mocked(secondEditor.handleUpdateCanvasConfig).mockClear()
+
+    await vm.handleUpdateCanvasConfig({ spacing: 'compact' })
+
+    expect(firstEditor.handleUpdateCanvasConfig).toHaveBeenCalledWith(
+      { spacing: 'compact' },
+      { applyLayout: false }
+    )
+    expect(secondEditor.handleUpdateCanvasConfig).toHaveBeenCalledWith(
+      { spacing: 'compact' },
+      { applyLayout: true }
+    )
+  })
+
   it('lets the restored active editor perform exactly one initial layout after loading resources', async () => {
     const vm = useFlowWorkspaceVm()
     const editor = createEditorPort()

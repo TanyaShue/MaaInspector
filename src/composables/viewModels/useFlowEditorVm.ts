@@ -13,6 +13,7 @@ import { isPipelineV2Nodes, toPipelineV1Nodes } from '@/utils/pipelineTransform'
 import { perfLog, perfMark, perfNow } from '@/utils/perfTrace'
 import { onlyWhenEditorActive, type EditorActiveState } from '@/utils/editorInteraction'
 import { provideNodeDetailsController } from '@/composables/useNodeDetailsController'
+import { getEdgeStyle } from '@/composables/flowGraph/useConnectionManager'
 import type { FlowEditorPort } from './types'
 
 interface UseFlowEditorVmOptions {
@@ -29,6 +30,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
   const {
     nodes,
     edges,
+    nodeStructureVersion,
     nodeTypes,
     currentEdgeType,
     currentSpacing,
@@ -41,6 +43,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     onValidateConnection,
     handleConnect,
     handleEdgesChange,
+    removeEdges,
     handleNodeUpdate,
     loadNodes,
     createNodeObject,
@@ -57,12 +60,12 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     imageManager,
     exportState,
     restoreState,
+    markNodeStructureChanged,
     refreshNodeInternals,
   } = useFlowGraph()
   const nodeTypesObject = nodeTypes as unknown as NodeTypesObject
   const {
     fitView,
-    removeEdges,
     findNode,
     screenToFlowCoordinate,
     getSelectedNodes,
@@ -132,6 +135,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     setEdgeJumpBack,
     layoutChainFromNode,
     markDataChanged,
+    markNodeStructureChanged,
     fitView,
     screenToFlowCoordinate,
     getViewport,
@@ -175,12 +179,47 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     handleConfirmDeleteImages,
     handleSkipDeleteImages,
     handleCancelDeleteImages,
-    handleUpdateCanvasConfig,
+    handleUpdateCanvasConfig: updateCanvasConfigRefs,
     handleUpdatePipelineVersion,
     handleDeviceConnected,
     handleBeforeUnload,
   } = saveManager
   const { handleDebugNodeFromPanel, handleUpdateNodeStatus } = debugRunner
+
+  const handleUpdateCanvasConfig: FlowEditorPort['handleUpdateCanvasConfig'] = async (
+    config,
+    options = {}
+  ) => {
+    const previousEdgeType = currentEdgeType.value
+    const previousSpacing = currentSpacing.value
+    const previousAlgorithm = currentAlgorithm.value
+    const previousDirection = currentDirection.value
+
+    updateCanvasConfigRefs(config)
+
+    if (currentEdgeType.value !== previousEdgeType) {
+      edges.value = edges.value.map(edge => {
+        const edgeStyle = getEdgeStyle(
+          edge.sourceHandle || '',
+          Boolean(edge.data?.isJumpBack),
+          currentEdgeType.value
+        )
+        return {
+          ...edge,
+          ...edgeStyle,
+          data: { ...edge.data, ...edgeStyle.data }
+        }
+      })
+    }
+
+    const layoutChanged = currentSpacing.value !== previousSpacing ||
+      currentAlgorithm.value !== previousAlgorithm ||
+      currentDirection.value !== previousDirection
+    if (layoutChanged && options.applyLayout !== false && nodes.value.length > 0) {
+      if (initialLayoutPending.value) await finalizeInitialLayout()
+      else await applyLayout()
+    }
+  }
 
   const handleNodeUpdateAndSnapshot = (payload: Parameters<typeof handleNodeUpdate>[0]) => {
     handleNodeUpdate(payload)
@@ -342,6 +381,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
             (node: FlowNode) =>
               !selectedNodes.find((selectedNode: FlowNode) => selectedNode.id === node.id)
           )
+          markNodeStructureChanged()
           markDataChanged()
         } else if (selectedEdges.length > 0) {
           removeEdges(selectedEdges.map((edge: FlowEdge) => edge.id))
@@ -400,6 +440,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
   const handleConfirmClearCanvas = () => {
     nodes.value = []
     edges.value = []
+    markNodeStructureChanged()
     markDataChanged()
     showClearCanvasModal.value = false
   }
@@ -485,8 +526,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     handleLoadImages,
     handleSaveNodes: (config: { source: string; filename: string }) => handleSaveNodes(config),
     handleDeviceConnected: (val: boolean) => handleDeviceConnected(val),
-    handleUpdateCanvasConfig: (config: Parameters<typeof handleUpdateCanvasConfig>[0]) =>
-      handleUpdateCanvasConfig(config),
+    handleUpdateCanvasConfig,
     handleUpdatePipelineVersion: (val: 'V1' | 'V2') => handleUpdatePipelineVersion(val),
     handleApplyLayout: async () => {
       if (initialLayoutPending.value) {
@@ -503,6 +543,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
   return {
     nodes,
     edges,
+    nodeStructureVersion,
     nodeTypesObject,
     currentEdgeType,
     currentSpacing,
@@ -551,5 +592,6 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     subCanvas,
     closeSubCanvas,
     editorPort,
+    markNodeStructureChanged,
   }
 }

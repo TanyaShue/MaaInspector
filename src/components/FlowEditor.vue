@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { defineAsyncComponent } from 'vue'
+import { defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
 import { SelectionMode, VueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
@@ -8,6 +8,7 @@ import ContextMenu from './Flow/ContextMenu.vue'
 import SubCanvasPanel from './Flow/SubCanvasPanel.vue'
 import NodeDetailsHost from './Flow/NodeDetailsHost.vue'
 import { useFlowEditorVm } from '@/composables/viewModels/useFlowEditorVm'
+import { useEdgeRenderWindow } from '@/composables/flowGraph/useEdgeRenderWindow'
 import { applySubgraphPositionCommits, type SubgraphNodePositionCommit } from '@/utils/flowSubgraph'
 import type { FlowEdge, FlowNode } from '@/utils/flowTypes'
 
@@ -20,6 +21,7 @@ const props = defineProps<{
   tabId?: string
   debugPanelVisible?: boolean
   isActive?: boolean
+  lowMemoryMode?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -31,6 +33,7 @@ const emit = defineEmits<{
 const {
   nodes,
   edges,
+  nodeStructureVersion,
   nodeTypesObject,
   currentEdgeType,
   currentSpacing,
@@ -77,7 +80,8 @@ const {
   handleSkipDeleteImages,
   subCanvas,
   closeSubCanvas,
-  editorPort
+  editorPort,
+  markNodeStructureChanged,
 } = useFlowEditorVm({
   tabId: props.tabId,
   isActive: () => props.isActive !== false,
@@ -88,6 +92,7 @@ defineExpose(editorPort)
 
 const replaceSubCanvasNodes = (nextNodes: FlowNode[]) => {
   nodes.value = nextNodes
+  markNodeStructureChanged()
 }
 
 const replaceSubCanvasEdges = (nextEdges: FlowEdge[]) => {
@@ -96,14 +101,57 @@ const replaceSubCanvasEdges = (nextEdges: FlowEdge[]) => {
 
 const commitSubCanvasNodePositions = (commits: SubgraphNodePositionCommit[]) => {
   applySubgraphPositionCommits(nodes.value, commits)
+  refreshRenderedEdges()
 }
+
+const editorRootRef = ref<HTMLElement | null>(null)
+const {
+  renderedEdges,
+  refreshRenderedEdges,
+  setCanvasSize,
+  handleMoveStart,
+  handleMove,
+  handleMoveEnd,
+  handleNodeDragStart,
+  handleNodeDragStop,
+} = useEdgeRenderWindow({
+  nodes,
+  edges,
+  nodeStructureVersion,
+  lowMemoryMode: () => props.lowMemoryMode === true,
+})
+
+const handleMainMoveStart = (event: Parameters<typeof handleMoveStart>[0]) => {
+  closeMenu()
+  handleMoveStart(event)
+}
+
+let resizeObserver: ResizeObserver | null = null
+onMounted(() => {
+  const root = editorRootRef.value
+  if (!root) return
+  const updateSize = () => {
+    const rect = root.getBoundingClientRect()
+    setCanvasSize({ width: rect.width, height: rect.height })
+  }
+  updateSize()
+  resizeObserver = new ResizeObserver(updateSize)
+  resizeObserver.observe(root)
+})
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
+  resizeObserver = null
+})
 </script>
 
 <template>
-  <div class="w-full h-full min-h-[500px] bg-slate-50 relative">
+  <div
+    ref="editorRootRef"
+    class="w-full h-full min-h-[500px] bg-slate-50 relative"
+  >
     <VueFlow
       v-model:nodes="nodes"
-      v-model:edges="edges"
+      :edges="renderedEdges"
       :node-types="nodeTypesObject"
       :default-zoom="1"
       :min-zoom="0.1"
@@ -126,7 +174,13 @@ const commitSubCanvasNodePositions = (commits: SubgraphNodePositionCommit[]) => 
       @pane-click="closeMenu"
       @node-click="closeMenu"
       @edge-click="closeMenu"
-      @move-start="closeMenu"
+      @move-start="handleMainMoveStart"
+      @move="handleMove"
+      @move-end="handleMoveEnd"
+      @node-drag-start="handleNodeDragStart"
+      @node-drag-stop="handleNodeDragStop"
+      @selection-drag-start="handleNodeDragStart"
+      @selection-drag-stop="handleNodeDragStop"
     >
       <Background
         pattern-color="#cbd5e1"
@@ -176,6 +230,7 @@ const commitSubCanvasNodePositions = (commits: SubgraphNodePositionCommit[]) => 
     />
     <NodeDetailsHost
       :nodes="nodes"
+      :node-structure-version="nodeStructureVersion"
     />
     <SaveConfirmModal
       :visible="showSaveModal"
@@ -212,6 +267,7 @@ const commitSubCanvasNodePositions = (commits: SubgraphNodePositionCommit[]) => 
       :current-spacing="currentSpacing"
       :current-algorithm="currentAlgorithm"
       :current-direction="currentDirection"
+      :low-memory-mode="props.lowMemoryMode"
       :current-filename="currentFilename"
       :is-file-loaded="isFileLoaded"
       :on-validate-connection="onValidateConnection"

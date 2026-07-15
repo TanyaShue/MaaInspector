@@ -9,6 +9,7 @@ import { useEditorActions } from '@/composables/useEditorActions'
 import { useFloatingPanel } from '@/composables/useFloatingPanel'
 import { useLayout } from '@/composables/useLayout'
 import { useViewportSync } from '@/composables/flowGraph/useViewportSync'
+import { useEdgeRenderWindow } from '@/composables/flowGraph/useEdgeRenderWindow'
 import ToolbarIconDropdown from './Common/ToolbarIconDropdown.vue'
 import {
   EDGE_TYPE_OPTIONS,
@@ -51,6 +52,7 @@ const props = defineProps<{
   currentSpacing: SpacingKey
   currentAlgorithm: LayoutAlgorithm
   currentDirection: LayoutDirection
+  lowMemoryMode?: boolean
   currentFilename: string
   isFileLoaded: boolean
   onValidateConnection: (connection: FlowConnection) => boolean
@@ -95,6 +97,7 @@ let subCanvasDebugEnabled = false
 let lastViewportDebugAt = 0
 let lastPanelDebugAt = 0
 let longTaskObserver: PerformanceObserver | null = null
+let canvasResizeObserver: ResizeObserver | null = null
 
 const SUB_CANVAS_DEBUG_KEY = 'maainspector.subCanvasDebug'
 const DEBUG_SAMPLE_LIMIT = 100
@@ -132,6 +135,7 @@ const panel = useFloatingPanel({
   edgeGap: 24
 })
 const panelRootRef = ref<HTMLElement | null>(null)
+const canvasRootRef = ref<HTMLElement | null>(null)
 
 const baseVisibleNodeIds = ref<Set<string>>(new Set())
 const edgeStructureKey = computed(() =>
@@ -204,7 +208,7 @@ const collectSubCanvasDebugSnapshot = (event: string, fields: Record<string, unk
   })
 }
 
-const handleViewportMove = ({ flowTransform }: FlowEvents['move']) => {
+const recordViewportMove = ({ flowTransform }: FlowEvents['move']) => {
   if (!subCanvasDebugEnabled) return
   const now = performance.now()
   if (now - lastViewportDebugAt < 250) return
@@ -218,16 +222,12 @@ const handleViewportMove = ({ flowTransform }: FlowEvents['move']) => {
   })
 }
 
-const handleViewportMoveEnd = () => {
+const recordViewportMoveEnd = () => {
   collectSubCanvasDebugSnapshot('viewport-move-end')
 }
 
-const createRemoveChanges = (edgeIds: string[]): FlowEdgeChange[] =>
-  edgeIds.map(id => ({ id, type: 'remove' }) as FlowEdgeChange)
-
 const removeMainEdges = (edgeIds: string[]) => {
   if (!edgeIds.length) return
-  props.handleEdgesChange(createRemoveChanges(edgeIds))
   props.removeEdges(edgeIds)
 }
 
@@ -294,6 +294,41 @@ const subNodes = computed<FlowNode[]>({
 })
 
 const subEdges = computed<FlowEdge[]>(() => filterSubgraphEdges(props.edges, visibleNodeIds.value))
+const subNodeStructureVersion = ref(0)
+watch(visibleNodeIdList, () => {
+  subNodeStructureVersion.value++
+})
+
+const {
+  renderedEdges: renderedSubEdges,
+  refreshRenderedEdges: refreshRenderedSubEdges,
+  setCanvasSize,
+  handleMoveStart: handleEdgeMoveStart,
+  handleMove: handleEdgeMove,
+  handleMoveEnd: handleEdgeMoveEnd,
+  handleNodeDragStart: handleEdgeNodeDragStart,
+  handleNodeDragStop: handleEdgeNodeDragStop
+} = useEdgeRenderWindow({
+  nodes: subNodes,
+  edges: subEdges,
+  nodeStructureVersion: subNodeStructureVersion,
+  lowMemoryMode: () => props.lowMemoryMode === true
+})
+
+const handleViewportMoveStart = (event: Parameters<typeof handleEdgeMoveStart>[0]) => {
+  closeMenu()
+  handleEdgeMoveStart(event)
+}
+
+const handleViewportMove = (event: FlowEvents['move']) => {
+  handleEdgeMove(event)
+  recordViewportMove(event)
+}
+
+const handleViewportMoveEnd = (event: Parameters<typeof handleEdgeMoveEnd>[0]) => {
+  handleEdgeMoveEnd(event)
+  recordViewportMoveEnd()
+}
 
 const handleNodeUpdate = (payload: NodeUpdatePayload) => {
   props.handleNodeUpdate(payload)
@@ -356,6 +391,7 @@ const performVisibleChainLayout = async (
     })
     localNodeState.value = nextLocalState
     await nextTick()
+    refreshRenderedSubEdges()
     if (previousViewport) {
       await viewportSync.refreshNodeInternals(layouted.map(node => node.id))
       await setViewport(previousViewport, { duration: 0 })
@@ -496,6 +532,7 @@ const handleNodesChange = (changes: NodeChange[]) => {
 }
 
 const handleNodeDragStop = (event: NodeDragEvent) => {
+  handleEdgeNodeDragStop()
   const draggedNodes = event.nodes.length > 0 ? event.nodes : [event.node]
   draggedNodes.forEach(node => {
     pendingNodePositions.set(node.id, { ...node.position })
@@ -514,6 +551,7 @@ const handleNodeDragStop = (event: NodeDragEvent) => {
   localNodeState.value = nextLocalState
   emit('commit-node-positions', commits)
   props.markDataChanged()
+  refreshRenderedSubEdges()
   collectSubCanvasDebugSnapshot('node-drag-stop', {
     changedNodes: commits
   })
@@ -613,6 +651,37 @@ watch(() => props.initialAlgorithm, (algorithm) => {
   if (algorithm) activeAlgorithm.value = algorithm
 })
 
+watch(
+  () => [
+    props.currentAlgorithm,
+    props.currentSpacing,
+    props.currentDirection,
+    props.currentEdgeType
+  ] as const,
+  ([algorithm, spacing, direction, edgeType], previous) => {
+    const layoutChanged = !previous || algorithm !== previous[0] ||
+      spacing !== previous[1] || direction !== previous[2]
+    activeAlgorithm.value = algorithm
+    activeSpacing.value = spacing
+    activeDirection.value = direction
+    activeEdgeType.value = edgeType
+    if (props.visible && layoutChanged) void layoutVisibleChain(algorithm)
+  }
+)
+
+watch(canvasRootRef, (canvasRoot) => {
+  canvasResizeObserver?.disconnect()
+  canvasResizeObserver = null
+  if (!canvasRoot) return
+  const updateCanvasSize = () => {
+    const rect = canvasRoot.getBoundingClientRect()
+    setCanvasSize({ width: rect.width, height: rect.height })
+  }
+  updateCanvasSize()
+  canvasResizeObserver = new ResizeObserver(updateCanvasSize)
+  canvasResizeObserver.observe(canvasRoot)
+})
+
 onMounted(() => {
   subCanvasDebugEnabled = window.localStorage.getItem(SUB_CANVAS_DEBUG_KEY) === 'on'
   panel.loadLayout()
@@ -641,6 +710,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeyDown)
   longTaskObserver?.disconnect()
   longTaskObserver = null
+  canvasResizeObserver?.disconnect()
+  canvasResizeObserver = null
   panel.stopInteraction()
 })
 </script>
@@ -749,11 +820,14 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div class="absolute inset-x-0 bottom-0 top-11 bg-slate-50">
+        <div
+          ref="canvasRootRef"
+          class="absolute inset-x-0 bottom-0 top-11 bg-slate-50"
+        >
           <VueFlow
             :id="flowId"
             :nodes="subNodes"
-            :edges="subEdges"
+            :edges="renderedSubEdges"
             :node-types="nodeTypesObject"
             :default-zoom="1"
             :min-zoom="0.1"
@@ -772,14 +846,17 @@ onBeforeUnmount(() => {
             @init="handleFlowInit"
             @edges-change="handleSubCanvasEdgesChange"
             @nodes-change="handleNodesChange"
+            @node-drag-start="handleEdgeNodeDragStart"
             @node-drag-stop="handleNodeDragStop"
+            @selection-drag-start="handleEdgeNodeDragStart"
+            @selection-drag-stop="handleNodeDragStop"
             @pane-context-menu="onPaneContextMenu"
             @node-context-menu="(params: NodeMouseEvent) => onNodeContextMenu(params)"
             @edge-context-menu="(params: EdgeMouseEvent) => onEdgeContextMenu(params)"
             @pane-click="closeMenu"
             @node-click="closeMenu"
             @edge-click="closeMenu"
-            @move-start="closeMenu"
+            @move-start="handleViewportMoveStart"
             @move="handleViewportMove"
             @move-end="handleViewportMoveEnd"
           >

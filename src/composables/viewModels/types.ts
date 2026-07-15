@@ -27,7 +27,7 @@ export interface FlowEditorPort {
     spacing?: string
     layoutAlgorithm?: string
     layoutDirection?: string
-  }) => void
+  }, options?: { applyLayout?: boolean }) => void | Promise<void>
   handleUpdatePipelineVersion: (val: 'V1' | 'V2') => void
   handleApplyLayout: () => Promise<void>
   handleLocateNode: (nodeId: string) => void
