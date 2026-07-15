@@ -23,7 +23,7 @@ const announcements = computed(() => parseChangelog(changelogContent))
 <template>
   <div
     v-if="visible"
-    class="fixed inset-0 z-[100] flex items-center justify-center bg-black/20 backdrop-blur-sm animate-in fade-in duration-200"
+    class="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 animate-in fade-in duration-200"
   >
     <div class="bg-white rounded-xl shadow-2xl border border-slate-200 flex overflow-hidden w-[600px] max-h-[80vh]">
       <div class="flex-1 flex flex-col bg-white">

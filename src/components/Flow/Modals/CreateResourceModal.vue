@@ -58,7 +58,7 @@ const handleCreate = () => {
 <template>
   <div
     v-if="visible"
-    class="fixed inset-0 z-[110] flex items-center justify-center bg-black/20 backdrop-blur-sm animate-in fade-in duration-200"
+    class="fixed inset-0 z-[110] flex items-center justify-center bg-black/30 animate-in fade-in duration-200"
   >
     <div class="bg-white rounded-xl shadow-2xl border border-slate-200 w-[400px] overflow-hidden">
       <div class="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50">

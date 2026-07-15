@@ -102,11 +102,7 @@ defineExpose({ executeFileSwitch, handleSaveNodes, triggerLoadFromCache: trigger
 
 <template>
   <div class="relative flex shrink-0 items-center font-sans select-none pointer-events-auto z-50">
-    <Transition
-      name="fade-scale"
-      mode="out-in"
-    >
-      <div class="flex shrink-0 items-center gap-1">
+    <div class="flex shrink-0 items-center gap-1">
         <button
           type="button"
           class="relative flex h-7 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
@@ -209,12 +205,11 @@ defineExpose({ executeFileSwitch, handleSaveNodes, triggerLoadFromCache: trigger
             class="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white"
           />
         </button>
-      </div>
-    </Transition>
+    </div>
 
     <div
       v-if="!panelCollapsed"
-      class="fixed right-3 top-14 z-50 w-80 bg-white/95 backdrop-blur-md shadow-xl border border-slate-200 rounded-xl overflow-hidden flex flex-col max-h-[90vh] origin-top-right transition-all"
+      class="fixed right-3 top-14 z-50 w-80 bg-white shadow-xl border border-slate-200 rounded-xl overflow-hidden flex flex-col max-h-[90vh] origin-top-right transition-[opacity,transform]"
     >
         <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/80 shrink-0">
           <div class="flex items-center gap-2">

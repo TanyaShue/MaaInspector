@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { nextTick, ref } from 'vue'
-import type { FlowEvents, NodeDragEvent } from '@vue-flow/core'
+import { ref } from 'vue'
+import type { FlowEvents } from '@vue-flow/core'
 import {
+  applyEdgeAnimationBudget,
   filterViewportEdges,
+  MAX_ANIMATED_EDGES,
   useEdgeRenderWindow,
 } from '@/composables/flowGraph/useEdgeRenderWindow'
 import type { FlowEdge, FlowNode } from '@/utils/flowTypes'
@@ -28,6 +30,21 @@ const moveEvent = (x = 0, y = 0, zoom = 1) => ({
 })
 
 describe('edge render window', () => {
+  it('keeps small edge sets animated and disables animations above the budget', () => {
+    const small = [{ ...edge('small', 'a', 'b'), animated: true }]
+    expect(applyEdgeAnimationBudget(small)).toBe(small)
+
+    const large = Array.from({ length: MAX_ANIMATED_EDGES + 1 }, (_, index) => ({
+      ...edge(`edge-${index}`, 'a', 'b'),
+      animated: true,
+    }))
+    const budgeted = applyEdgeAnimationBudget(large)
+
+    expect(budgeted).not.toBe(large)
+    expect(budgeted.every(item => item.animated === false)).toBe(true)
+    expect(large.every(item => item.animated === true)).toBe(true)
+  })
+
   it('keeps viewport and crossing edges while excluding distant edges', () => {
     const nodes = [
       node('a', 0, 0),
@@ -88,30 +105,4 @@ describe('edge render window', () => {
     expect(window.renderedEdges.value.map(item => item.id)).toEqual(['far'])
   })
 
-  it('keeps only dragged-node edges, and hides those too in low-memory mode', async () => {
-    const nodes = ref([node('a', 0, 0), node('b', 300, 0), node('c', 600, 0)])
-    const edges = ref([edge('ab', 'a', 'b'), edge('bc', 'b', 'c')])
-    const lowMemoryMode = ref(false)
-    const window = useEdgeRenderWindow({
-      nodes,
-      edges,
-      nodeStructureVersion: ref(0),
-      lowMemoryMode,
-    })
-    window.setCanvasSize({ width: 800, height: 600 })
-
-    window.handleNodeDragStart({
-      node: nodes.value[0],
-      nodes: [nodes.value[0]],
-      event: new MouseEvent('mousedown'),
-    } as NodeDragEvent)
-    expect(window.renderedEdges.value.map(item => item.id)).toEqual(['ab'])
-
-    lowMemoryMode.value = true
-    await nextTick()
-    expect(window.renderedEdges.value).toEqual([])
-
-    window.handleNodeDragStop()
-    expect(window.renderedEdges.value.map(item => item.id)).toEqual(['ab', 'bc'])
-  })
 })

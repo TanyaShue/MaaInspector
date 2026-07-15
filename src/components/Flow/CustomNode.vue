@@ -129,7 +129,7 @@ const contentHeightClass = computed(() => {
 <template>
   <div
     ref="nodeRootRef"
-    class="w-[280px] bg-white rounded-xl shadow-lg border-2 transition-all duration-200 overflow-visible group relative cursor-grab active:cursor-grabbing"
+    class="node-card w-[280px] bg-white rounded-xl shadow-lg border-2 transition-all duration-200 overflow-visible group relative cursor-grab active:cursor-grabbing"
     :class="[selected ? 'ring-2 ring-offset-2 ring-blue-400 border-blue-500' : 'border-slate-100 hover:border-slate-300', data._isMissing ? 'opacity-80' : '']"
     @dblclick.stop="toggleDetails"
   >

@@ -195,7 +195,7 @@ const hasSelection = computed(() => selectedPaths.value.size > 0)
               :src="item.url"
               class="w-full h-full object-contain relative z-10"
             >
-            <div class="absolute bottom-0 left-0 right-0 backdrop-blur-[1px] py-1 px-1 z-20 truncate bg-black/60">
+            <div class="absolute bottom-0 left-0 right-0 py-1 px-1 z-20 truncate bg-black/70">
               <div
                 class="text-[9px] text-white/90 font-mono text-center truncate select-none"
                 :title="item.path"
@@ -252,7 +252,7 @@ const hasSelection = computed(() => selectedPaths.value.size > 0)
               :src="item.url"
               class="w-full h-full object-contain relative z-10"
             >
-            <div class="absolute bottom-0 left-0 right-0 backdrop-blur-[1px] py-1 px-1 z-20 truncate bg-emerald-600/80">
+            <div class="absolute bottom-0 left-0 right-0 py-1 px-1 z-20 truncate bg-emerald-600/90">
               <div
                 class="text-[9px] text-white/90 font-mono text-center truncate select-none"
                 :title="item.path"
@@ -312,7 +312,7 @@ const hasSelection = computed(() => selectedPaths.value.size > 0)
               :src="item.url"
               class="w-full h-full object-contain relative z-10"
             >
-            <div class="absolute bottom-0 left-0 right-0 bg-slate-500/80 backdrop-blur-[1px] py-1 px-1 z-20 truncate">
+            <div class="absolute bottom-0 left-0 right-0 bg-slate-500/90 py-1 px-1 z-20 truncate">
               <div
                 class="text-[9px] text-white/70 font-mono text-center truncate select-none"
                 :title="item.path"

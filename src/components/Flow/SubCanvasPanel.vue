@@ -318,8 +318,6 @@ const {
   handleMoveStart: handleEdgeMoveStart,
   handleMove: handleEdgeMove,
   handleMoveEnd: handleEdgeMoveEnd,
-  handleNodeDragStart: handleEdgeNodeDragStart,
-  handleNodeDragStop: handleEdgeNodeDragStop
 } = useEdgeRenderWindow({
   nodes: subNodes,
   edges: subEdges,
@@ -538,7 +536,6 @@ const handleNodesChange = (changes: NodeChange[]) => {
 }
 
 const handleNodeDragStop = (event: NodeDragEvent) => {
-  handleEdgeNodeDragStop()
   const draggedNodes = event.nodes.length > 0 ? event.nodes : [event.node]
   draggedNodes.forEach(node => {
     pendingNodePositions.set(node.id, { ...node.position })
@@ -828,6 +825,8 @@ onBeforeUnmount(() => {
         >
           <VueFlow
             :id="flowId"
+            v-memo="[subNodes, renderedSubEdges, isFileLoaded, onlyRenderVisibleElements]"
+            class="flow-canvas-layer"
             :nodes="subNodes"
             :edges="renderedSubEdges"
             :node-types="nodeTypesObject"
@@ -841,16 +840,14 @@ onBeforeUnmount(() => {
             :elements-selectable="isFileLoaded"
             :selection-key-code="false"
             :multi-selection-key-code="null"
-            :select-nodes-on-drag="true"
+            :select-nodes-on-drag="false"
             :selection-mode="SelectionMode.Partial"
             :pan-on-drag="true"
             @connect="handleConnect"
             @init="handleFlowInit"
             @edges-change="handleSubCanvasEdgesChange"
             @nodes-change="handleNodesChange"
-            @node-drag-start="handleEdgeNodeDragStart"
             @node-drag-stop="handleNodeDragStop"
-            @selection-drag-start="handleEdgeNodeDragStart"
             @selection-drag-stop="handleNodeDragStop"
             @pane-context-menu="onPaneContextMenu"
             @node-context-menu="(params: NodeMouseEvent) => onNodeContextMenu(params)"
@@ -867,18 +864,18 @@ onBeforeUnmount(() => {
               :gap="20"
             />
             <Controls />
-            <ContextMenu
-              v-if="menu.visible"
-              v-bind="menu"
-              mode="subcanvas"
-              :current-edge-type="activeEdgeType"
-              :current-spacing="activeSpacing"
-              :current-algorithm="activeAlgorithm"
-              :current-direction="activeDirection"
-              @close="closeMenu"
-              @action="handleMenuAction"
-            />
           </VueFlow>
+          <ContextMenu
+            v-if="menu.visible"
+            v-bind="menu"
+            mode="subcanvas"
+            :current-edge-type="activeEdgeType"
+            :current-spacing="activeSpacing"
+            :current-algorithm="activeAlgorithm"
+            :current-direction="activeDirection"
+            @close="closeMenu"
+            @action="handleMenuAction"
+          />
         </div>
 
         <div

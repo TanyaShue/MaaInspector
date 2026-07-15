@@ -25,7 +25,7 @@ const emit = defineEmits<{
       />
       <div
         v-if="jsonError"
-        class="absolute bottom-3 left-3 right-3 bg-red-500/90 text-white px-3 py-2 rounded-lg backdrop-blur-sm shadow-lg flex items-start gap-2 z-10"
+        class="absolute bottom-3 left-3 right-3 bg-red-600 text-white px-3 py-2 rounded-lg shadow-lg flex items-start gap-2 z-10"
       >
         <AlertCircle
           :size="16"

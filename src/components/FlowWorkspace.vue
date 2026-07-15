@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { defineAsyncComponent, ref } from 'vue'
+import { defineAsyncComponent, onMounted, ref } from 'vue'
 import { FileJson, Loader2, Move, Plus, X } from 'lucide-vue-next'
 import FlowEditor from './FlowEditor.vue'
 import InfoPanel from './Flow/InfoPanel.vue'
@@ -15,8 +15,18 @@ import {
 import type { LayoutAlgorithm, LayoutDirection, SpacingKey } from '@/utils/flowTypes'
 import type { FlowEditorPort } from '@/composables/viewModels/types'
 
-const NodeDebugPanel = defineAsyncComponent(() => import('./Flow/NodeDebugPanel.vue'))
+const loadNodeDebugPanel = () => import('./Flow/NodeDebugPanel.vue')
+const NodeDebugPanel = defineAsyncComponent(loadNodeDebugPanel)
 const infoPanelCollapsed = ref(false)
+
+onMounted(() => {
+  const preload = () => { void loadNodeDebugPanel() }
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(preload, { timeout: 1500 })
+  } else {
+    setTimeout(preload, 0)
+  }
+})
 
 const {
   tabs,
@@ -234,7 +244,7 @@ const handleToolbarEdgeTypeChange = (value: PropertyKey) => {
 
       <div
         v-if="isRestoringWorkspace"
-        class="absolute inset-0 z-40 flex items-center justify-center bg-slate-100/90 backdrop-blur-sm pointer-events-auto"
+        class="absolute inset-0 z-40 flex items-center justify-center bg-slate-100/95 pointer-events-auto"
       >
         <div class="flex items-center gap-3 rounded-lg border border-slate-200 bg-white/95 px-5 py-4 shadow-lg">
           <Loader2 class="h-5 w-5 animate-spin text-indigo-500" />

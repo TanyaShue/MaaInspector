@@ -413,7 +413,7 @@ saveImagePath.value = generateDefaultSavePath()
 <template>
   <div
     v-if="visible"
-    class="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
+    class="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 animate-in fade-in duration-200"
     @mousedown.self="handleBackgroundClick"
   >
     <div

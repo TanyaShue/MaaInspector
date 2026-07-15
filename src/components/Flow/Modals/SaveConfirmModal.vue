@@ -23,7 +23,7 @@ void emit
 <template>
   <div
     v-if="visible"
-    class="fixed inset-0 z-[200] flex items-center justify-center bg-black/30 backdrop-blur-sm"
+    class="fixed inset-0 z-[200] flex items-center justify-center bg-black/40"
   >
     <div
       class="bg-white rounded-xl shadow-2xl border border-slate-200 w-[380px] overflow-hidden animate-in zoom-in-95 fade-in duration-200"

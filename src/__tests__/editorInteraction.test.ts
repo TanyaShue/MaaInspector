@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { isEditorActive, onlyWhenEditorActive } from '@/utils/editorInteraction'
+import { isEditorActive, onlyWhenEditorActive, syncNodePositions } from '@/utils/editorInteraction'
 
 describe('editorInteraction', () => {
   it('treats an omitted active state as active for single-editor compatibility', () => {
@@ -34,5 +34,19 @@ describe('editorInteraction', () => {
 
     expect(handler).toHaveBeenCalledOnce()
     expect(handler).toHaveBeenCalledWith(event)
+  })
+
+  it('syncs only final dragged positions without replacing the node array', () => {
+    const nodes = [
+      { id: 'a', position: { x: 0, y: 0 } },
+      { id: 'b', position: { x: 10, y: 20 } },
+    ]
+
+    syncNodePositions(nodes, [{ id: 'b', position: { x: 30, y: 40 } }])
+
+    expect(nodes).toEqual([
+      { id: 'a', position: { x: 0, y: 0 } },
+      { id: 'b', position: { x: 30, y: 40 } },
+    ])
   })
 })

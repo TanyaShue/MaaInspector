@@ -108,7 +108,7 @@ const handleOpenLogDir = async () => {
 <template>
   <div
     v-if="visible"
-    class="fixed inset-0 z-[100] flex items-center justify-center bg-black/20 backdrop-blur-sm animate-in fade-in duration-200"
+    class="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 animate-in fade-in duration-200"
   >
     <div class="bg-white rounded-xl shadow-2xl border border-slate-200 flex overflow-hidden w-[min(500px,calc(100vw-2rem))] max-h-[calc(100vh-2rem)]">
       <div class="flex-1 min-h-0 flex flex-col bg-white">

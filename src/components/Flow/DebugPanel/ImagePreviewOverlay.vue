@@ -18,7 +18,7 @@ const handleClose = () => {
 <template>
   <div
     v-if="visible"
-    class="fixed inset-0 z-[140] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6"
+    class="fixed inset-0 z-[140] bg-black/90 flex items-center justify-center p-6"
     @click="handleClose"
   >
     <div class="relative max-w-[90vw] max-h-[90vh]">

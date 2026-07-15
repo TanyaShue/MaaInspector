@@ -1,5 +1,5 @@
 import { ref, shallowRef, toValue, watch, type MaybeRefOrGetter, type Ref } from 'vue'
-import type { FlowEvents, NodeDragEvent, ViewportTransform } from '@vue-flow/core'
+import type { FlowEvents, ViewportTransform } from '@vue-flow/core'
 import type { FlowEdge, FlowNode } from '@/utils/flowTypes'
 
 interface CanvasSize {
@@ -34,6 +34,7 @@ const DEFAULT_NODE_WIDTH = 280
 const DEFAULT_NODE_HEIGHT = 150
 const NORMAL_MARGIN_PX = 480
 const LOW_MEMORY_MARGIN_PX = 160
+export const MAX_ANIMATED_EDGES = 80
 
 const intersects = (a: FlowRect, b: FlowRect) =>
   a.left <= b.right && a.right >= b.left && a.top <= b.bottom && a.bottom >= b.top
@@ -54,6 +55,14 @@ const getNodeRect = (node: FlowNode): FlowRect => {
     right: left + width,
     bottom: top + height,
   }
+}
+
+export const applyEdgeAnimationBudget = (
+  visibleEdges: FlowEdge[],
+  maxAnimatedEdges = MAX_ANIMATED_EDGES
+): FlowEdge[] => {
+  if (visibleEdges.length <= maxAnimatedEdges) return visibleEdges
+  return visibleEdges.map(edge => edge.animated ? { ...edge, animated: false } : edge)
 }
 
 export const filterViewportEdges = ({
@@ -104,8 +113,6 @@ export function useEdgeRenderWindow({
   const viewport = ref<ViewportTransform>({ x: 0, y: 0, zoom: 1 })
   const canvasSize = ref<CanvasSize>({ width: 0, height: 0 })
   const viewportMoving = ref(false)
-  const nodeDragging = ref(false)
-  const draggedNodeIds = ref<Set<string>>(new Set())
 
   const refreshRenderedEdges = () => {
     if (viewportMoving.value) {
@@ -113,24 +120,13 @@ export function useEdgeRenderWindow({
       return
     }
 
-    if (nodeDragging.value) {
-      if (toValue(lowMemoryMode)) {
-        renderedEdges.value = []
-        return
-      }
-      renderedEdges.value = edges.value.filter(
-        edge => draggedNodeIds.value.has(edge.source) || draggedNodeIds.value.has(edge.target)
-      )
-      return
-    }
-
-    renderedEdges.value = filterViewportEdges({
+    renderedEdges.value = applyEdgeAnimationBudget(filterViewportEdges({
       nodes: nodes.value,
       edges: edges.value,
       viewport: viewport.value,
       canvasSize: canvasSize.value,
       marginPx: toValue(lowMemoryMode) ? LOW_MEMORY_MARGIN_PX : NORMAL_MARGIN_PX,
-    })
+    }))
   }
 
   const setCanvasSize = (size: CanvasSize) => {
@@ -155,19 +151,6 @@ export function useEdgeRenderWindow({
     refreshRenderedEdges()
   }
 
-  const handleNodeDragStart = ({ node, nodes: draggedNodes }: NodeDragEvent) => {
-    const ids = draggedNodes.length > 0 ? draggedNodes.map(item => item.id) : [node.id]
-    draggedNodeIds.value = new Set(ids)
-    nodeDragging.value = true
-    refreshRenderedEdges()
-  }
-
-  const handleNodeDragStop = () => {
-    nodeDragging.value = false
-    draggedNodeIds.value = new Set()
-    refreshRenderedEdges()
-  }
-
   watch(
     [() => edges.value, nodeStructureVersion, () => toValue(lowMemoryMode)],
     refreshRenderedEdges,
@@ -181,7 +164,5 @@ export function useEdgeRenderWindow({
     handleMoveStart,
     handleMove,
     handleMoveEnd,
-    handleNodeDragStart,
-    handleNodeDragStop,
   }
 }

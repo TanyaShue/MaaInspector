@@ -235,12 +235,13 @@ const menuItems = computed<MenuItem[]>(() => {
 </script>
 
 <template>
-  <div
-    ref="mainMenuRef"
-    class="fixed z-50 w-56 bg-white rounded-lg shadow-xl border border-slate-100 text-sm animate-in fade-in zoom-in-95 duration-100 origin-top-left font-sans select-none"
-    :style="{ top: `${adjustedPosition.y}px`, left: `${adjustedPosition.x}px` }"
-    @contextmenu.prevent
-  >
+  <Teleport to="body">
+    <div
+      ref="mainMenuRef"
+      class="context-menu-surface fixed z-50 w-56 bg-white rounded-lg shadow-xl border border-slate-100 text-sm animate-in fade-in zoom-in-95 duration-100 origin-top-left font-sans select-none"
+      :style="{ top: `${adjustedPosition.y}px`, left: `${adjustedPosition.x}px` }"
+      @contextmenu.prevent
+    >
     <div
       v-if="type === 'node'"
       class="px-3 py-2 bg-slate-50 border-b border-slate-100"
@@ -353,10 +354,17 @@ const menuItems = computed<MenuItem[]>(() => {
         </li>
       </template>
     </ul>
-  </div>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
+.context-menu-surface {
+  contain: layout paint style;
+  isolation: isolate;
+  will-change: transform, opacity;
+}
+
 /* 默认隐藏子菜单 */
 .submenu-panel {
   opacity: 0;

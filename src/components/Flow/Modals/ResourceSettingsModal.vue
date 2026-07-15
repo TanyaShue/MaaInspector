@@ -95,7 +95,7 @@ const save = () => {
 <template>
   <div
     v-if="visible"
-    class="fixed inset-0 z-[100] flex items-center justify-center bg-black/20 backdrop-blur-sm animate-in fade-in duration-200"
+    class="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 animate-in fade-in duration-200"
   >
     <div class="bg-white rounded-xl shadow-2xl border border-slate-200 flex overflow-hidden w-[min(700px,calc(100vw-2rem))] h-[500px] max-h-[calc(100vh-2rem)]">
       <div class="w-[200px] bg-slate-50 border-r border-slate-100 flex flex-col min-h-0">

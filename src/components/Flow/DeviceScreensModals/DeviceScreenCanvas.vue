@@ -329,7 +329,7 @@ defineExpose({ resetView, generatePreviewSnapshot, isDragging })
 
     <div class="absolute top-4 right-4 flex flex-row gap-2">
       <button
-        class="p-2 bg-black/40 hover:bg-black/60 text-white rounded-lg backdrop-blur transition-all flex items-center justify-center shadow-sm border border-white/10"
+        class="p-2 bg-black/50 hover:bg-black/70 text-white rounded-lg transition-colors flex items-center justify-center shadow-sm border border-white/10"
         title="刷新屏幕"
         @click="emit('refresh')"
       >
@@ -340,7 +340,7 @@ defineExpose({ resetView, generatePreviewSnapshot, isDragging })
       </button>
 
       <button
-        class="p-2 bg-black/40 hover:bg-black/60 text-white rounded-lg backdrop-blur transition-all flex items-center justify-center shadow-sm border border-white/10"
+        class="p-2 bg-black/50 hover:bg-black/70 text-white rounded-lg transition-colors flex items-center justify-center shadow-sm border border-white/10"
         title="上传本地图片(自动缩放至当前截图尺寸)"
         @click="triggerFileUpload"
       >
@@ -348,7 +348,7 @@ defineExpose({ resetView, generatePreviewSnapshot, isDragging })
       </button>
 
       <button
-        class="p-2 bg-black/40 hover:bg-black/60 text-white rounded-lg backdrop-blur transition-all flex items-center justify-center shadow-sm border border-white/10"
+        class="p-2 bg-black/50 hover:bg-black/70 text-white rounded-lg transition-colors flex items-center justify-center shadow-sm border border-white/10"
         title="重置视图"
         @click="resetView"
       >
@@ -357,7 +357,7 @@ defineExpose({ resetView, generatePreviewSnapshot, isDragging })
     </div>
 
     <div
-      class="absolute bottom-4 right-4 px-2 py-1 bg-black/40 text-white text-[10px] rounded backdrop-blur font-mono pointer-events-none border border-white/10"
+      class="absolute bottom-4 right-4 px-2 py-1 bg-black/60 text-white text-[10px] rounded font-mono pointer-events-none border border-white/10"
     >
       {{ Math.round(viewState.scale * 100) }}%
     </div>

@@ -17,6 +17,7 @@ const targetNode: FlowNode = {
 describe('ContextMenu', () => {
   it('shows the sub-canvas entry on main node menus', () => {
     const wrapper = mount(ContextMenu, {
+      global: { stubs: { Teleport: true } },
       props: {
         x: 20,
         y: 20,
@@ -31,6 +32,7 @@ describe('ContextMenu', () => {
 
   it('hides the sub-canvas entry from sub-canvas node menus', () => {
     const wrapper = mount(ContextMenu, {
+      global: { stubs: { Teleport: true } },
       props: {
         x: 20,
         y: 20,

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
-import { SelectionMode, VueFlow } from '@vue-flow/core'
+import { SelectionMode, VueFlow, type NodeDragEvent } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { FolderSearch } from 'lucide-vue-next'
@@ -9,6 +9,7 @@ import SubCanvasPanel from './Flow/SubCanvasPanel.vue'
 import NodeDetailsHost from './Flow/NodeDetailsHost.vue'
 import { useFlowEditorVm } from '@/composables/viewModels/useFlowEditorVm'
 import { useEdgeRenderWindow } from '@/composables/flowGraph/useEdgeRenderWindow'
+import { syncNodePositions } from '@/utils/editorInteraction'
 import type { FlowNode } from '@/utils/flowTypes'
 
 const NodeSearch = defineAsyncComponent(() => import('./Flow/NodeSearch.vue'))
@@ -101,8 +102,6 @@ const {
   handleMoveStart,
   handleMove,
   handleMoveEnd,
-  handleNodeDragStart,
-  handleNodeDragStop,
 } = useEdgeRenderWindow({
   nodes,
   edges,
@@ -113,6 +112,11 @@ const {
 const handleMainMoveStart = (event: Parameters<typeof handleMoveStart>[0]) => {
   closeMenu()
   handleMoveStart(event)
+}
+
+const handleMainNodeDragStop = ({ node, nodes: draggedNodes }: NodeDragEvent) => {
+  const movedNodes = draggedNodes.length > 0 ? draggedNodes : [node]
+  syncNodePositions(nodes.value, movedNodes)
 }
 
 let resizeObserver: ResizeObserver | null = null
@@ -139,7 +143,9 @@ onBeforeUnmount(() => {
     class="w-full h-full min-h-[500px] bg-slate-50 relative"
   >
     <VueFlow
-      v-model:nodes="nodes"
+      v-memo="[nodes, renderedEdges, isFileLoaded, onlyRenderVisibleElements]"
+      class="flow-canvas-layer"
+      :nodes="nodes"
       :edges="renderedEdges"
       :node-types="nodeTypesObject"
       :default-zoom="1"
@@ -152,7 +158,7 @@ onBeforeUnmount(() => {
       :elements-selectable="isFileLoaded"
       :selection-key-code="true"
       :multi-selection-key-code="null"
-      :select-nodes-on-drag="true"
+      :select-nodes-on-drag="false"
       :selection-mode="SelectionMode.Partial"
       :pan-on-drag="true"
       @connect="(params) => { handleConnect(params) }"
@@ -166,10 +172,8 @@ onBeforeUnmount(() => {
       @move-start="handleMainMoveStart"
       @move="handleMove"
       @move-end="handleMoveEnd"
-      @node-drag-start="handleNodeDragStart"
-      @node-drag-stop="handleNodeDragStop"
-      @selection-drag-start="handleNodeDragStart"
-      @selection-drag-stop="handleNodeDragStop"
+      @node-drag-stop="handleMainNodeDragStop"
+      @selection-drag-stop="handleMainNodeDragStop"
     >
       <Background
         pattern-color="#cbd5e1"
@@ -178,7 +182,7 @@ onBeforeUnmount(() => {
       <Controls />
       <div
         v-if="!isFileLoaded"
-        class="absolute inset-0 z-10 bg-slate-100/60 backdrop-blur-[2px] flex items-center justify-center pointer-events-none transition-all"
+        class="absolute inset-0 z-10 bg-slate-100/90 flex items-center justify-center pointer-events-none"
       >
         <div class="flex flex-col items-center gap-4 p-8 bg-white/80 border border-slate-200 rounded-2xl shadow-xl">
           <div class="p-4 bg-indigo-50 rounded-full">
@@ -194,20 +198,20 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
-      <ContextMenu
-        v-if="menu.visible"
-        v-bind="menu"
-        :current-edge-type="currentEdgeType"
-        :current-spacing="currentSpacing"
-        :current-algorithm="currentAlgorithm"
-        :current-direction="currentDirection"
-        :debug-panel-visible="props.debugPanelVisible"
-        :search-visible="searchVisible"
-        mode="main"
-        @close="closeMenu"
-        @action="handleMenuAction"
-      />
     </VueFlow>
+    <ContextMenu
+      v-if="menu.visible"
+      v-bind="menu"
+      :current-edge-type="currentEdgeType"
+      :current-spacing="currentSpacing"
+      :current-algorithm="currentAlgorithm"
+      :current-direction="currentDirection"
+      :debug-panel-visible="props.debugPanelVisible"
+      :search-visible="searchVisible"
+      mode="main"
+      @close="closeMenu"
+      @action="handleMenuAction"
+    />
     <NodeSearch
       :visible="searchVisible"
       :nodes="nodes"
@@ -289,5 +293,19 @@ onBeforeUnmount(() => {
 }
 .vue-flow__pane.selection {
   cursor: crosshair;
+}
+.flow-canvas-layer {
+  contain: layout paint style;
+  isolation: isolate;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+.vue-flow__node.dragging,
+.vue-flow__node.dragging .node-card {
+  animation: none !important;
+  transition: none !important;
+}
+.vue-flow__node.dragging .node-card {
+  box-shadow: none !important;
 }
 </style>

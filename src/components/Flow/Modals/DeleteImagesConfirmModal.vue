@@ -31,7 +31,7 @@ const hasUsed = computed<boolean>(() => props.usedImages.length > 0)
     <Transition name="modal">
       <div
         v-if="visible"
-        class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm"
+        class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50"
       >
         <div class="bg-white rounded-2xl shadow-2xl w-[480px] max-h-[80vh] flex flex-col overflow-hidden">
           <!-- Header -->
