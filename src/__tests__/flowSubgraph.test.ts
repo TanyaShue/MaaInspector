@@ -4,6 +4,7 @@ import {
   collectReachableNodeIds,
   consumeSubgraphPositionChanges,
   filterSubgraphEdges,
+  projectSubgraphNode,
   resolveSubgraphNodeChanges,
   stageSubgraphPositionChanges
 } from '@/utils/flowSubgraph'
@@ -31,6 +32,31 @@ const positionedNode = (id: string, x: number, y: number): FlowNode => ({
 })
 
 describe('flowSubgraph', () => {
+  it('removes geometry measured by another Vue Flow instance', () => {
+    const mainCanvasNode = {
+      ...positionedNode('root', 12, 24),
+      computedPosition: { x: 10_000, y: 20_000, z: 0 },
+      dimensions: { width: 320, height: 180 },
+      handleBounds: { source: [], target: [] },
+      isParent: false,
+      selected: true,
+      dragging: true,
+      resizing: true
+    } as FlowNode
+
+    const projected = projectSubgraphNode(mainCanvasNode)
+
+    expect(projected.position).toEqual({ x: 12, y: 24 })
+    expect(projected).not.toHaveProperty('computedPosition')
+    expect(projected).not.toHaveProperty('dimensions')
+    expect(projected).not.toHaveProperty('handleBounds')
+    expect(projected).not.toHaveProperty('isParent')
+    expect(projected).not.toHaveProperty('selected')
+    expect(projected).not.toHaveProperty('dragging')
+    expect(projected).not.toHaveProperty('resizing')
+    expect(mainCanvasNode).toHaveProperty('computedPosition')
+  })
+
   it('collects the target node, descendants, and timeout/error branches from actual outgoing edges', () => {
     const nodes = ['root', 'nextChild', 'errorChild', 'timeoutChild', 'grandChild', 'unrelated'].map(node)
     const edges = [

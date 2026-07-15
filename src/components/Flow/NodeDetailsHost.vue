@@ -3,6 +3,7 @@ import { computed, inject, ref, watch, type Ref } from 'vue'
 import NodeDetails from './NodeDetails.vue'
 import { NODE_CONFIG_MAP } from '@/utils/node-config'
 import { useNodeDetailsController } from '@/composables/useNodeDetailsController'
+import type { NodeDetailsTarget } from '@/composables/useNodeDetailsController'
 import type { FlowBusinessData, FlowNode, FlowNodeMeta } from '@/utils/flowTypes'
 
 const props = defineProps<{
@@ -14,35 +15,41 @@ const currentFilename = inject<Ref<string>>('currentFilename', ref(''))
 const pipelineVersion = inject<Ref<'V1' | 'V2'>>('pipelineVersion', ref('V1'))
 const availableTypes = Object.keys(NODE_CONFIG_MAP).filter(type => type !== 'Unknown')
 type ActiveFlowNode = FlowNode & { data: FlowNodeMeta }
-const activeNode = computed<ActiveFlowNode | undefined>(() => {
-  const nodeId = controller?.activeTarget.value?.nodeId
-  const node = nodeId ? props.nodes.find(candidate => candidate.id === nodeId) : undefined
-  return node?.data ? node as ActiveFlowNode : undefined
-})
-
-watch(activeNode, (node) => {
-  if (controller?.activeTarget.value && !node) controller.close()
-})
-
-const handleUpdateId = ({ oldId, newId }: { oldId?: string; newId: string }) => {
-  const target = controller?.activeTarget.value
-  const node = activeNode.value
-  if (!target || !node) return
-  target.updateNode({ oldId: oldId ?? node.id, newId, newType: node.data.type })
-  controller.open({ ...target, nodeId: newId })
+interface NodeDetailsEntry {
+  target: NodeDetailsTarget
+  node: ActiveFlowNode
 }
 
-const handleUpdateType = (newType: string) => {
-  const target = controller?.activeTarget.value
-  const node = activeNode.value
-  if (!target || !node) return
+const detailsEntries = computed<NodeDetailsEntry[]>(() => {
+  if (!controller) return []
+  const nodesById = new Map(props.nodes.map(node => [node.id, node]))
+  return controller.targets.value.flatMap(target => {
+    const node = nodesById.get(target.nodeId)
+    return node?.data ? [{ target, node: node as ActiveFlowNode }] : []
+  })
+})
+
+watch(() => props.nodes.map(node => node.id), (nodeIds) => {
+  if (!controller) return
+  const availableIds = new Set(nodeIds)
+  controller.targets.value
+    .filter(target => !availableIds.has(target.nodeId))
+    .forEach(target => controller.closeTarget(target.instanceId))
+}, { flush: 'post' })
+
+const handleUpdateId = (
+  { target, node }: NodeDetailsEntry,
+  { oldId, newId }: { oldId?: string; newId: string }
+) => {
+  target.updateNode({ oldId: oldId ?? node.id, newId, newType: node.data.type })
+  controller?.updateTarget(target.instanceId, { nodeId: newId })
+}
+
+const handleUpdateType = ({ target, node }: NodeDetailsEntry, newType: string) => {
   target.updateNode({ oldId: node.id, newId: node.id, newType })
 }
 
-const handleUpdateData = (newData: FlowBusinessData) => {
-  const target = controller?.activeTarget.value
-  const node = activeNode.value
-  if (!target || !node) return
+const handleUpdateData = ({ target, node }: NodeDetailsEntry, newData: FlowBusinessData) => {
   target.updateNode({
     oldId: node.id,
     newId: node.id,
@@ -53,21 +60,26 @@ const handleUpdateData = (newData: FlowBusinessData) => {
 </script>
 
 <template>
-  <NodeDetails
-    v-if="activeNode"
-    :key="activeNode.id"
-    visible
-    placement="canvas"
-    :node-id="activeNode.id"
-    :node-data="activeNode.data"
-    :node-type="activeNode.data.type"
-    :available-types="availableTypes"
-    :type-config="NODE_CONFIG_MAP"
-    :current-filename="currentFilename"
-    :pipeline-version="pipelineVersion"
-    @close="controller?.close()"
-    @update-id="handleUpdateId"
-    @update-type="handleUpdateType"
-    @update-data="handleUpdateData"
-  />
+  <Teleport
+    v-for="entry in detailsEntries"
+    :key="entry.target.instanceId"
+    :to="entry.target.anchorElement"
+  >
+    <NodeDetails
+      :key="entry.target.instanceId"
+      visible
+      placement="node"
+      :node-id="entry.node.id"
+      :node-data="entry.node.data"
+      :node-type="entry.node.data.type"
+      :available-types="availableTypes"
+      :type-config="NODE_CONFIG_MAP"
+      :current-filename="currentFilename"
+      :pipeline-version="pipelineVersion"
+      @close="controller?.closeTarget(entry.target.instanceId)"
+      @update-id="handleUpdateId(entry, $event)"
+      @update-type="handleUpdateType(entry, $event)"
+      @update-data="handleUpdateData(entry, $event)"
+    />
+  </Teleport>
 </template>

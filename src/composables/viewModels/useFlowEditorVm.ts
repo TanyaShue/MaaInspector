@@ -283,6 +283,8 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
   }
 
   const processKeyDown = (e: KeyboardEvent) => {
+    if (subCanvas.value.visible) return
+
     const isMod = e.ctrlKey || e.metaKey
     const key = e.key.toLowerCase()
 

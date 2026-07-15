@@ -13,6 +13,29 @@ export interface SubgraphNodePositionCommit {
   position: XYPosition
 }
 
+type VueFlowRuntimeNodeState = {
+  computedPosition?: unknown
+  dimensions?: unknown
+  handleBounds?: unknown
+  isParent?: unknown
+  selected?: unknown
+  dragging?: unknown
+  resizing?: unknown
+}
+
+/** Remove geometry and interaction state measured by another Vue Flow instance. */
+export const projectSubgraphNode = (node: FlowNode): FlowNode => {
+  const projected = { ...node } as FlowNode & VueFlowRuntimeNodeState
+  delete projected.computedPosition
+  delete projected.dimensions
+  delete projected.handleBounds
+  delete projected.isParent
+  delete projected.selected
+  delete projected.dragging
+  delete projected.resizing
+  return projected
+}
+
 /**
  * Capture only positions present in a Vue Flow change batch. The map is
  * mutated in place so pointer-move events do not invalidate the computed

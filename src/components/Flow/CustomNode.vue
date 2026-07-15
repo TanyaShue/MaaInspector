@@ -20,6 +20,7 @@ const currentDirection = inject<Ref<LayoutDirection>>('currentDirection', ref('T
 
 const imageManager = inject<ReturnType<typeof useImageManager>>('imageManager')!
 const nodeDetailsController = useNodeDetailsController()
+const nodeRootRef = ref<HTMLElement | null>(null)
 
 // 获取 UI 配置
 const config = computed(() => NODE_CONFIG_MAP[props.data.type] || NODE_CONFIG_MAP['DirectHit'])
@@ -46,7 +47,9 @@ const currentActionConfig = computed(() => {
 
 const toggleDetails = () => {
   if (isUnknown.value || isAnchorType.value) return
-  nodeDetailsController?.toggle({ nodeId: props.id, updateNode })
+  const anchorElement = nodeRootRef.value
+  if (!anchorElement) return
+  nodeDetailsController?.toggle({ nodeId: props.id, updateNode, anchorElement })
 }
 const getFileName = (path?: string) => (!path || false) ? '未选择图片' : (path.split('/').pop() || '未选择图片')
 
@@ -125,6 +128,7 @@ const contentHeightClass = computed(() => {
 
 <template>
   <div
+    ref="nodeRootRef"
     class="w-[280px] bg-white rounded-xl shadow-lg border-2 transition-all duration-200 overflow-visible group relative cursor-grab active:cursor-grabbing"
     :class="[selected ? 'ring-2 ring-offset-2 ring-blue-400 border-blue-500' : 'border-slate-100 hover:border-slate-300', data._isMissing ? 'opacity-80' : '']"
     @dblclick.stop="toggleDetails"

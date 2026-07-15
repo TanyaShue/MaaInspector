@@ -16,7 +16,7 @@ describe('useViewportSync', () => {
     expect(updateNodeInternals).toHaveBeenCalledWith(['a', 'b'])
   })
 
-  it('keeps visible-only rendering enabled while synchronizing a layout task', async () => {
+  it('temporarily renders every node while synchronizing a layout task', async () => {
     const onlyRenderVisibleElements = ref(true)
     const updateNodeInternals = vi.fn().mockResolvedValue(undefined)
     const sync = useViewportSync({
@@ -25,11 +25,26 @@ describe('useViewportSync', () => {
     })
 
     await sync.withPreservedVisibility(async () => {
-      expect(onlyRenderVisibleElements.value).toBe(true)
+      expect(onlyRenderVisibleElements.value).toBe(false)
       await nextTick()
     }, ['a', 'b'])
 
     expect(updateNodeInternals).toHaveBeenCalledTimes(2)
+    expect(onlyRenderVisibleElements.value).toBe(true)
+  })
+
+  it('restores visible-only rendering when the layout task fails', async () => {
+    const onlyRenderVisibleElements = ref(true)
+    const sync = useViewportSync({
+      onlyRenderVisibleElements,
+      updateNodeInternals: vi.fn(),
+    })
+
+    await expect(sync.withPreservedVisibility(async () => {
+      expect(onlyRenderVisibleElements.value).toBe(false)
+      throw new Error('layout failed')
+    }, ['a'])).rejects.toThrow('layout failed')
+
     expect(onlyRenderVisibleElements.value).toBe(true)
   })
 })

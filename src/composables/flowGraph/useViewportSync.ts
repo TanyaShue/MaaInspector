@@ -15,6 +15,7 @@ export function useViewportSync(deps: ViewportSyncDeps) {
 
   const withPreservedVisibility = async <T>(task: () => Promise<T>, nodeIds?: string[]) => {
     const renderVisibleOnly = deps.onlyRenderVisibleElements.value
+    deps.onlyRenderVisibleElements.value = false
     await refreshNodeInternals(nodeIds)
     try {
       return await task()

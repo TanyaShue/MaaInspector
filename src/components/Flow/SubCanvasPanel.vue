@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
-import { SelectionMode, VueFlow, useNodesInitialized, useVueFlow, type EdgeMouseEvent, type NodeChange, type NodeDragEvent, type NodeMouseEvent, type NodeTypesObject, type XYPosition } from '@vue-flow/core'
+import { SelectionMode, VueFlow, useVueFlow, type EdgeMouseEvent, type FlowEvents, type NodeChange, type NodeDragEvent, type NodeMouseEvent, type NodeTypesObject, type XYPosition } from '@vue-flow/core'
 import { Maximize2, Move, RefreshCw, X } from 'lucide-vue-next'
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import ContextMenu from './ContextMenu.vue'
@@ -20,6 +20,7 @@ import {
   collectReachableNodeIds,
   consumeSubgraphPositionChanges,
   filterSubgraphEdges,
+  projectSubgraphNode,
   resolveSubgraphNodeChanges,
   stageSubgraphPositionChanges,
   type SubgraphNodePositionCommit
@@ -88,9 +89,27 @@ const activeEdgeType = ref<EdgeType>(props.currentEdgeType)
 const onlyRenderVisibleElements = ref(true)
 const pendingInitialLayout = ref(false)
 const pendingNodePositions = new Map<string, XYPosition>()
+let layoutRequestId = 0
+let sessionRootNodeId = ''
+let subCanvasDebugEnabled = false
+let lastViewportDebugAt = 0
+let lastPanelDebugAt = 0
+let longTaskObserver: PerformanceObserver | null = null
+
+const SUB_CANVAS_DEBUG_KEY = 'maainspector.subCanvasDebug'
+const DEBUG_SAMPLE_LIMIT = 100
+
+type PerformanceWithMemory = Performance & {
+  memory?: {
+    usedJSHeapSize: number
+    totalJSHeapSize: number
+    jsHeapSizeLimit: number
+  }
+}
 
 const {
   fitView,
+  findNode,
   getViewport,
   setViewport,
   updateNodeInternals,
@@ -103,7 +122,6 @@ const viewportSync = useViewportSync({
   onlyRenderVisibleElements,
   updateNodeInternals
 })
-const nodesInitialized = useNodesInitialized({ includeHiddenNodes: true })
 
 const panel = useFloatingPanel({
   storageKey: 'maa-inspector-sub-canvas-panel',
@@ -113,6 +131,7 @@ const panel = useFloatingPanel({
   minHeight: 360,
   edgeGap: 24
 })
+const panelRootRef = ref<HTMLElement | null>(null)
 
 const baseVisibleNodeIds = ref<Set<string>>(new Set())
 const edgeStructureKey = computed(() =>
@@ -125,6 +144,83 @@ const refreshVisibleNodeIds = () => {
 
 const visibleNodeIds = computed(() => new Set([...baseVisibleNodeIds.value, ...sessionNodeIds.value]))
 const visibleNodeIdList = computed(() => Array.from(visibleNodeIds.value))
+
+const roundDebugNumber = (value: number) => Math.round(value * 100) / 100
+
+const writeSubCanvasDebug = (event: string, fields: Record<string, unknown>) => {
+  if (!subCanvasDebugEnabled) return
+  console.debug(`[SubCanvasDebug] ${event} ${JSON.stringify({
+    flowId,
+    rootNodeId: props.rootNodeId,
+    ...fields
+  })}`)
+}
+
+const collectSubCanvasDebugSnapshot = (event: string, fields: Record<string, unknown> = {}) => {
+  if (!subCanvasDebugEnabled) return
+
+  const viewport = getViewport()
+  const root = panelRootRef.value
+  const panelBounds = root?.getBoundingClientRect()
+  const memory = (performance as PerformanceWithMemory).memory
+  const nodeSamples = subNodes.value.slice(0, DEBUG_SAMPLE_LIMIT).map(node => {
+    const runtimeNode = findNode(node.id)
+    return {
+      id: node.id,
+      sourcePosition: node.position,
+      runtimePosition: runtimeNode?.position,
+      computedPosition: runtimeNode?.computedPosition,
+      dimensions: runtimeNode?.dimensions
+    }
+  })
+
+  writeSubCanvasDebug(event, {
+    viewport: {
+      x: roundDebugNumber(viewport.x),
+      y: roundDebugNumber(viewport.y),
+      zoom: roundDebugNumber(viewport.zoom)
+    },
+    panel: panelBounds ? {
+      x: roundDebugNumber(panelBounds.x),
+      y: roundDebugNumber(panelBounds.y),
+      width: roundDebugNumber(panelBounds.width),
+      height: roundDebugNumber(panelBounds.height)
+    } : null,
+    graph: {
+      nodeCount: subNodes.value.length,
+      edgeCount: subEdges.value.length,
+      renderedNodeCount: root?.querySelectorAll('.vue-flow__node').length ?? 0,
+      renderedEdgeCount: root?.querySelectorAll('.vue-flow__edge').length ?? 0,
+      sampleTruncated: subNodes.value.length > DEBUG_SAMPLE_LIMIT,
+      nodes: nodeSamples
+    },
+    performance: {
+      now: roundDebugNumber(performance.now()),
+      devicePixelRatio: window.devicePixelRatio,
+      usedJSHeapMB: memory ? roundDebugNumber(memory.usedJSHeapSize / 1024 / 1024) : null,
+      totalJSHeapMB: memory ? roundDebugNumber(memory.totalJSHeapSize / 1024 / 1024) : null
+    },
+    ...fields
+  })
+}
+
+const handleViewportMove = ({ flowTransform }: FlowEvents['move']) => {
+  if (!subCanvasDebugEnabled) return
+  const now = performance.now()
+  if (now - lastViewportDebugAt < 250) return
+  lastViewportDebugAt = now
+  writeSubCanvasDebug('viewport-move', {
+    viewport: {
+      x: roundDebugNumber(flowTransform.x),
+      y: roundDebugNumber(flowTransform.y),
+      zoom: roundDebugNumber(flowTransform.zoom)
+    }
+  })
+}
+
+const handleViewportMoveEnd = () => {
+  collectSubCanvasDebugSnapshot('viewport-move-end')
+}
 
 const createRemoveChanges = (edgeIds: string[]): FlowEdgeChange[] =>
   edgeIds.map(id => ({ id, type: 'remove' }) as FlowEdgeChange)
@@ -166,7 +262,7 @@ const subNodes = computed<FlowNode[]>({
     .map(node => {
       const local = localNodeState.value[node.id] || {}
       return {
-        ...node,
+        ...projectSubgraphNode(node),
         ...local,
         data: node.data,
         position: local.position || node.position
@@ -197,31 +293,23 @@ const subNodes = computed<FlowNode[]>({
   }
 })
 
-const subEdges = computed<FlowEdge[]>({
-  get: () => filterSubgraphEdges(props.edges, visibleNodeIds.value),
-  set: (nextEdges) => {
-    const visibleIds = visibleNodeIds.value
-    const nextEdgeIds = new Set(nextEdges.map(edge => edge.id))
-    const removedEdgeIds = props.edges
-      .filter(edge => visibleIds.has(edge.source) && visibleIds.has(edge.target) && !nextEdgeIds.has(edge.id))
-      .map(edge => edge.id)
-    if (removedEdgeIds.length > 0) {
-      props.handleEdgesChange(createRemoveChanges(removedEdgeIds))
-    }
-
-    const hiddenEdges = props.edges.filter(edge => !(visibleIds.has(edge.source) && visibleIds.has(edge.target)))
-    const merged = [
-      ...hiddenEdges,
-      ...nextEdges.filter(edge => visibleIds.has(edge.source) && visibleIds.has(edge.target))
-    ]
-    emit('replace-edges', merged)
-  }
-})
+const subEdges = computed<FlowEdge[]>(() => filterSubgraphEdges(props.edges, visibleNodeIds.value))
 
 const handleNodeUpdate = (payload: NodeUpdatePayload) => {
   props.handleNodeUpdate(payload)
   if (payload.oldId === props.rootNodeId && payload.newId !== payload.oldId) {
+    sessionRootNodeId = payload.newId
     emit('root-renamed', payload.newId)
+  }
+  if (payload.newId !== payload.oldId && localNodeState.value[payload.oldId]) {
+    const nextLocalState = { ...localNodeState.value }
+    nextLocalState[payload.newId] = nextLocalState[payload.oldId]
+    delete nextLocalState[payload.oldId]
+    localNodeState.value = nextLocalState
+  }
+  if (payload.newId !== payload.oldId && pendingNodePositions.has(payload.oldId)) {
+    pendingNodePositions.set(payload.newId, pendingNodePositions.get(payload.oldId)!)
+    pendingNodePositions.delete(payload.oldId)
   }
   if (sessionNodeIds.value.has(payload.oldId) && payload.newId !== payload.oldId) {
     const nextIds = new Set(sessionNodeIds.value)
@@ -237,18 +325,28 @@ provide('currentDirection', activeDirection)
 provide('imageManager', props.imageManager)
 provide('updateNode', handleNodeUpdate)
 
-const layoutVisibleChain = async (
+const performVisibleChainLayout = async (
   algorithm = activeAlgorithm.value,
   options: { preserveViewport?: boolean } = {}
 ) => {
+  const requestId = ++layoutRequestId
+  const layoutStartedAt = performance.now()
   const previousViewport = options.preserveViewport ? getViewport() : null
+  collectSubCanvasDebugSnapshot('layout-start', {
+    requestId,
+    algorithm,
+    direction: activeDirection.value,
+    spacing: activeSpacing.value,
+    preserveViewport: Boolean(previousViewport)
+  })
   activeAlgorithm.value = algorithm
-  await viewportSync.withPreservedVisibility(async () => {
-    const layouted = await elkLayout(subNodes.value, subEdges.value, {
-      algorithm,
-      direction: activeDirection.value,
-      spacing: activeSpacing.value
-    })
+  const layouted = await elkLayout(subNodes.value, subEdges.value, {
+    algorithm,
+    direction: activeDirection.value,
+    spacing: activeSpacing.value
+  })
+  if (requestId !== layoutRequestId || !props.visible) return
+
     const nextLocalState = { ...localNodeState.value }
     layouted.forEach(node => {
       nextLocalState[node.id] = {
@@ -258,14 +356,51 @@ const layoutVisibleChain = async (
     })
     localNodeState.value = nextLocalState
     await nextTick()
-    await viewportSync.refreshNodeInternals(layouted.map(node => node.id))
     if (previousViewport) {
+      await viewportSync.refreshNodeInternals(layouted.map(node => node.id))
       await setViewport(previousViewport, { duration: 0 })
+      collectSubCanvasDebugSnapshot('layout-preserved-viewport', {
+        requestId,
+        durationMs: roundDebugNumber(performance.now() - layoutStartedAt)
+      })
       return
     }
-    await fitVisibleNodes()
-  }, visibleNodeIdList.value)
+
+  const fallbackWidth = activeDirection.value === 'LR' ? 340 : 300
+  const fallbackHeight = 170
+  const bounds = layouted.reduce((result, node) => {
+    const graphNode = findNode(node.id)
+    const width = graphNode?.dimensions.width || fallbackWidth
+    const height = graphNode?.dimensions.height || fallbackHeight
+    return {
+      minX: Math.min(result.minX, node.position.x),
+      minY: Math.min(result.minY, node.position.y),
+      maxX: Math.max(result.maxX, node.position.x + width),
+      maxY: Math.max(result.maxY, node.position.y + height)
+    }
+  }, {
+    minX: Number.POSITIVE_INFINITY,
+    minY: Number.POSITIVE_INFINITY,
+    maxX: Number.NEGATIVE_INFINITY,
+    maxY: Number.NEGATIVE_INFINITY
+  })
+
+  await viewportSync.refreshNodeInternals(layouted.map(node => node.id))
+  if (requestId === layoutRequestId && props.visible) await fitVisibleNodes(0)
+  collectSubCanvasDebugSnapshot('layout-complete', {
+    requestId,
+    durationMs: roundDebugNumber(performance.now() - layoutStartedAt),
+    calculatedBounds: layouted.length > 0 ? bounds : null
+  })
 }
+
+const layoutVisibleChain = (
+  algorithm = activeAlgorithm.value,
+  options: { preserveViewport?: boolean } = {}
+) => viewportSync.withPreservedVisibility(
+  () => performVisibleChainLayout(algorithm, options),
+  visibleNodeIdList.value
+)
 
 const handleSpacingChange = (value: PropertyKey) => {
   activeSpacing.value = value as SpacingKey
@@ -288,9 +423,9 @@ const handleEdgeTypeChange = (value: PropertyKey) => {
   props.markDataChanged()
 }
 
-const fitVisibleNodes = () => {
+const fitVisibleNodes = (duration = 400) => {
   if (visibleNodeIdList.value.length === 0) return
-  return fitView({ nodes: visibleNodeIdList.value, padding: 0.25, duration: 400 })
+  return fitView({ nodes: visibleNodeIdList.value, padding: 0.25, duration })
 }
 
 const editorActions = useEditorActions({
@@ -347,11 +482,13 @@ const handleConnect = (connection: FlowConnection) => {
   refreshVisibleNodeIds()
 }
 
-const handleEdgesChange = (changes: FlowEdgeChange[]) => {
-  props.handleEdgesChange(changes)
-  if (changes.some(change => change.type === 'remove')) {
-    refreshVisibleNodeIds()
-  }
+const handleSubCanvasEdgesChange = (changes: FlowEdgeChange[]) => {
+  const removedEdgeIds = changes
+    .filter(change => change.type === 'remove')
+    .map(change => change.id)
+  if (removedEdgeIds.length === 0) return
+  removeMainEdges(removedEdgeIds)
+  refreshVisibleNodeIds()
 }
 
 const handleNodesChange = (changes: NodeChange[]) => {
@@ -377,6 +514,9 @@ const handleNodeDragStop = (event: NodeDragEvent) => {
   localNodeState.value = nextLocalState
   emit('commit-node-positions', commits)
   props.markDataChanged()
+  collectSubCanvasDebugSnapshot('node-drag-stop', {
+    changedNodes: commits
+  })
 }
 
 const isEditableTarget = (target: EventTarget | null): boolean => {
@@ -403,10 +543,6 @@ const handleKeyDown = (e: KeyboardEvent) => {
     const selectedEdges = getSelectedEdges.value
     if (selectedNodes.length > 0) {
       const selectedIds = new Set(selectedNodes.map(node => node.id))
-      const edgeIds = props.edges
-        .filter(edge => selectedIds.has(edge.source) || selectedIds.has(edge.target))
-        .map(edge => edge.id)
-      removeMainEdges(edgeIds)
       removeMainNodes(selectedIds)
       props.markDataChanged()
     } else if (selectedEdges.length > 0) {
@@ -417,11 +553,16 @@ const handleKeyDown = (e: KeyboardEvent) => {
   }
 }
 
-watch(() => props.visible, async (visible) => {
+watch(() => [props.visible, props.rootNodeId] as const, async ([visible, rootNodeId]) => {
   if (!visible) {
+    layoutRequestId++
+    pendingInitialLayout.value = false
+    sessionRootNodeId = ''
     nodeDetailsController?.close()
     return
   }
+  if (sessionRootNodeId === rootNodeId) return
+  sessionRootNodeId = rootNodeId
   activeAlgorithm.value = props.initialAlgorithm || props.currentAlgorithm
   activeSpacing.value = props.currentSpacing
   activeDirection.value = props.currentDirection
@@ -433,18 +574,32 @@ watch(() => props.visible, async (visible) => {
   panel.loadLayout()
   pendingInitialLayout.value = true
   await nextTick()
-  await nextTick()
-  if (nodesInitialized.value && pendingInitialLayout.value) {
-    pendingInitialLayout.value = false
-    await layoutVisibleChain(activeAlgorithm.value)
-  }
+  collectSubCanvasDebugSnapshot('panel-open')
 })
 
-watch(nodesInitialized, async (isInit) => {
-  if (!props.visible || !isInit || !pendingInitialLayout.value) return
+const runInitialLayout = async () => {
+  if (!props.visible || !pendingInitialLayout.value) return
   pendingInitialLayout.value = false
+  await nextTick()
   await layoutVisibleChain(activeAlgorithm.value)
-})
+}
+
+const handleFlowInit = async () => {
+  collectSubCanvasDebugSnapshot('flow-init')
+}
+
+const handlePanelAfterEnter = async () => {
+  collectSubCanvasDebugSnapshot('panel-after-enter')
+  await runInitialLayout()
+}
+
+watch(panel.rect, () => {
+  if (!subCanvasDebugEnabled) return
+  const now = performance.now()
+  if (now - lastPanelDebugAt < 250) return
+  lastPanelDebugAt = now
+  collectSubCanvasDebugSnapshot('panel-rect-change')
+}, { deep: true })
 
 watch(() => props.rootNodeId, () => {
   if (props.visible) refreshVisibleNodeIds()
@@ -459,14 +614,33 @@ watch(() => props.initialAlgorithm, (algorithm) => {
 })
 
 onMounted(() => {
+  subCanvasDebugEnabled = window.localStorage.getItem(SUB_CANVAS_DEBUG_KEY) === 'on'
   panel.loadLayout()
   window.addEventListener('resize', panel.ensureInViewport)
   window.addEventListener('keydown', handleKeyDown)
+  if (subCanvasDebugEnabled && typeof PerformanceObserver !== 'undefined') {
+    try {
+      longTaskObserver = new PerformanceObserver((list) => {
+        list.getEntries().forEach(entry => {
+          writeSubCanvasDebug('long-task', {
+            name: entry.name,
+            startTime: roundDebugNumber(entry.startTime),
+            durationMs: roundDebugNumber(entry.duration)
+          })
+        })
+      })
+      longTaskObserver.observe({ type: 'longtask', buffered: true })
+    } catch {
+      longTaskObserver = null
+    }
+  }
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', panel.ensureInViewport)
   window.removeEventListener('keydown', handleKeyDown)
+  longTaskObserver?.disconnect()
+  longTaskObserver = null
   panel.stopInteraction()
 })
 </script>
@@ -480,8 +654,10 @@ onBeforeUnmount(() => {
       leave-active-class="transition ease-in duration-100"
       leave-from-class="opacity-100 scale-100"
       leave-to-class="opacity-0 scale-95"
+      @after-enter="handlePanelAfterEnter"
     >
       <div
+        ref="panelRootRef"
         v-if="visible"
         class="fixed z-[70] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl"
         :style="panel.panelStyle.value"
@@ -548,7 +724,7 @@ onBeforeUnmount(() => {
               title="适配视图"
               class="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-white hover:text-slate-800"
               @mousedown.stop
-              @click="fitVisibleNodes"
+              @click="fitVisibleNodes()"
             >
               <Maximize2 :size="15" />
             </button>
@@ -577,7 +753,7 @@ onBeforeUnmount(() => {
           <VueFlow
             :id="flowId"
             :nodes="subNodes"
-            v-model:edges="subEdges"
+            :edges="subEdges"
             :node-types="nodeTypesObject"
             :default-zoom="1"
             :min-zoom="0.1"
@@ -593,7 +769,8 @@ onBeforeUnmount(() => {
             :selection-mode="SelectionMode.Partial"
             :pan-on-drag="true"
             @connect="handleConnect"
-            @edges-change="handleEdgesChange"
+            @init="handleFlowInit"
+            @edges-change="handleSubCanvasEdgesChange"
             @nodes-change="handleNodesChange"
             @node-drag-stop="handleNodeDragStop"
             @pane-context-menu="onPaneContextMenu"
@@ -603,6 +780,8 @@ onBeforeUnmount(() => {
             @node-click="closeMenu"
             @edge-click="closeMenu"
             @move-start="closeMenu"
+            @move="handleViewportMove"
+            @move-end="handleViewportMoveEnd"
           >
             <Background
               pattern-color="#cbd5e1"
@@ -613,8 +792,8 @@ onBeforeUnmount(() => {
               v-if="menu.visible"
               v-bind="menu"
               mode="subcanvas"
-              :current-edge-type="currentEdgeType"
-              :current-spacing="currentSpacing"
+              :current-edge-type="activeEdgeType"
+              :current-spacing="activeSpacing"
               :current-algorithm="activeAlgorithm"
               :current-direction="activeDirection"
               @close="closeMenu"

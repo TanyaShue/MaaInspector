@@ -33,7 +33,7 @@ const NodeDetailsStub = defineComponent({
   template: '<div class="node-details-stub" :data-node-id="nodeId" :data-placement="placement" />'
 })
 
-describe('canvas-level node details', () => {
+describe('node-anchored details panels', () => {
   it('keeps CustomNode lightweight and delegates opening to the controller', async () => {
     const controller = createNodeDetailsController()
     const updateNode = vi.fn<(payload: NodeUpdatePayload) => void>()
@@ -60,15 +60,18 @@ describe('canvas-level node details', () => {
     await wrapper.trigger('dblclick')
     expect(controller.activeTarget.value?.nodeId).toBe('node-a')
     expect(controller.activeTarget.value?.updateNode).toBe(updateNode)
+    expect(controller.activeTarget.value?.anchorElement).toBe(wrapper.element)
 
     controller.close()
     await wrapper.get('button[title="打开节点属性"]').trigger('click')
     expect(controller.activeTarget.value?.nodeId).toBe('node-a')
   })
 
-  it('mounts exactly one details instance for the active node only', async () => {
+  it('mounts up to five panels at their nodes and evicts the oldest panel', async () => {
     const controller = createNodeDetailsController()
-    const nodes = [createNode('node-a'), createNode('node-b')]
+    const nodes = ['a', 'b', 'c', 'd', 'e', 'f'].map(id => createNode(`node-${id}`))
+    const anchors = nodes.map(() => document.createElement('div'))
+    document.body.append(...anchors)
     const wrapper = mount(NodeDetailsHost, {
       props: { nodes },
       global: {
@@ -81,36 +84,46 @@ describe('canvas-level node details', () => {
       }
     })
 
-    expect(wrapper.findAll('.node-details-stub')).toHaveLength(0)
+    expect(document.querySelectorAll('.node-details-stub')).toHaveLength(0)
 
-    controller.open({ nodeId: 'node-a', updateNode: vi.fn() })
+    nodes.forEach((node, index) => {
+      controller.open({ nodeId: node.id, updateNode: vi.fn(), anchorElement: anchors[index] })
+    })
     await nextTick()
-    expect(wrapper.findAll('.node-details-stub')).toHaveLength(1)
-    expect(wrapper.get('.node-details-stub').attributes('data-node-id')).toBe('node-a')
-    expect(wrapper.get('.node-details-stub').attributes('data-placement')).toBe('canvas')
+    expect(controller.targets.value).toHaveLength(5)
+    expect(anchors[0].querySelectorAll('.node-details-stub')).toHaveLength(0)
+    anchors.slice(1).forEach((anchor, index) => {
+      expect(anchor.querySelectorAll('.node-details-stub')).toHaveLength(1)
+      expect(anchor.querySelector('.node-details-stub')?.getAttribute('data-node-id')).toBe(nodes[index + 1].id)
+      expect(anchor.querySelector('.node-details-stub')?.getAttribute('data-placement')).toBe('node')
+    })
 
-    controller.open({ nodeId: 'node-b', updateNode: vi.fn() })
+    controller.toggle({ nodeId: nodes[2].id, updateNode: vi.fn(), anchorElement: anchors[2] })
     await nextTick()
-    expect(wrapper.findAll('.node-details-stub')).toHaveLength(1)
-    expect(wrapper.get('.node-details-stub').attributes('data-node-id')).toBe('node-b')
+    expect(controller.targets.value).toHaveLength(4)
+    expect(anchors[2].querySelectorAll('.node-details-stub')).toHaveLength(0)
+    expect(anchors[3].querySelectorAll('.node-details-stub')).toHaveLength(1)
 
     controller.close()
     await nextTick()
-    expect(wrapper.findAll('.node-details-stub')).toHaveLength(0)
+    expect(document.querySelectorAll('.node-details-stub')).toHaveLength(0)
+    wrapper.unmount()
+    anchors.forEach(anchor => anchor.remove())
   })
 
   it('routes edits through the updater captured from the opening canvas', async () => {
     const controller = createNodeDetailsController()
     const updateNode = vi.fn<(payload: NodeUpdatePayload) => void>()
+    const anchorElement = document.createElement('div')
     const wrapper = mount(NodeDetailsHost, {
       props: { nodes: [createNode('node-a')] },
       global: {
         provide: { [nodeDetailsControllerKey as symbol]: controller },
-        stubs: { NodeDetails: NodeDetailsStub }
+        stubs: { Teleport: true, NodeDetails: NodeDetailsStub }
       }
     })
 
-    controller.open({ nodeId: 'node-a', updateNode })
+    controller.open({ nodeId: 'node-a', updateNode, anchorElement })
     await nextTick()
     const details = wrapper.getComponent(NodeDetailsStub)
 
