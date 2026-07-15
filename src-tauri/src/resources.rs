@@ -4,11 +4,15 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use walkdir::WalkDir;
 
-use crate::config::write_file_atomically;
+use crate::config::write_file_atomically_with_backup;
 use crate::response::ResourceFileInfo;
+use chrono::Local;
+
+static BACKUP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug)]
 pub enum ResourceError {
@@ -30,7 +34,10 @@ mod tests {
     use tempfile::tempdir;
 
     fn manager_for(root: &Path) -> ResourcesManager {
-        ResourcesManager::new(vec![root.to_string_lossy().to_string()])
+        ResourcesManager::new(
+            vec![root.to_string_lossy().to_string()],
+            root.join("test-backup"),
+        )
     }
 
     #[test]
@@ -80,11 +87,15 @@ mod tests {
     }
 
     #[test]
-    fn saving_an_empty_pipeline_is_successful_and_distinct_from_io_failure() {
+    fn backup_failure_leaves_the_original_pipeline_unchanged() {
         let dir = tempdir().expect("create resource directory");
-        fs::create_dir_all(dir.path().join("pipeline")).expect("create pipeline directory");
-        let mut manager = manager_for(dir.path());
-        let source = dir.path().to_string_lossy();
+        let resource_dir = dir.path().join("resource");
+        let backup_dir = dir.path().join("blocked-backup");
+        fs::create_dir_all(resource_dir.join("pipeline")).expect("create pipeline directory");
+        fs::write(&backup_dir, b"not a directory").expect("create backup-path obstacle");
+        let mut manager =
+            ResourcesManager::new(vec![resource_dir.to_string_lossy().to_string()], backup_dir);
+        let source = resource_dir.to_string_lossy();
 
         assert_eq!(
             manager
@@ -92,24 +103,71 @@ mod tests {
                 .expect("save empty pipeline"),
             0
         );
-        let saved = fs::read_to_string(dir.path().join("pipeline/empty.json"))
+        let saved = fs::read_to_string(resource_dir.join("pipeline/empty.json"))
             .expect("read saved pipeline");
         assert_eq!(
             serde_json::from_str::<JsonValue>(&saved).unwrap(),
             serde_json::json!({})
         );
 
-        fs::create_dir(dir.path().join("pipeline/empty.json.bak"))
-            .expect("create backup-path obstacle");
-        let original = fs::read(dir.path().join("pipeline/empty.json")).unwrap();
+        let original = fs::read(resource_dir.join("pipeline/empty.json")).unwrap();
         assert!(
             manager
                 .save_nodes(&source, "empty.json", serde_json::json!({ "node": {} }))
                 .is_err()
         );
         assert_eq!(
-            fs::read(dir.path().join("pipeline/empty.json")).unwrap(),
+            fs::read(resource_dir.join("pipeline/empty.json")).unwrap(),
             original
+        );
+        assert!(!resource_dir.join("pipeline/empty.json.bak").exists());
+    }
+
+    #[test]
+    fn saves_timestamped_pipeline_backups_outside_the_resource_directory() {
+        let dir = tempdir().expect("create workspace");
+        let resource_dir = dir.path().join("resource-one");
+        let backup_dir = dir.path().join("backup");
+        fs::create_dir_all(resource_dir.join("pipeline")).expect("create pipeline directory");
+        let mut manager = ResourcesManager::new(
+            vec![resource_dir.to_string_lossy().to_string()],
+            backup_dir.clone(),
+        );
+        let source = resource_dir.to_string_lossy();
+
+        manager
+            .save_nodes(
+                &source,
+                "nested/demo.json",
+                serde_json::json!({ "old": {} }),
+            )
+            .expect("save initial pipeline");
+        manager
+            .save_nodes(
+                &source,
+                "nested/demo.json",
+                serde_json::json!({ "new": {} }),
+            )
+            .expect("replace pipeline");
+
+        assert!(!resource_dir.join("pipeline/nested/demo.json.bak").exists());
+        let backups = WalkDir::new(&backup_dir)
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_type().is_file())
+            .collect::<Vec<_>>();
+        assert_eq!(backups.len(), 1);
+        let backup_path = backups[0].path();
+        assert!(backup_path.to_string_lossy().contains("resource-one"));
+        assert!(backup_path.to_string_lossy().contains("pipeline"));
+        assert!(
+            Regex::new(r"demo_\d{8}_\d{6}_\d{3}_\d{6}\.json\.bak$")
+                .unwrap()
+                .is_match(&backup_path.to_string_lossy())
+        );
+        assert_eq!(
+            serde_json::from_str::<JsonValue>(&fs::read_to_string(backup_path).unwrap()).unwrap(),
+            serde_json::json!({ "old": {} })
         );
     }
 
@@ -272,6 +330,7 @@ fn validate_relative_path(path: &str) -> Result<&Path, ResourceError> {
 #[derive(Clone)]
 pub struct ResourcesManager {
     resource_paths: Vec<PathBuf>,
+    backup_dir: PathBuf,
     files_cache: HashMap<PathBuf, HashMap<String, HashMap<String, JsonValue>>>,
     node_index: Vec<NodeIndexEntry>,
 }
@@ -287,7 +346,7 @@ struct NodeIndexEntry {
 }
 
 impl ResourcesManager {
-    pub fn new(paths: Vec<String>) -> Self {
+    pub fn new(paths: Vec<String>, backup_dir: PathBuf) -> Self {
         let normalized_paths: Vec<PathBuf> = paths
             .iter()
             .filter(|p| !p.is_empty())
@@ -300,6 +359,7 @@ impl ResourcesManager {
 
         let mut manager = Self {
             resource_paths: normalized_paths,
+            backup_dir,
             files_cache: HashMap::new(),
             node_index: Vec::new(),
         };
@@ -313,6 +373,36 @@ impl ResourcesManager {
 
     fn get_image_dir(&self, resource_path: &Path) -> PathBuf {
         resource_path.join("image")
+    }
+
+    fn backup_path(&self, resource_path: &Path, category: &str, filename: &str) -> PathBuf {
+        let now = Local::now();
+        let date_dir = now.format("%Y-%m-%d").to_string();
+        let timestamp = now.format("%Y%m%d_%H%M%S_%3f").to_string();
+        let sequence = BACKUP_SEQUENCE.fetch_add(1, Ordering::Relaxed) % 1_000_000;
+        let resource_name = resource_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty())
+            .unwrap_or("resource");
+        let relative = Path::new(filename);
+        let parent = relative.parent().unwrap_or_else(|| Path::new(""));
+        let stem = relative
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .unwrap_or("pipeline");
+        let extension = relative
+            .extension()
+            .and_then(|value| value.to_str())
+            .map(|value| format!(".{value}"))
+            .unwrap_or_default();
+
+        self.backup_dir
+            .join(date_dir)
+            .join(resource_name)
+            .join(category)
+            .join(parent)
+            .join(format!("{stem}_{timestamp}_{sequence:06}{extension}.bak"))
     }
 
     fn resolve_source(&self, resource_path: &str) -> Result<PathBuf, ResourceError> {
@@ -627,7 +717,10 @@ impl ResourcesManager {
 
         let json_str = serde_json::to_string_pretty(&json_value)
             .map_err(|error| ResourceError::InvalidData(error.to_string()))?;
-        write_file_atomically(&full_path, json_str.as_bytes())
+        let backup_path = full_path
+            .exists()
+            .then(|| self.backup_path(&path, "pipeline", filename));
+        write_file_atomically_with_backup(&full_path, json_str.as_bytes(), backup_path.as_deref())
             .map_err(|error| ResourceError::io("write pipeline file", &full_path, error))?;
 
         // Update cache
@@ -657,7 +750,7 @@ impl ResourcesManager {
         }
 
         // Write empty JSON object
-        write_file_atomically(&full_path, b"{}")
+        write_file_atomically_with_backup(&full_path, b"{}", None)
             .map_err(|error| ResourceError::io("create pipeline file", &full_path, error))?;
 
         // Update cache
@@ -772,7 +865,7 @@ impl ResourcesManager {
         relative_path: &str,
         base64_data: &str,
     ) -> Result<(), ResourceError> {
-        let (_, full_path) = self.resolve_image_path(resource_path, relative_path, true)?;
+        let (path, full_path) = self.resolve_image_path(resource_path, relative_path, true)?;
 
         // Decode base64
         let data = if base64_data.contains(";base64,") {
@@ -788,7 +881,10 @@ impl ResourcesManager {
 
         let decoded = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, data)
             .map_err(|error| ResourceError::InvalidData(error.to_string()))?;
-        write_file_atomically(&full_path, &decoded)
+        let backup_path = full_path
+            .exists()
+            .then(|| self.backup_path(&path, "image", relative_path));
+        write_file_atomically_with_backup(&full_path, &decoded, backup_path.as_deref())
             .map_err(|error| ResourceError::io("write image", &full_path, error))?;
         Ok(())
     }

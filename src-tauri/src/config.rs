@@ -127,6 +127,91 @@ pub(crate) fn write_file_atomically(target_path: &Path, content: &[u8]) -> io::R
     Ok(())
 }
 
+/// Atomically replace a file while keeping its previous contents in a caller-selected
+/// backup location. The sibling rollback file only exists during the replacement and
+/// is removed after a successful write.
+pub(crate) fn write_file_atomically_with_backup(
+    target_path: &Path,
+    content: &[u8],
+    backup_path: Option<&Path>,
+) -> io::Result<()> {
+    let parent = target_path.parent().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "target path has no parent directory",
+        )
+    })?;
+    fs::create_dir_all(parent)?;
+
+    let (temp_path, mut temp_file) = create_sibling_temp_file(target_path)?;
+    let write_result = (|| -> io::Result<()> {
+        temp_file.write_all(content)?;
+        temp_file.flush()?;
+        temp_file.sync_all()
+    })();
+    drop(temp_file);
+
+    if let Err(error) = write_result {
+        remove_temp_file(&temp_path);
+        return Err(error);
+    }
+
+    if !target_path.exists() {
+        let replace_result = fs::rename(&temp_path, target_path);
+        if replace_result.is_err() {
+            remove_temp_file(&temp_path);
+        }
+        return replace_result;
+    }
+
+    if let Some(backup_path) = backup_path {
+        let backup_parent = backup_path.parent().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "backup path has no parent directory",
+            )
+        })?;
+        if let Err(error) = fs::create_dir_all(backup_parent) {
+            remove_temp_file(&temp_path);
+            return Err(error);
+        }
+        if let Err(error) = fs::copy(target_path, backup_path) {
+            remove_temp_file(&temp_path);
+            return Err(error);
+        }
+    }
+
+    let target_name = target_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "target filename is invalid"))?;
+    let rollback_path = parent.join(format!(
+        ".{target_name}.{}.{}.rollback",
+        std::process::id(),
+        TEMP_FILE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+    ));
+
+    if let Err(error) = fs::rename(target_path, &rollback_path) {
+        remove_temp_file(&temp_path);
+        return Err(error);
+    }
+
+    if let Err(replace_error) = fs::rename(&temp_path, target_path) {
+        remove_temp_file(&temp_path);
+        return match fs::rename(&rollback_path, target_path) {
+            Ok(()) => Err(replace_error),
+            Err(restore_error) => Err(io::Error::new(
+                restore_error.kind(),
+                format!(
+                    "failed to replace file ({replace_error}); failed to restore original ({restore_error})"
+                ),
+            )),
+        };
+    }
+
+    fs::remove_file(&rollback_path)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DeviceInfo {
     pub name: Option<String>,

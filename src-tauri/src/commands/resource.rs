@@ -1,6 +1,7 @@
 use super::{MaaFrameworkState, maafw_mut};
 use crate::resources::{ResourcesManager, ResourcesManagerState};
 use crate::response::{ApiResponse, FileNodesResponse, ResourceLoadResponse};
+use std::path::PathBuf;
 use tauri::State;
 
 async fn with_manager<R, F>(state: ResourcesManagerState, operation: F) -> Result<R, String>
@@ -44,13 +45,15 @@ where
 pub async fn resource_load(
     maafw: State<'_, MaaFrameworkState>,
     resources_manager: State<'_, ResourcesManagerState>,
+    backup_dir: State<'_, PathBuf>,
     paths: Vec<String>,
 ) -> Result<ResourceLoadResponse, String> {
     // Manage file resources (always succeeds, returns file list)
     let state = resources_manager.inner().clone();
     let resource_paths = paths.clone();
+    let backup_dir = backup_dir.inner().clone();
     let results = tokio::task::spawn_blocking(move || {
-        let manager = ResourcesManager::new(resource_paths);
+        let manager = ResourcesManager::new(resource_paths, backup_dir);
         let results = manager.list_all_files();
         let mut guard = state
             .write()

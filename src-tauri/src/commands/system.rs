@@ -1,6 +1,8 @@
 use crate::config::AppConfig;
 use crate::maafw::MaaFrameworkWrapper;
 use crate::response::ApiResponse;
+use std::fs;
+use std::path::PathBuf;
 use tauri::State;
 
 /// Get initial system state
@@ -16,6 +18,19 @@ pub fn system_pick_folder() -> Option<String> {
     rfd::FileDialog::new()
         .pick_folder()
         .map(|path| path.to_string_lossy().into_owned())
+}
+
+/// Return the centralized resource backup directory, creating it on demand.
+#[tauri::command]
+pub fn system_get_backup_dir(backup_dir: State<'_, PathBuf>) -> Result<String, String> {
+    fs::create_dir_all(backup_dir.inner()).map_err(|error| {
+        format!(
+            "Failed to create backup directory {}: {}",
+            backup_dir.display(),
+            error
+        )
+    })?;
+    Ok(backup_dir.to_string_lossy().into_owned())
 }
 
 /// Save configuration

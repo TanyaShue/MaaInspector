@@ -237,6 +237,10 @@ export const systemApi = {
     return invokeCommand('system_save_config', { configData: fullConfig });
   },
 
+  getBackupDir: async (): Promise<string> => {
+    return invokeCommand('system_get_backup_dir');
+  },
+
   searchDevices: async (deviceType?: string): Promise<ApiResponse<{ devices?: ApiDeviceInfo[] }>> => {
     return invokeCommand('system_search_devices', { deviceType });
   }

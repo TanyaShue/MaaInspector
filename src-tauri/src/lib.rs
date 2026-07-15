@@ -13,8 +13,8 @@ use commands::{
     debug_stop, device_connect_adb, device_connect_win32, device_screenshot, devtools_open,
     log_frontend_batch, log_get_dir, resource_check_unused_images, resource_create_file,
     resource_get_file_nodes, resource_get_templates, resource_load, resource_process_images,
-    resource_save_file_nodes, resource_search_nodes, system_init, system_pick_folder,
-    system_save_config, system_search_devices,
+    resource_save_file_nodes, resource_search_nodes, system_get_backup_dir, system_init,
+    system_pick_folder, system_save_config, system_search_devices,
 };
 use events::DebugEventBroker;
 use maafw::MaaFrameworkWrapper;
@@ -50,6 +50,15 @@ fn resolve_app_data_dir<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<
         )
     })?;
     Ok(dir)
+}
+
+fn resolve_backup_dir() -> Result<PathBuf, String> {
+    let executable = std::env::current_exe()
+        .map_err(|error| format!("Failed to resolve application executable: {error}"))?;
+    let app_root = executable
+        .parent()
+        .ok_or_else(|| "Application executable has no parent directory".to_string())?;
+    Ok(app_root.join("backup"))
 }
 
 /// Load MaaFramework from a stable SDK directory in dev and bundled resources in production.
@@ -111,6 +120,7 @@ fn load_maa_library<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), 
 pub fn run() {
     let maafw: Mutex<Option<MaaFrameworkWrapper>> = Mutex::new(None);
     let resources_manager: ResourcesManagerState = Arc::new(RwLock::new(None));
+    let backup_dir = resolve_backup_dir().expect("failed to resolve backup directory");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -147,10 +157,12 @@ pub fn run() {
         })
         .manage(maafw)
         .manage(resources_manager)
+        .manage(backup_dir)
         .invoke_handler(tauri::generate_handler![
             // System commands
             system_init,
             system_pick_folder,
+            system_get_backup_dir,
             system_save_config,
             system_search_devices,
             // Device commands

@@ -3,7 +3,7 @@ import { ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { openPath } from '@tauri-apps/plugin-opener'
 import { Settings, Save, RotateCcw, Terminal, FolderOpen } from 'lucide-vue-next'
-import { logApi } from '@/services/api'
+import { logApi, systemApi } from '@/services/api'
 import { LAYOUT_ALGORITHM_OPTIONS, LAYOUT_DIRECTION_OPTIONS } from '@/utils/flowOptions'
 import type { EdgeType } from '@/utils/flowOptions'
 import type { LayoutAlgorithm, LayoutDirection, SpacingKey } from '@/utils/flowTypes'
@@ -101,6 +101,15 @@ const handleOpenLogDir = async () => {
     await openPath(dir)
   } catch (e) {
     console.error('Failed to open log directory:', e)
+  }
+}
+
+const handleOpenBackupDir = async () => {
+  try {
+    const dir = await systemApi.getBackupDir()
+    await openPath(dir)
+  } catch (e) {
+    console.error('Failed to open backup directory:', e)
   }
 }
 </script>
@@ -304,6 +313,28 @@ const handleOpenLogDir = async () => {
                   </div>
                 </button>
               </div>
+            </div>
+
+            <!-- 数据备份 -->
+            <div class="space-y-3">
+              <div class="flex items-center gap-2 pb-2 border-b border-slate-100">
+                <div class="w-1 h-4 bg-emerald-500 rounded" />
+                <h4 class="text-sm font-bold text-slate-700">
+                  数据备份
+                </h4>
+              </div>
+              <button
+                class="w-full py-2.5 px-3 text-xs font-medium rounded-lg border-2 transition-all text-left bg-emerald-50 text-emerald-700 border-emerald-200 hover:border-emerald-400"
+                @click="handleOpenBackupDir"
+              >
+                <div class="flex items-center gap-2">
+                  <FolderOpen :size="14" />
+                  <span>打开备份目录</span>
+                </div>
+                <p class="text-[10px] text-emerald-600/70 mt-1">
+                  备份位于软件根目录的 backup 文件夹，并按日期分类
+                </p>
+              </button>
             </div>
 
             <!-- 开发者工具 -->
