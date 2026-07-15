@@ -167,7 +167,6 @@ const handleToolbarEdgeTypeChange = (value: PropertyKey) => {
             :layout-direction="appSettings.layoutDirection"
             :pipeline-version="appSettings.pipelineVersion"
             :restore-workspace-on-start="appSettings.restoreWorkspaceOnStart"
-            @update:selected-resource-file="() => {}"
             @load-nodes="handleLoadNodes"
             @load-images="handleLoadImages"
             @save-nodes="(payload) => activeEditorRef?.handleSaveNodes(payload)"

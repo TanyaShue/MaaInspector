@@ -74,7 +74,6 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
   const isFileLoaded = computed<boolean>(() => !!currentFilename.value)
 
   const nodeDetailsController = provideNodeDetailsController()
-  const isBulkLoading = ref(false)
   const initialLayoutPending = ref(false)
   let initialLayoutPromise: Promise<void> | null = null
   const pendingFocusNodeId = ref<string | null>(null)
@@ -189,12 +188,6 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
 
   provide('updateNode', handleNodeUpdateAndSnapshot)
 
-  const handleNodesChange = () => {
-    if (isBulkLoading.value) {
-      return
-    }
-  }
-
   const refreshCurrentNodeInternals = async () => {
     await refreshNodeInternals(nodes.value.map((node) => node.id))
   }
@@ -257,10 +250,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
   const handleSaveAndSwitch = async () => {
     isSavingModal.value = true
     try {
-      await handleSaveNodes(
-        { source: currentSource.value, filename: currentFilename.value },
-        () => {}
-      )
+      await handleSaveNodes({ source: currentSource.value, filename: currentFilename.value })
       showSaveModal.value = false
       if (pendingSwitchConfig.value) {
         await executeSwitch(pendingSwitchConfig.value)
@@ -299,7 +289,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     if (isMod && key === 's') {
       e.preventDefault()
       if (isFileLoaded.value && currentFilename.value) {
-        handleSaveNodes({ source: currentSource.value, filename: currentFilename.value }, () => {})
+        handleSaveNodes({ source: currentSource.value, filename: currentFilename.value })
           .then(() => ElMessage.success('保存成功'))
           .catch(() => ElMessage.error('保存失败'))
       }
@@ -419,7 +409,6 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
       filename: payload.filename,
       nodeCount: Object.keys(payload.nodes).length,
     })
-    isBulkLoading.value = true
     try {
       initialLayoutPending.value = true
       await loadNodes(payload, { applyInitialLayout: false })
@@ -435,8 +424,6 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     } catch (error) {
       initialLayoutPending.value = false
       throw error
-    } finally {
-      isBulkLoading.value = false
     }
     perfLog('FlowEditor.handleLoadNodesWrapper.total', start, {
       tabId: options.tabId,
@@ -494,12 +481,11 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     loadResourceFile,
     handleLoadNodesWrapper,
     handleLoadImages,
-    handleSaveNodes: (config: { source: string; filename: string }) =>
-      handleSaveNodes(config, () => {}),
-    handleDeviceConnected: (val: boolean) => handleDeviceConnected(val, () => {}),
+    handleSaveNodes: (config: { source: string; filename: string }) => handleSaveNodes(config),
+    handleDeviceConnected: (val: boolean) => handleDeviceConnected(val),
     handleUpdateCanvasConfig: (config: Parameters<typeof handleUpdateCanvasConfig>[0]) =>
-      handleUpdateCanvasConfig(config, () => {}),
-    handleUpdatePipelineVersion: (val: 'V1' | 'V2') => handleUpdatePipelineVersion(val, () => {}),
+      handleUpdateCanvasConfig(config),
+    handleUpdatePipelineVersion: (val: 'V1' | 'V2') => handleUpdatePipelineVersion(val),
     handleApplyLayout: async () => {
       if (initialLayoutPending.value) {
         await finalizeInitialLayout()
@@ -536,7 +522,6 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     handleDebugNode: debugRunner.handleDebugNode,
     handleOpenDebugPanel: (payload?: { nodeId?: string }) =>
       options.emit('open-debug-panel', payload),
-    handleNodesChange,
     menu,
     searchVisible,
     closeMenu,

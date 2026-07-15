@@ -401,25 +401,51 @@ export const debugApi = {
     let unlistenFns: UnlistenFn[] = [];
     let cancelled = false;
 
-    const setupListeners = async () => {
-      const un1 = await listen<DebugStreamPayload>('debug:node_next_list', (event) => {
-        if (!cancelled) onData(event.payload);
+    const cleanupListeners = () => {
+      const listeners = unlistenFns;
+      unlistenFns = [];
+      listeners.forEach((unlisten) => {
+        try {
+          unlisten();
+        } catch (error) {
+          logWarn('api.debug', 'Failed to release a debug node stream listener', {
+            error: serializeForLog(error)
+          });
+        }
       });
-      const un2 = await listen<DebugStreamPayload>('debug:node_recognition', (event) => {
-        if (!cancelled) onData(event.payload);
-      });
-      const un3 = await listen<DebugStreamPayload>('debug:node_action', (event) => {
-        if (!cancelled) onData(event.payload);
-      });
-      unlistenFns = [un1, un2, un3];
-      if (cancelled) unlistenFns.forEach(fn => fn());
     };
 
-    setupListeners();
+    const setupListeners = async () => {
+      const eventNames = [
+        'debug:node_next_list',
+        'debug:node_recognition',
+        'debug:node_action'
+      ] as const;
+      try {
+        for (const eventName of eventNames) {
+          if (cancelled) break;
+          const unlisten = await listen<DebugStreamPayload>(eventName, (event) => {
+            if (!cancelled) onData(event.payload);
+          });
+          if (cancelled) {
+            unlisten();
+            break;
+          }
+          unlistenFns.push(unlisten);
+        }
+      } catch (error) {
+        cleanupListeners();
+        logWarn('api.debug', 'Failed to subscribe to debug node stream', {
+          error: serializeForLog(error)
+        });
+      }
+    };
+
+    void setupListeners();
 
     return () => {
       cancelled = true;
-      unlistenFns.forEach(fn => fn());
+      cleanupListeners();
     };
   }
 };

@@ -3,6 +3,7 @@ import { normalizeTemplateValue } from '@/utils/templateUtils'
 import type { FlowNode, FlowNodeMeta, FlowBusinessData, NodeStatus } from '@/utils/flowTypes'
 
 export const UNKNOWN_NODE_ID_PREFIX = '__maa_unknown_node__'
+type SelectableFlowNode = FlowNode & { selected?: boolean }
 
 const ensureNodeMeta = (node?: FlowNode | null): FlowNodeMeta | null => {
   if (!node) return null
@@ -56,21 +57,35 @@ export const selectNodeById = (
 ): boolean => {
   const nextId = nodeId || null
   if (selectedNodeId.value === nextId) return false
-  let changed = false
-
-  if (selectedNodeId.value) {
-    const prevId = selectedNodeId.value
-    nodesRef.value = nodesRef.value.map((n) => (n.id === prevId ? { ...n, selected: false } : n))
-    changed = true
+  const prevId = selectedNodeId.value
+  let prevIndex = -1
+  let nextIndex = -1
+  for (let index = 0; index < nodesRef.value.length; index += 1) {
+    const currentId = nodesRef.value[index].id
+    if (prevId && currentId === prevId) prevIndex = index
+    if (nextId && currentId === nextId) nextIndex = index
+    if ((!prevId || prevIndex >= 0) && (!nextId || nextIndex >= 0)) break
   }
 
-  if (nextId) {
-    nodesRef.value = nodesRef.value.map((n) => (n.id === nextId ? { ...n, selected: true } : n))
-    changed = true
+  if (prevIndex >= 0 || nextIndex >= 0) {
+    const nextNodes = nodesRef.value.slice()
+    if (prevIndex >= 0) {
+      nextNodes[prevIndex] = {
+        ...(nextNodes[prevIndex] as SelectableFlowNode),
+        selected: false,
+      } as SelectableFlowNode
+    }
+    if (nextIndex >= 0) {
+      nextNodes[nextIndex] = {
+        ...(nextNodes[nextIndex] as SelectableFlowNode),
+        selected: true,
+      } as SelectableFlowNode
+    }
+    nodesRef.value = nextNodes
   }
 
   selectedNodeId.value = nextId
-  return changed
+  return Boolean(prevId || nextId)
 }
 
 export const createNodeObject = (

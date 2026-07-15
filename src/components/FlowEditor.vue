@@ -51,7 +51,6 @@ const {
   imageManager,
   handleDebugNode,
   handleOpenDebugPanel,
-  handleNodesChange,
   menu,
   searchVisible,
   closeMenu,
@@ -121,8 +120,6 @@ const commitSubCanvasNodePositions = (commits: SubgraphNodePositionCommit[]) => 
       :pan-on-drag="true"
       @connect="(params) => { handleConnect(params) }"
       @edges-change="(changes) => { handleEdgesChange(changes) }"
-      @nodes-change="handleNodesChange"
-      @node-drag-stop="handleNodesChange"
       @pane-context-menu="onPaneContextMenu"
       @node-context-menu="onNodeContextMenu"
       @edge-context-menu="onEdgeContextMenu"
@@ -201,8 +198,8 @@ const commitSubCanvasNodePositions = (commits: SubgraphNodePositionCommit[]) => 
       :used-images="usedImages"
       :is-processing="isProcessingImages"
       @cancel="handleCancelDeleteImages"
-      @confirm="() => handleConfirmDeleteImages(() => {})"
-      @skip="() => handleSkipDeleteImages(() => {})"
+      @confirm="handleConfirmDeleteImages()"
+      @skip="handleSkipDeleteImages()"
     />
     <SubCanvasPanel
       :visible="subCanvas.visible"
