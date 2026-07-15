@@ -106,10 +106,7 @@ defineExpose({ executeFileSwitch, handleSaveNodes, triggerLoadFromCache: trigger
       name="fade-scale"
       mode="out-in"
     >
-      <div
-        v-if="panelCollapsed"
-        class="flex shrink-0 items-center gap-1"
-      >
+      <div class="flex shrink-0 items-center gap-1">
         <button
           type="button"
           class="relative flex h-7 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
@@ -179,10 +176,13 @@ defineExpose({ executeFileSwitch, handleSaveNodes, triggerLoadFromCache: trigger
         <button
           type="button"
           class="flex h-7 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
-          title="展开控制台"
-          @click="panelCollapsed = false"
+          :title="panelCollapsed ? '展开控制台' : '收起控制台'"
+          @click="panelCollapsed = !panelCollapsed"
         >
-          <Maximize2 :size="14" />
+          <component
+            :is="panelCollapsed ? Maximize2 : Minimize2"
+            :size="14"
+          />
         </button>
 
         <button
