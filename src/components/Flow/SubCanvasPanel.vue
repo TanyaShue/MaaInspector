@@ -21,10 +21,10 @@ import {
   collectReachableNodeIds,
   consumeSubgraphPositionChanges,
   filterSubgraphEdges,
+  projectSubgraphEdge,
   projectSubgraphNode,
   resolveSubgraphNodeChanges,
-  stageSubgraphPositionChanges,
-  type SubgraphNodePositionCommit
+  stageSubgraphPositionChanges
 } from '@/utils/flowSubgraph'
 import type { EdgeType } from '@/utils/flowOptions'
 import { useNodeDetailsController } from '@/composables/useNodeDetailsController'
@@ -76,8 +76,6 @@ const emit = defineEmits<{
   (e: 'close'): void
   (e: 'root-renamed', nodeId: string): void
   (e: 'replace-nodes', nodes: FlowNode[]): void
-  (e: 'replace-edges', edges: FlowEdge[]): void
-  (e: 'commit-node-positions', commits: SubgraphNodePositionCommit[]): void
 }>()
 
 const flowId = `sub-canvas-${Math.random().toString(36).slice(2)}`
@@ -143,7 +141,19 @@ const edgeStructureKey = computed(() =>
 )
 
 const refreshVisibleNodeIds = () => {
-  baseVisibleNodeIds.value = collectReachableNodeIds(props.rootNodeId, props.nodes, props.edges)
+  const reachableIds = collectReachableNodeIds(props.rootNodeId, props.nodes, props.edges)
+  baseVisibleNodeIds.value = reachableIds
+  if (!props.visible) return
+
+  const viewIds = new Set([...reachableIds, ...sessionNodeIds.value])
+  const nextLocalState = { ...localNodeState.value }
+  let seeded = false
+  props.nodes.forEach(node => {
+    if (!viewIds.has(node.id) || nextLocalState[node.id]) return
+    nextLocalState[node.id] = { position: { ...node.position } }
+    seeded = true
+  })
+  if (seeded) localNodeState.value = nextLocalState
 }
 
 const visibleNodeIds = computed(() => new Set([...baseVisibleNodeIds.value, ...sessionNodeIds.value]))
@@ -261,11 +271,12 @@ const subNodes = computed<FlowNode[]>({
     .filter(node => visibleNodeIds.value.has(node.id))
     .map(node => {
       const local = localNodeState.value[node.id] || {}
+      const projected = projectSubgraphNode(node)
       return {
-        ...projectSubgraphNode(node),
+        ...projected,
         ...local,
         data: node.data,
-        position: local.position || node.position
+        position: local.position ? { ...local.position } : projected.position
       }
     }),
   set: (nextNodes) => {
@@ -293,7 +304,8 @@ const subNodes = computed<FlowNode[]>({
   }
 })
 
-const subEdges = computed<FlowEdge[]>(() => filterSubgraphEdges(props.edges, visibleNodeIds.value))
+const subEdges = computed<FlowEdge[]>(() => filterSubgraphEdges(props.edges, visibleNodeIds.value)
+  .map(edge => projectSubgraphEdge(edge, activeEdgeType.value)))
 const subNodeStructureVersion = ref(0)
 watch(visibleNodeIdList, () => {
   subNodeStructureVersion.value++
@@ -450,13 +462,7 @@ const handleDirectionChange = (value: PropertyKey) => {
 
 const handleEdgeTypeChange = (value: PropertyKey) => {
   activeEdgeType.value = value as EdgeType
-  const visibleIds = visibleNodeIds.value
-  emit('replace-edges', props.edges.map(edge => (
-    visibleIds.has(edge.source) && visibleIds.has(edge.target)
-      ? { ...edge, type: activeEdgeType.value }
-      : edge
-  )))
-  props.markDataChanged()
+  refreshRenderedSubEdges()
 }
 
 const fitVisibleNodes = (duration = 400) => {
@@ -549,8 +555,6 @@ const handleNodeDragStop = (event: NodeDragEvent) => {
     }
   })
   localNodeState.value = nextLocalState
-  emit('commit-node-positions', commits)
-  props.markDataChanged()
   refreshRenderedSubEdges()
   collectSubCanvasDebugSnapshot('node-drag-stop', {
     changedNodes: commits
@@ -648,7 +652,7 @@ watch(edgeStructureKey, () => {
 })
 
 watch(() => props.initialAlgorithm, (algorithm) => {
-  if (algorithm) activeAlgorithm.value = algorithm
+  if (!props.visible && algorithm) activeAlgorithm.value = algorithm
 })
 
 watch(
@@ -658,14 +662,12 @@ watch(
     props.currentDirection,
     props.currentEdgeType
   ] as const,
-  ([algorithm, spacing, direction, edgeType], previous) => {
-    const layoutChanged = !previous || algorithm !== previous[0] ||
-      spacing !== previous[1] || direction !== previous[2]
+  ([algorithm, spacing, direction, edgeType]) => {
+    if (props.visible) return
     activeAlgorithm.value = algorithm
     activeSpacing.value = spacing
     activeDirection.value = direction
     activeEdgeType.value = edgeType
-    if (props.visible && layoutChanged) void layoutVisibleChain(algorithm)
   }
 )
 
@@ -728,8 +730,8 @@ onBeforeUnmount(() => {
       @after-enter="handlePanelAfterEnter"
     >
       <div
-        ref="panelRootRef"
         v-if="visible"
+        ref="panelRootRef"
         class="fixed z-[70] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl"
         :style="panel.panelStyle.value"
       >

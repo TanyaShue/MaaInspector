@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
-  applySubgraphPositionCommits,
   collectReachableNodeIds,
   consumeSubgraphPositionChanges,
   filterSubgraphEdges,
+  projectSubgraphEdge,
   projectSubgraphNode,
   resolveSubgraphNodeChanges,
   stageSubgraphPositionChanges
@@ -47,6 +47,7 @@ describe('flowSubgraph', () => {
     const projected = projectSubgraphNode(mainCanvasNode)
 
     expect(projected.position).toEqual({ x: 12, y: 24 })
+    expect(projected.position).not.toBe(mainCanvasNode.position)
     expect(projected).not.toHaveProperty('computedPosition')
     expect(projected).not.toHaveProperty('dimensions')
     expect(projected).not.toHaveProperty('handleBounds')
@@ -55,6 +56,25 @@ describe('flowSubgraph', () => {
     expect(projected).not.toHaveProperty('dragging')
     expect(projected).not.toHaveProperty('resizing')
     expect(mainCanvasNode).toHaveProperty('computedPosition')
+  })
+
+  it('projects edge rendering state without sharing it with the main canvas', () => {
+    const mainCanvasEdge = {
+      ...edge('root', 'child'),
+      type: 'default',
+      selected: true,
+      style: { strokeWidth: 3 },
+      data: { isJumpBack: true }
+    } as unknown as FlowEdge & { selected?: boolean }
+
+    const projected = projectSubgraphEdge(mainCanvasEdge, 'smoothstep')
+
+    expect(projected.type).toBe('smoothstep')
+    expect(projected).not.toHaveProperty('selected')
+    expect(projected.style).not.toBe(mainCanvasEdge.style)
+    expect(projected.data).not.toBe(mainCanvasEdge.data)
+    expect(mainCanvasEdge.type).toBe('default')
+    expect(mainCanvasEdge.selected).toBe(true)
   })
 
   it('collects the target node, descendants, and timeout/error branches from actual outgoing edges', () => {
@@ -137,8 +157,26 @@ describe('flowSubgraph', () => {
     })
 
     expect(result.addedNodes.map(item => item.id)).toEqual(['new-node'])
+    expect(result.addedNodes[0]).not.toBe(newNode)
+    expect(result.addedNodes[0].position).not.toBe(newNode.position)
     expect(Array.from(result.removedVisibleIds)).toEqual([])
     expect(result.nextLocalState['new-node']?.position).toEqual({ x: 24, y: 48 })
+  })
+
+  it('keeps sub-canvas position changes out of the main-canvas nodes', () => {
+    const mainNode = positionedNode('root', 10, 20)
+    const subNode = projectSubgraphNode(mainNode)
+    subNode.position = { x: 300, y: 400 }
+
+    const result = resolveSubgraphNodeChanges({
+      mainNodes: [mainNode],
+      nextNodes: [subNode],
+      visibleNodeIds: new Set(['root']),
+      localNodeState: {}
+    })
+
+    expect(result.nextLocalState.root?.position).toEqual({ x: 300, y: 400 })
+    expect(mainNode.position).toEqual({ x: 10, y: 20 })
   })
 
   it('still reports removed visible nodes when no new nodes are present', () => {
@@ -205,19 +243,4 @@ describe('flowSubgraph', () => {
     expect(pending.size).toBe(0)
   })
 
-  it('commits final positions without replacing the parent node array or untouched nodes', () => {
-    const nodes = [positionedNode('dragged', 0, 0), positionedNode('untouched', 5, 6)]
-    const originalArray = nodes
-    const untouchedNode = nodes[1]
-
-    expect(applySubgraphPositionCommits(nodes, [
-      { id: 'dragged', position: { x: 30, y: 40 } },
-      { id: 'missing', position: { x: 99, y: 99 } }
-    ])).toBe(1)
-
-    expect(nodes).toBe(originalArray)
-    expect(nodes[0].position).toEqual({ x: 30, y: 40 })
-    expect(nodes[1]).toBe(untouchedNode)
-    expect(nodes[1].position).toEqual({ x: 5, y: 6 })
-  })
 })

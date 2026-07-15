@@ -1,4 +1,5 @@
 import type { NodeChange, XYPosition } from '@vue-flow/core'
+import type { EdgeType } from './flowOptions'
 import type { FlowEdge, FlowNode } from './flowTypes'
 
 interface ResolveSubgraphNodeChangesOptions {
@@ -23,9 +24,19 @@ type VueFlowRuntimeNodeState = {
   resizing?: unknown
 }
 
+type VueFlowRuntimeEdgeState = {
+  selected?: unknown
+}
+
 /** Remove geometry and interaction state measured by another Vue Flow instance. */
 export const projectSubgraphNode = (node: FlowNode): FlowNode => {
-  const projected = { ...node } as FlowNode & VueFlowRuntimeNodeState
+  const projected = {
+    ...node,
+    position: { ...node.position },
+    style: typeof node.style === 'object' && node.style !== null
+      ? { ...node.style }
+      : node.style
+  } as FlowNode & VueFlowRuntimeNodeState
   delete projected.computedPosition
   delete projected.dimensions
   delete projected.handleBounds
@@ -33,6 +44,26 @@ export const projectSubgraphNode = (node: FlowNode): FlowNode => {
   delete projected.selected
   delete projected.dragging
   delete projected.resizing
+  return projected
+}
+
+/** Create an edge owned by the sub-canvas view instead of reusing Vue Flow state from the main canvas. */
+export const projectSubgraphEdge = (edge: FlowEdge, type: EdgeType): FlowEdge => {
+  const projected = {
+    ...edge,
+    type,
+    style: typeof edge.style === 'object' && edge.style !== null
+      ? { ...edge.style }
+      : edge.style,
+    data: edge.data ? { ...edge.data } : edge.data,
+    markerStart: typeof edge.markerStart === 'object' && edge.markerStart !== null
+      ? { ...edge.markerStart }
+      : edge.markerStart,
+    markerEnd: typeof edge.markerEnd === 'object' && edge.markerEnd !== null
+      ? { ...edge.markerEnd }
+      : edge.markerEnd
+  } as FlowEdge & VueFlowRuntimeEdgeState
+  delete projected.selected
   return projected
 }
 
@@ -65,24 +96,6 @@ export const consumeSubgraphPositionChanges = (
   }))
   pendingPositions.clear()
   return commits
-}
-
-/** Apply a completed drag batch without replacing the parent node array. */
-export const applySubgraphPositionCommits = (
-  nodes: FlowNode[],
-  commits: SubgraphNodePositionCommit[]
-): number => {
-  if (commits.length === 0) return 0
-
-  const nodesById = new Map(nodes.map(node => [node.id, node]))
-  let appliedCount = 0
-  commits.forEach(({ id, position }) => {
-    const node = nodesById.get(id)
-    if (!node) return
-    node.position = { ...position }
-    appliedCount++
-  })
-  return appliedCount
 }
 
 export const collectReachableNodeIds = (
@@ -143,7 +156,9 @@ export const resolveSubgraphNodeChanges = ({
 } => {
   const nextById = new Map(nextNodes.map(node => [node.id, node]))
   const existingIds = new Set(mainNodes.map(node => node.id))
-  const addedNodes = nextNodes.filter(node => !existingIds.has(node.id))
+  const addedNodes = nextNodes
+    .filter(node => !existingIds.has(node.id))
+    .map(projectSubgraphNode)
   const removedVisibleIds = new Set<string>()
 
   if (addedNodes.length === 0) {

@@ -9,8 +9,7 @@ import SubCanvasPanel from './Flow/SubCanvasPanel.vue'
 import NodeDetailsHost from './Flow/NodeDetailsHost.vue'
 import { useFlowEditorVm } from '@/composables/viewModels/useFlowEditorVm'
 import { useEdgeRenderWindow } from '@/composables/flowGraph/useEdgeRenderWindow'
-import { applySubgraphPositionCommits, type SubgraphNodePositionCommit } from '@/utils/flowSubgraph'
-import type { FlowEdge, FlowNode } from '@/utils/flowTypes'
+import type { FlowNode } from '@/utils/flowTypes'
 
 const NodeSearch = defineAsyncComponent(() => import('./Flow/NodeSearch.vue'))
 const SaveConfirmModal = defineAsyncComponent(() => import('./Flow/Modals/SaveConfirmModal.vue'))
@@ -95,19 +94,9 @@ const replaceSubCanvasNodes = (nextNodes: FlowNode[]) => {
   markNodeStructureChanged()
 }
 
-const replaceSubCanvasEdges = (nextEdges: FlowEdge[]) => {
-  edges.value = nextEdges
-}
-
-const commitSubCanvasNodePositions = (commits: SubgraphNodePositionCommit[]) => {
-  applySubgraphPositionCommits(nodes.value, commits)
-  refreshRenderedEdges()
-}
-
 const editorRootRef = ref<HTMLElement | null>(null)
 const {
   renderedEdges,
-  refreshRenderedEdges,
   setCanvasSize,
   handleMoveStart,
   handleMove,
@@ -284,8 +273,6 @@ onBeforeUnmount(() => {
       @close="closeSubCanvas"
       @root-renamed="(nodeId) => { subCanvas.nodeId = nodeId }"
       @replace-nodes="replaceSubCanvasNodes"
-      @replace-edges="replaceSubCanvasEdges"
-      @commit-node-positions="commitSubCanvasNodePositions"
     />
   </div>
 </template>
