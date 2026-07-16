@@ -5,7 +5,7 @@ import eslintConfigPrettier from 'eslint-config-prettier'
 
 export default [
   {
-    ignores: ['dist/**', 'node_modules/**', 'src-tauri/target/**', 'src-tauri/MAA-win-x86_64-v*/**']
+    ignores: ['dist/**', 'node_modules/**', 'src-tauri/target/**', 'src-tauri/maa-framework/**', 'src-tauri/MAA-win-x86_64-v*/**']
   },
   ...pluginVue.configs['flat/recommended'],
   {

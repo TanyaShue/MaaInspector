@@ -138,6 +138,20 @@ describe('cache service', () => {
       await withCache('v3-api', fetcher, 5000)
       expect(fetcher).toBeCalledTimes(5)
     })
+
+    it('should remove every matching entry when the RegExp is global', async () => {
+      const fetcher = vi.fn().mockResolvedValue('result')
+      await withCache('user:1', fetcher, 5000)
+      await withCache('user:2', fetcher, 5000)
+      await withCache('post:1', fetcher, 5000)
+
+      invalidateCacheByPattern(/^user:/g)
+
+      await withCache('user:1', fetcher, 5000)
+      await withCache('user:2', fetcher, 5000)
+      await withCache('post:1', fetcher, 5000)
+      expect(fetcher).toBeCalledTimes(5)
+    })
   })
 
   describe('clearCache', () => {

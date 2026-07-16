@@ -111,7 +111,7 @@ fn with_logger<T>(f: impl FnOnce(&mut FileLogger) -> io::Result<T>) -> io::Resul
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "logger is not initialized"))?;
     let mut guard = logger
         .lock()
-        .map_err(|_| io::Error::new(io::ErrorKind::Other, "logger lock is poisoned"))?;
+        .map_err(|_| io::Error::other("logger lock is poisoned"))?;
     f(&mut guard)
 }
 
@@ -201,7 +201,7 @@ fn now_string() -> String {
 
 fn install_panic_hook() {
     static PANIC_HOOK_INSTALLED: OnceLock<()> = OnceLock::new();
-    let _ = PANIC_HOOK_INSTALLED.set({
+    PANIC_HOOK_INSTALLED.get_or_init(|| {
         let previous_hook = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |panic_info| {
             backend_error("panic", panic_info.to_string(), Value::Null);

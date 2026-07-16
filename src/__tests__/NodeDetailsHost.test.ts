@@ -22,7 +22,6 @@ const createNode = (id: string): FlowNode => ({
 
 const NodeDetailsStub = defineComponent({
   name: 'NodeDetails',
-  emits: ['close', 'update-id', 'update-type', 'update-data'],
   props: {
     visible: Boolean,
     nodeId: String,
@@ -30,6 +29,7 @@ const NodeDetailsStub = defineComponent({
     nodeType: String,
     placement: String
   },
+  emits: ['close', 'update-id', 'update-type', 'update-data'],
   template: '<div class="node-details-stub" :data-node-id="nodeId" :data-placement="placement" />'
 })
 

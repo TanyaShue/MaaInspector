@@ -120,6 +120,9 @@ export const invalidateCache = (key: string) => {
 export const invalidateCacheByPattern = (pattern: string | RegExp) => {
   const regex = typeof pattern === 'string' ? new RegExp(pattern) : pattern
   for (const key of cache.keys()) {
+    // Global and sticky regular expressions retain lastIndex between calls.
+    // Reset it for every key so adjacent matches are not skipped.
+    regex.lastIndex = 0
     if (regex.test(key)) {
       cache.delete(key)
     }

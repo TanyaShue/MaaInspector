@@ -143,6 +143,7 @@ impl DebugEventBroker {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn emit_node_action(
         &self,
         attempt_id: Option<String>,

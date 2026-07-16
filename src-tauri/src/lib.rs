@@ -81,10 +81,10 @@ fn load_maa_library<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), 
         );
     }
 
-    if let Ok(exe_path) = std::env::current_exe() {
-        if let Some(exe_dir) = exe_path.parent() {
-            append_maa_dll_candidate(&mut candidates, exe_dir);
-        }
+    if let Ok(exe_path) = std::env::current_exe()
+        && let Some(exe_dir) = exe_path.parent()
+    {
+        append_maa_dll_candidate(&mut candidates, exe_dir);
     }
 
     let dll_path = candidates.iter().find(|p| p.exists()).cloned();
@@ -125,24 +125,12 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            let app_data_dir = resolve_app_data_dir(app.handle()).map_err(|e| {
-                Box::<dyn std::error::Error>::from(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    e,
-                ))
-            })?;
-            logging::init(&app_data_dir).map_err(|e| {
-                Box::<dyn std::error::Error>::from(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    e,
-                ))
-            })?;
-            load_maa_library(app.handle()).map_err(|e| {
-                Box::<dyn std::error::Error>::from(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    e,
-                ))
-            })?;
+            let app_data_dir = resolve_app_data_dir(app.handle())
+                .map_err(|e| Box::<dyn std::error::Error>::from(std::io::Error::other(e)))?;
+            logging::init(&app_data_dir)
+                .map_err(|e| Box::<dyn std::error::Error>::from(std::io::Error::other(e)))?;
+            load_maa_library(app.handle())
+                .map_err(|e| Box::<dyn std::error::Error>::from(std::io::Error::other(e)))?;
 
             let broker = DebugEventBroker::new_with_handle(app.handle().clone());
             let broker_arc = Arc::new(broker);

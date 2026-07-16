@@ -106,9 +106,13 @@ const groupedRemoteResults = computed(() => {
 
 // --- 3. 远程搜索逻辑 (防抖) ---
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
+let searchGeneration = 0
 
-const performRemoteSearch = async () => {
-  if (!searchQuery.value.trim()) {
+const performRemoteSearch = async (generation: number) => {
+  const query = searchQuery.value
+  const regexEnabled = useRegex.value
+
+  if (!query.trim()) {
     otherFileResults.value = []
     return
   }
@@ -116,27 +120,35 @@ const performRemoteSearch = async () => {
   isSearchingRemote.value = true
   try {
     const res = await resourceApi.searchGlobalNodes(
-        searchQuery.value,
-        useRegex.value,
+        query,
+        regexEnabled,
         props.currentFilename || '',
         props.currentSource || ''
     )
-    otherFileResults.value = (res as any).results || []
+    if (generation === searchGeneration) {
+      otherFileResults.value = (res as any).results || []
+    }
   } catch (e) {
     console.error("Remote search failed", e)
-    otherFileResults.value = []
+    if (generation === searchGeneration) {
+      otherFileResults.value = []
+    }
   } finally {
-    isSearchingRemote.value = false
+    if (generation === searchGeneration) {
+      isSearchingRemote.value = false
+    }
   }
 }
 
 watch([searchQuery, useRegex], () => {
+  const generation = ++searchGeneration
   if (debounceTimer) clearTimeout(debounceTimer)
 
   if (searchQuery.value.trim()) {
-    debounceTimer = setTimeout(performRemoteSearch, 800) // 800ms 防抖
+    debounceTimer = setTimeout(() => void performRemoteSearch(generation), 800) // 800ms 防抖
   } else {
     otherFileResults.value = []
+    isSearchingRemote.value = false
   }
 })
 
@@ -218,6 +230,8 @@ const handleKeydown = (e: KeyboardEvent) => {
 }
 onMounted(() => document.addEventListener('keydown', handleKeydown))
 onUnmounted(() => {
+  searchGeneration++
+  if (debounceTimer) clearTimeout(debounceTimer)
   document.removeEventListener('keydown', handleKeydown)
   document.removeEventListener('mousemove', onDrag)
   document.removeEventListener('mouseup', stopDrag)

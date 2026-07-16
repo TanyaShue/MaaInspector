@@ -1,4 +1,7 @@
+import { defineComponent } from 'vue'
+import { mount, type VueWrapper } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { UseDraggableWindowOptions } from '@/composables/useDraggableWindow'
 
 const localStorageMock = (() => {
   let store: Record<string, string> = {}
@@ -17,27 +20,44 @@ Object.defineProperty(window, 'localStorage', {
 import { useDraggableWindow } from '@/composables/useDraggableWindow'
 
 describe('useDraggableWindow', () => {
+  const wrappers: VueWrapper[] = []
+
   beforeEach(() => {
     vi.clearAllMocks()
     localStorageMock.clear()
   })
 
   afterEach(() => {
+    wrappers.splice(0).forEach((wrapper) => wrapper.unmount())
     vi.restoreAllMocks()
-    document.removeEventListener('mousemove', () => {})
-    document.removeEventListener('mouseup', () => {})
   })
 
-  function createDraggableWindow(options = {}) {
-    return useDraggableWindow({
-      initialPosition: { x: 100, y: 100 },
-      ...options
-    })
+  function createDraggableWindow(options?: UseDraggableWindowOptions) {
+    let draggableWindow: ReturnType<typeof useDraggableWindow> | undefined
+    const wrapper = mount(defineComponent({
+      setup() {
+        const resolvedOptions = options
+          ? { initialPosition: { x: 100, y: 100 }, ...options }
+          : undefined
+        draggableWindow = useDraggableWindow(resolvedOptions)
+        return () => null
+      }
+    }))
+    wrappers.push(wrapper)
+
+    if (!draggableWindow) {
+      throw new Error('Failed to initialize draggable window')
+    }
+
+    return {
+      ...draggableWindow,
+      unmount: () => wrapper.unmount()
+    }
   }
 
   describe('initial position', () => {
     it('should use default position when no options', () => {
-      const { position } = useDraggableWindow()
+      const { position } = createDraggableWindow()
       expect(position.value.x).toBe(100)
       expect(position.value.y).toBe(100)
     })
@@ -311,14 +331,16 @@ describe('useDraggableWindow', () => {
   describe('cleanup on unmount', () => {
     it('should remove event listeners on unmount', () => {
       const removeEventListenerSpy = vi.spyOn(document, 'removeEventListener')
-      const { startDrag } = createDraggableWindow()
+      const { startDrag, unmount } = createDraggableWindow()
       const mockStartEvent = {
         target: document.createElement('div'),
         clientX: 150,
         clientY: 150
       } as unknown as MouseEvent
       startDrag(mockStartEvent)
-      expect(removeEventListenerSpy).not.toHaveBeenCalled()
+      unmount()
+      expect(removeEventListenerSpy).toHaveBeenCalledWith('mousemove', expect.any(Function))
+      expect(removeEventListenerSpy).toHaveBeenCalledWith('mouseup', expect.any(Function))
     })
   })
 })

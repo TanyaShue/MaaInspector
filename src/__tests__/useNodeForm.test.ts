@@ -317,10 +317,12 @@ describe('useNodeForm', () => {
     })
 
     it('should fallback to string on parse failure', () => {
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
       const { emit, props } = createMocks()
       const { formData: _formData13, setTargetValue, getValue } = useNodeForm(props, emit)
       setTargetValue('target', 'not-an-array')
       expect(getValue('target')).toBe('not-an-array')
+      expect(consoleWarnSpy).toHaveBeenCalledWith('Failed to set target value:', expect.any(SyntaxError))
     })
   })
 

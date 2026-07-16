@@ -559,18 +559,17 @@ impl MaaFrameworkWrapper {
 
                 if let Ok(ocr_bundle) =
                     serde_json::from_value::<OcrDetailBundle>(detail.detail.clone())
+                    && let Some(best) = ocr_bundle.best.as_ref()
                 {
-                    if let Some(best) = ocr_bundle.best.as_ref() {
-                        crate::backend_log_debug!(
-                            "stderr",
-                            "[OCR] direct best: box={:?}, score={:.4}, text_len={}, text={:?}",
-                            best.bbox,
-                            best.score,
-                            best.text.chars().count(),
-                            best.text
-                        );
-                        return Ok(ocr_bundle_to_response(ocr_bundle));
-                    }
+                    crate::backend_log_debug!(
+                        "stderr",
+                        "[OCR] direct best: box={:?}, score={:.4}, text_len={}, text={:?}",
+                        best.bbox,
+                        best.score,
+                        best.text.chars().count(),
+                        best.text
+                    );
+                    return Ok(ocr_bundle_to_response(ocr_bundle));
                 }
 
                 crate::backend_log_debug!(
