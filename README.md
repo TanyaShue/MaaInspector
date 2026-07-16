@@ -108,6 +108,37 @@ pnpm tauri:dev
 pnpm tauri:build
 ```
 
+### 软件更新与发布
+
+桌面端使用 Tauri Updater 从 GitHub Releases 获取更新。推送 `v*` tag 后，
+`.github/workflows/tauri-build.yml` 会自动完成版本同步、Windows NSIS 构建、更新包签名，
+并把安装包、签名文件与 `latest.json` 上传到对应 Release。应用会验证更新签名后才允许安装。
+
+> 首个包含 Updater 的版本需要用户从 Releases 手动安装一次；旧版本本身不具备更新能力。
+> 从该版本开始，后续版本即可在应用内完成检查、下载、验签、安装与重启。
+
+发布新版本：
+
+```powershell
+git tag v0.1.5
+git push origin v0.1.5
+```
+
+签名私钥保存在 GitHub Actions Secret `TAURI_SIGNING_PRIVATE_KEY` 中；客户端公钥在
+`src-tauri/tauri.conf.json`。本机生成的私钥位于被 Git 忽略的 `.tauri/maainspector.key`，
+请另外放到安全的密码管理器或离线介质中备份。私钥一旦丢失，已安装的客户端将无法验证后续更新，
+不能通过简单生成新密钥恢复。
+
+需要为新的 fork 配置更新时，请生成独立密钥并写入该 fork 的 Secret：
+
+```powershell
+pnpm tauri signer generate --ci --write-keys .tauri\maainspector.key
+Get-Content .tauri\maainspector.key -Raw | gh secret set TAURI_SIGNING_PRIVATE_KEY
+```
+
+随后把 `.tauri/maainspector.key.pub` 的完整内容更新到 `tauri.conf.json` 的
+`plugins.updater.pubkey`，并把 endpoint 改成该 fork 的 Releases 地址。
+
 ---
 
 ## 项目结构
@@ -159,4 +190,3 @@ pnpm test:watch
 5. 提交 **Pull Request** 并描述变更内容与验证步骤
 
 详细规范请参阅 [AGENTS.md](AGENTS.md)。
-

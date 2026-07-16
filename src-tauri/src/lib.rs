@@ -124,6 +124,8 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let app_data_dir = resolve_app_data_dir(app.handle())
                 .map_err(|e| Box::<dyn std::error::Error>::from(std::io::Error::other(e)))?;

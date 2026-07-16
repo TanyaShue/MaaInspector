@@ -31,12 +31,22 @@
     }
   },
   "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDYyREJCQTFEQUJEOUE3MDAKUldRQXA5bXJIYnJiWW82dnJXbmhFcFB6RTFVZkVKVnBhS1pvZTMvVlRFOUdMRzJNSnd1bVFHMmgK",
+      "endpoints": [
+        "https://github.com/TanyaShue/MaaInspector/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    },
     "http": {
       "scope": ["http://127.0.0.1/**", "http://localhost/**"]
     }
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": ["nsis"],
     "windows": {
       "wix": {

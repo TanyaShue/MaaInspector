@@ -18,6 +18,7 @@ dist-ssr
 target
 
 # Tauri
+.tauri/
 src-tauri/target
 src-tauri/debug
 src-tauri/maa-framework/*
