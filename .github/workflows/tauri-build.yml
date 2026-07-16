@@ -13,6 +13,11 @@ on:
       release_tag:
         description: 'Release tag to build when manually dispatched, for example v0.7.0'
         required: false
+      prerelease:
+        description: 'Publish the manually dispatched build as a prerelease'
+        type: boolean
+        required: false
+        default: true
 
 defaults:
   run:
@@ -23,6 +28,9 @@ permissions:
 
 env:
   DEFAULT_MAA_FRAMEWORK_VERSION: "v5.10.0"
+  # Keep peak memory predictable on GitHub's Windows runners. The final Tauri
+  # link is memory-heavy and has previously crashed rustc with 0xc0000005.
+  CARGO_BUILD_JOBS: "2"
 
 jobs:
   build:
@@ -54,10 +62,17 @@ jobs:
         run: git config --global core.autocrlf false
 
       - name: Cache Rust dependencies
+        id: rust-cache
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: "src-tauri -> target"
-          cache-on-failure: true
+          # A failed run can stop before Cargo writes target artifacts. Saving that
+          # result would poison the immutable key and force every rerun to rebuild.
+          cache-on-failure: false
+
+      - name: Report Rust cache
+        run: |
+          "Rust cache hit: ${{ steps.rust-cache.outputs.cache-hit }}" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
       - name: Resolve release inputs
         id: release
@@ -71,6 +86,11 @@ jobs:
             throw "Release tag must start with v, got '$tag'"
           }
 
+          $isPrerelease = $tag.Contains("-")
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $isPrerelease = "${{ inputs.prerelease }}" -eq "true"
+          }
+
           $maaVersion = "${{ env.DEFAULT_MAA_FRAMEWORK_VERSION }}"
           if ("${{ github.event_name }}" -eq "workflow_dispatch" -and -not [string]::IsNullOrWhiteSpace("${{ inputs.maa_framework_version }}")) {
             $maaVersion = "${{ inputs.maa_framework_version }}"
@@ -82,6 +102,7 @@ jobs:
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "version=$($tag.Substring(1))" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "maa_version=$maaVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "prerelease=$($isPrerelease.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "MAA_FRAMEWORK_VERSION=$maaVersion" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Prepare MaaFramework SDK
@@ -139,7 +160,7 @@ jobs:
           tagName: ${{ steps.release.outputs.tag }}
           releaseName: "MaaInspector ${{ steps.release.outputs.tag }}"
           releaseBody: ${{ steps.changelog.outputs.body }}
-          prerelease: false
+          prerelease: ${{ steps.release.outputs.prerelease }}
           releaseDraft: false
           includeDebug: false
           includeRelease: true

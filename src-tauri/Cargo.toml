@@ -57,7 +57,9 @@ windows-sys = { version = "0.59.0", features = [
 ] }
 
 [profile.release]
-lto = "thin"
+# Thin LTO makes the final Windows link substantially slower and has caused
+# rustc access violations on the memory-constrained GitHub Actions runner.
+lto = false
 codegen-units = 16
 panic = "abort"
 strip = true
