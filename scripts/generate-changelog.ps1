@@ -18,7 +18,9 @@ function Invoke-GitOptional {
   $ErrorActionPreference = "Continue"
   try {
     $result = & git @Arguments 2>$null
-    if ($LASTEXITCODE -ne 0) {
+    $exitCode = $LASTEXITCODE
+    $global:LASTEXITCODE = 0
+    if ($exitCode -ne 0) {
       return ""
     }
     return $result
@@ -39,17 +41,30 @@ try {
     $Tag.Trim()
   }
 
-  $previousTag = ""
+  # workflow_dispatch can build a release before its tag exists. Keep the
+  # requested tag as the heading, but read commits from HEAD in that case.
+  $releaseRef = "HEAD"
+  $tagExists = $false
   if ($versionTitle -ne "Unreleased") {
+    $tagExists = -not [string]::IsNullOrWhiteSpace(
+      (Invoke-GitOptional @("rev-parse", "--verify", "--quiet", "refs/tags/$versionTitle"))
+    )
+    if ($tagExists) {
+      $releaseRef = $versionTitle
+    }
+  }
+
+  $previousTag = ""
+  if ($tagExists) {
     $previousTag = Invoke-GitOptional @("describe", "--tags", "--abbrev=0", "--match", "v*", "$versionTitle^")
   } else {
-    $previousTag = Invoke-GitOptional @("describe", "--tags", "--abbrev=0", "--match", "v*")
+    $previousTag = Invoke-GitOptional @("describe", "--tags", "--abbrev=0", "--match", "v*", $releaseRef)
   }
 
   $range = if (-not [string]::IsNullOrWhiteSpace($previousTag)) {
-    if ($versionTitle -eq "Unreleased") { "$previousTag..HEAD" } else { "$previousTag..$versionTitle" }
+    "$previousTag..$releaseRef"
   } else {
-    if ($versionTitle -eq "Unreleased") { "HEAD" } else { $versionTitle }
+    $releaseRef
   }
 
   $commits = @(Invoke-GitOptional @("log", $range, "--pretty=format:%s (%h)", "--no-merges"))
