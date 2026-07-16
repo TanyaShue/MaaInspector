@@ -5,7 +5,7 @@ import { useAppConfigStore } from '@/stores/appConfig'
 import { useSystemState } from '@/composables/useSystemState'
 import { usePreloadCache } from '@/composables/usePreloadCache'
 import { makeFileId } from '@/utils/fileId'
-import type { ResourceFileInfo, ResourceProfile } from '@/services/api'
+import type { ApiDeviceInfo, ResourceFileInfo, ResourceProfile } from '@/services/api'
 import type { EdgeType } from '@/utils/flowOptions'
 import type { FlowBusinessData, LayoutAlgorithm, LayoutDirection, SpacingKey, TemplateImage } from '@/utils/flowTypes'
 import type { TabResourceInfo } from '@/utils/flowWorkspaceTypes'
@@ -26,9 +26,18 @@ interface UseInfoPanelVmProps {
 interface ResourceManagerPort {
   availableFiles: ResourceFileInfo[]
   handleResourceLoad: () => Promise<void>
+  handleResourceLoadWithRetry?: (maxAttempts?: number) => Promise<boolean>
   findFileById: (id: string) => ResourceFileInfo | undefined
   executeFileSwitch: (filename: string, source?: string) => Promise<void>
   setMessage: (message: string) => void
+}
+
+interface DeviceManagerPort {
+  autoRestoreDevice: (device: ApiDeviceInfo, maxAttempts?: number) => Promise<boolean>
+}
+
+interface AgentManagerPort {
+  autoRestoreAgent: (socketId: string, maxAttempts?: number) => Promise<boolean>
 }
 
 type InfoPanelEmit = {
@@ -61,6 +70,8 @@ export function useInfoPanelVm(props: UseInfoPanelVmProps, emit: InfoPanelEmit) 
   const hasUnreadAnnouncement = ref(true)
 
   const resourceManagerRef = ref<ResourceManagerPort | null>(null)
+  const deviceManagerRef = ref<DeviceManagerPort | null>(null)
+  const agentManagerRef = ref<AgentManagerPort | null>(null)
   const resourceStatus = ref<ResourcePanelSnapshot>({
     status: 'disconnected',
     message: '资源未连接',
@@ -201,6 +212,19 @@ export function useInfoPanelVm(props: UseInfoPanelVmProps, emit: InfoPanelEmit) 
   if (getCurrentInstance()) {
     onMounted(async () => {
       await handleFetchSystemState()
+      if (!appConfig.canvas.restoreWorkspaceOnStart) return
+
+      const restoreTasks: Promise<boolean>[] = []
+      if (appConfig.currentProfile.paths?.length) {
+        restoreTasks.push(resourceManagerRef.value?.handleResourceLoadWithRetry?.(5) ?? Promise.resolve(false))
+      }
+      if (appConfig.device.lastDevice) {
+        restoreTasks.push(deviceManagerRef.value?.autoRestoreDevice(appConfig.device.lastDevice, 5) ?? Promise.resolve(false))
+      }
+      if (appConfig.agent.socketId) {
+        restoreTasks.push(agentManagerRef.value?.autoRestoreAgent(appConfig.agent.socketId, 5) ?? Promise.resolve(false))
+      }
+      await Promise.allSettled(restoreTasks)
     })
   }
 
@@ -215,6 +239,7 @@ export function useInfoPanelVm(props: UseInfoPanelVmProps, emit: InfoPanelEmit) 
     layoutAlgorithm: LayoutAlgorithm
     layoutDirection: LayoutDirection
     pipelineVersion: 'V1' | 'V2'
+    restoreWorkspaceOnStart: boolean
     lowMemoryMode: boolean
   }) => {
     appConfig.updateCanvasSettings({
@@ -223,6 +248,7 @@ export function useInfoPanelVm(props: UseInfoPanelVmProps, emit: InfoPanelEmit) 
       layoutAlgorithm: payload.layoutAlgorithm,
       layoutDirection: payload.layoutDirection,
       pipelineVersion: payload.pipelineVersion,
+      restoreWorkspaceOnStart: payload.restoreWorkspaceOnStart,
       lowMemoryMode: payload.lowMemoryMode
     })
     showAppSettings.value = false
@@ -260,6 +286,8 @@ export function useInfoPanelVm(props: UseInfoPanelVmProps, emit: InfoPanelEmit) 
     showAnnouncement,
     hasUnreadAnnouncement,
     resourceManagerRef,
+    deviceManagerRef,
+    agentManagerRef,
     resourceStatus,
     deviceStatus,
     agentStatus,

@@ -36,6 +36,7 @@ interface DeviceState {
   status: 'connected' | 'disconnected' | 'loading' | 'error'
   currentDevice: ApiDeviceInfo | null
   lastSearched: ApiDeviceInfo[]
+  lastDevice: ApiDeviceInfo | null
 }
 
 interface AgentState {
@@ -95,7 +96,8 @@ export const useAppConfigStore = defineStore('appConfig', () => {
   const device = ref<DeviceState>({
     status: 'disconnected',
     currentDevice: null,
-    lastSearched: []
+    lastSearched: [],
+    lastDevice: null
   })
   const agent = ref<AgentState>({
     socketId: null,
@@ -206,6 +208,8 @@ export const useAppConfigStore = defineStore('appConfig', () => {
         agent.value.status = 'disconnected'
       }
 
+      device.value.lastDevice = data.last_device ?? null
+
       system.value.status = 'connected'
       system.value.initialized = true
     } catch (e) {
@@ -224,6 +228,7 @@ export const useAppConfigStore = defineStore('appConfig', () => {
         resource_profiles: resource.value.profiles,
         current_resource_index: resource.value.profileIndex,
         agent_socket_id: agent.value.socketId || '',
+        last_device: device.value.lastDevice ?? undefined,
         canvas_settings: {
           edge_type: canvas.value.edgeType,
           spacing: canvas.value.spacing,
@@ -311,6 +316,11 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     if (deviceInfo !== undefined) device.value.currentDevice = deviceInfo
   }
 
+  function rememberDevice(deviceInfo: ApiDeviceInfo) {
+    device.value.lastDevice = { ...deviceInfo }
+    void saveToBackend()
+  }
+
   function setSearchedDevices(devices: ApiDeviceInfo[]) {
     device.value.lastSearched = devices
   }
@@ -359,7 +369,10 @@ export const useAppConfigStore = defineStore('appConfig', () => {
   async function connectAgent(socketId: string) {
     agent.value.status = 'loading'
     try {
-      await agentApi.connect(socketId)
+      const response = await agentApi.connect(socketId)
+      if (response.success === false) {
+        throw new Error(response.message || 'Agent 连接失败')
+      }
       agent.value.socketId = socketId
       agent.value.status = 'connected'
       agent.value.message = 'Agent 已连接'
@@ -476,6 +489,7 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     markResourceLoaded,
     loadResource,
     setDeviceStatus,
+    rememberDevice,
     setSearchedDevices,
     connectAdb,
     connectWin32,

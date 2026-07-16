@@ -133,4 +133,21 @@ describe('appConfig workspace state', () => {
       })
     }))
   })
+
+  it('loads and persists the last connected device', async () => {
+    const lastDevice = { type: 'adb', address: '127.0.0.1:5555', adb_path: 'adb.exe' }
+    vi.mocked(systemApi.getInitialState).mockResolvedValue({ last_device: lastDevice })
+
+    const store = useAppConfigStore()
+    await store.loadFromBackend()
+    expect(store.device.lastDevice).toEqual(lastDevice)
+
+    const nextDevice = { type: 'win32', hwnd: 42, name: 'Game' }
+    store.rememberDevice(nextDevice)
+    await vi.waitFor(() => {
+      expect(systemApi.saveDeviceConfig).toHaveBeenLastCalledWith(expect.objectContaining({
+        last_device: nextDevice
+      }))
+    })
+  })
 })

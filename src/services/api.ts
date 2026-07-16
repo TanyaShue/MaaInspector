@@ -93,6 +93,7 @@ export interface SystemInitResponse {
   resource_profiles?: ResourceProfile[];
   current_resource_index?: number;
   agent_socket_id?: string;
+  last_device?: ApiDeviceInfo;
   canvas_settings?: CanvasSettings;
   restore_workspace_on_start?: boolean;
   workspace_state?: WorkspaceState;
@@ -103,6 +104,7 @@ export interface DeviceConfigPayload {
   resource_profiles: ResourceProfile[];
   current_resource_index?: number;
   agent_socket_id?: string;
+  last_device?: ApiDeviceInfo;
   canvas_settings?: CanvasSettings;
   restore_workspace_on_start?: boolean;
   workspace_state?: WorkspaceState;

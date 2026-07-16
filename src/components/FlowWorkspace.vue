@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { defineAsyncComponent, onMounted, ref } from 'vue'
-import { FileJson, Loader2, Move, Plus, X } from 'lucide-vue-next'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
+import { Check, ChevronDown, FileJson, Loader2, Move, Plus, X } from 'lucide-vue-next'
 import FlowEditor from './FlowEditor.vue'
 import InfoPanel from './Flow/InfoPanel.vue'
 import ToolbarIconDropdown from './Flow/Common/ToolbarIconDropdown.vue'
@@ -14,10 +14,17 @@ import {
 } from '@/utils/flowOptions'
 import type { LayoutAlgorithm, LayoutDirection, SpacingKey } from '@/utils/flowTypes'
 import type { FlowEditorPort } from '@/composables/viewModels/types'
+import type { ResourceFileInfo } from '@/services/api'
+import { makeFileId } from '@/utils/fileId'
 
 const loadNodeDebugPanel = () => import('./Flow/NodeDebugPanel.vue')
 const NodeDebugPanel = defineAsyncComponent(loadNodeDebugPanel)
 const infoPanelCollapsed = ref(false)
+const resourceFiles = ref<ResourceFileInfo[]>([])
+const openFileMenuTabId = ref('')
+const tabStripRef = ref<HTMLElement | null>(null)
+const fileMenuPosition = ref({ left: 8, top: 48 })
+const fileMenuTab = computed(() => tabs.value.items.find(tab => tab.id === openFileMenuTabId.value) || null)
 
 onMounted(() => {
   const preload = () => { void loadNodeDebugPanel() }
@@ -26,7 +33,10 @@ onMounted(() => {
   } else {
     setTimeout(preload, 0)
   }
+  document.addEventListener('click', closeFileMenuOnOutsideClick)
 })
+
+onBeforeUnmount(() => document.removeEventListener('click', closeFileMenuOnOutsideClick))
 
 const {
   tabs,
@@ -76,37 +86,84 @@ const handleToolbarSpacingChange = (value: PropertyKey) => {
 const handleToolbarEdgeTypeChange = (value: PropertyKey) => {
   handleUpdateCanvasConfig({ edgeType: value as EdgeType })
 }
+
+function closeFileMenuOnOutsideClick(event: MouseEvent) {
+  if (!tabStripRef.value?.contains(event.target as Node)) openFileMenuTabId.value = ''
+}
+
+const handleTabClick = (tabId: string, event: MouseEvent) => {
+  if (tabId !== activeTabId.value) {
+    openFileMenuTabId.value = ''
+    void selectTab(tabId)
+    return
+  }
+  const tabElement = (event.currentTarget as HTMLElement).parentElement
+  if (tabElement) {
+    const rect = tabElement.getBoundingClientRect()
+    fileMenuPosition.value = {
+      left: Math.max(8, Math.min(rect.left, window.innerWidth - 296)),
+      top: rect.bottom + 1
+    }
+  }
+  openFileMenuTabId.value = openFileMenuTabId.value === tabId ? '' : tabId
+}
+
+const handleTabResourceSelect = async (tabId: string, file: ResourceFileInfo) => {
+  const fileId = makeFileId(file.source, file.value)
+  const tab = tabs.value.items.find(item => item.id === tabId)
+  if (!file.value || tab?.resourceFile === fileId) {
+    openFileMenuTabId.value = ''
+    return
+  }
+  if (tabId !== activeTabId.value) await selectTab(tabId)
+  openFileMenuTabId.value = ''
+  await handleRequestSwitchFile({ filename: file.value, source: file.source })
+}
+
+const isFileOpenedElsewhere = (tabId: string, file: ResourceFileInfo) => {
+  const fileId = makeFileId(file.source, file.value)
+  return tabs.value.items.some(tab => tab.id !== tabId && tab.resourceFile === fileId)
+}
 </script>
 
 <template>
   <div class="w-full h-full flex flex-col bg-slate-100 overflow-hidden">
     <div class="shrink-0 border-b border-slate-200 bg-white px-2 py-1.5">
       <div class="flex items-end gap-2">
-        <div class="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto overflow-y-hidden">
-          <button
+        <div ref="tabStripRef" class="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto overflow-y-hidden">
+          <div
             v-for="(tab, index) in tabs.items"
             :key="tab.id"
-            type="button"
-            class="group h-9 min-w-0 max-w-[220px] px-3 flex items-center gap-2 border border-b-0 text-xs font-medium transition-colors"
+            class="group relative flex h-9 min-w-0 max-w-[250px] items-stretch border border-b-0 text-xs font-medium transition-colors"
             :class="activeTab?.id === tab.id
               ? 'bg-slate-50 border-slate-200 text-slate-900 rounded-t-lg shadow-sm'
               : 'bg-white border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50 rounded-t-lg'"
-            @click="selectTab(tab.id)"
           >
-            <FileJson
-              :size="14"
-              class="shrink-0"
-            />
-            <span class="truncate">{{ makeTabTitle(tab, index) }}</span>
-            <span
+            <button
+              type="button"
+              class="flex min-w-0 flex-1 items-center gap-2 px-3"
+              :title="activeTab?.id === tab.id ? '点击切换当前标签的资源文件' : `切换到 ${makeTabTitle(tab, index)}`"
+              @click="handleTabClick(tab.id, $event)"
+            >
+              <FileJson :size="14" class="shrink-0" />
+              <span class="truncate">{{ makeTabTitle(tab, index) }}</span>
+              <ChevronDown
+                v-if="activeTab?.id === tab.id"
+                :size="13"
+                class="shrink-0 text-indigo-500 transition-transform"
+                :class="openFileMenuTabId === tab.id ? 'rotate-180' : ''"
+              />
+            </button>
+            <button
               v-if="tabs.items.length > 1"
-              class="ml-auto p-0.5 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-700"
+              type="button"
+              class="mr-1 self-center rounded p-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
               title="关闭标签页"
               @click.stop="closeTab(tab.id)"
             >
               <X :size="13" />
-            </span>
-          </button>
+            </button>
+          </div>
           <button
             type="button"
             class="h-9 w-9 rounded-t-lg border border-b-0 border-transparent bg-white text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors shrink-0"
@@ -186,10 +243,50 @@ const handleToolbarEdgeTypeChange = (value: PropertyKey) => {
             @restore-tabs="handleRestoreTabs"
             @clear-tabs="handleClearTabs"
             @open-debug-panel="openDebugPanel"
+            @resource-files-change="resourceFiles = $event"
           />
         </div>
       </div>
     </div>
+
+    <Teleport to="body">
+      <div
+        v-if="fileMenuTab"
+        class="fixed z-[100] w-72 overflow-hidden rounded-b-xl rounded-tr-xl border border-slate-200 bg-white shadow-2xl"
+        :style="{ left: `${fileMenuPosition.left}px`, top: `${fileMenuPosition.top}px` }"
+        @click.stop
+      >
+        <div class="border-b border-slate-100 bg-slate-50 px-3 py-2">
+          <div class="text-xs font-bold text-slate-700">切换此标签的资源文件</div>
+          <div class="mt-0.5 text-[10px] text-slate-400">选择后将在当前标签中直接加载</div>
+        </div>
+        <div v-if="resourceFiles.length" class="max-h-72 overflow-y-auto p-1.5">
+          <button
+            v-for="file in resourceFiles"
+            :key="makeFileId(file.source, file.value)"
+            type="button"
+            class="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors"
+            :class="isFileOpenedElsewhere(fileMenuTab.id, file)
+              ? 'cursor-not-allowed text-slate-300'
+              : fileMenuTab.resourceFile === makeFileId(file.source, file.value)
+                ? 'bg-indigo-50 text-indigo-700'
+                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'"
+            :disabled="isFileOpenedElsewhere(fileMenuTab.id, file)"
+            @click="handleTabResourceSelect(fileMenuTab.id, file)"
+          >
+            <FileJson :size="14" class="shrink-0" />
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-xs font-semibold">{{ file.label || file.value }}</span>
+              <span class="block truncate text-[10px] text-slate-400">{{ file.source }}</span>
+            </span>
+            <Check v-if="fileMenuTab.resourceFile === makeFileId(file.source, file.value)" :size="14" class="shrink-0 text-indigo-500" />
+          </button>
+        </div>
+        <div v-else class="px-4 py-6 text-center text-xs text-slate-400">
+          请先从右侧“资源”按钮加载资源
+        </div>
+      </div>
+    </Teleport>
 
     <div class="relative flex-1 min-h-0">
       <FlowEditor
@@ -237,7 +334,7 @@ const handleToolbarEdgeTypeChange = (value: PropertyKey) => {
             未打开标签页
           </div>
           <div class="mt-1 text-xs">
-            请在右上角控制台加载资源后选择文件
+            请从右上角“资源”按钮加载资源后选择文件
           </div>
         </div>
       </div>

@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { Bot, Loader2 } from 'lucide-vue-next'
-import { agentApi } from '@/services/api'
+import { useAppConfigStore } from '@/stores/appConfig'
 import StatusIndicator from '@/components/Flow/Common/StatusIndicator.vue'
 
 const emit = defineEmits<{
   'status-change': [snapshot: { status: 'disconnected' | 'connecting' | 'connected' | 'failed'; message: string }]
 }>()
+const appConfig = useAppConfigStore()
 
 // 状态
 const status = ref<'disconnected' | 'connecting' | 'connected' | 'failed'>('disconnected')
@@ -17,40 +18,39 @@ const currentAgentSocket = ref<string>('')
 const agentButtonLabel = computed(() => status.value === 'connected' ? '重新连接 Agent' : '启动 Agent')
 
 // 连接 Agent
-const handleAgentConnect = async () => {
-  if (status.value === 'connecting') return
+const handleAgentConnect = async (): Promise<boolean> => {
+  if (status.value === 'connecting') return false
   status.value = 'connecting'
   message.value = '连接中...'
 
   try {
-    const res = await agentApi.connect(currentAgentSocket.value)
-
-    const ok = res?.success ?? true
-    const msg = res?.message || (ok ? 'Agent 已连接' : '连接失败')
-
-    if (!ok) {
-      status.value = 'failed'
-      message.value = msg
-      setTimeout(() => {
-        if (status.value === 'failed') status.value = 'disconnected'
-      }, 3000)
-      return
-    }
-
+    await appConfig.connectAgent(currentAgentSocket.value)
     status.value = 'connected'
-    message.value = msg
+    message.value = 'Agent 已连接'
+    return true
   } catch (e: unknown) {
     status.value = 'failed'
     message.value = '连接失败: ' + (e instanceof Error ? e.message : '未知错误')
-    setTimeout(() => {
-      if (status.value === 'failed') status.value = 'disconnected'
-    }, 3000)
+    return false
   }
+}
+
+const autoRestoreAgent = async (socketId: string, maxAttempts = 5): Promise<boolean> => {
+  currentAgentSocket.value = socketId
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    message.value = attempt === 1 ? '正在自动连接 Agent...' : `正在重试连接 Agent (${attempt}/${maxAttempts})...`
+    if (await handleAgentConnect()) return true
+    if (attempt < maxAttempts) await new Promise(resolve => setTimeout(resolve, 600))
+  }
+  message.value = `自动连接失败，已尝试 ${maxAttempts} 次`
+  return false
 }
 
 // 暴露方法
 defineExpose({
   currentAgentSocket,
+  handleAgentConnect,
+  autoRestoreAgent,
   status,
   message
 })

@@ -2,7 +2,7 @@
 import { ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { openPath } from '@tauri-apps/plugin-opener'
-import { Settings, Save, RotateCcw, Terminal, FolderOpen } from 'lucide-vue-next'
+import { Settings, Save, RotateCcw, Terminal, FolderOpen, X } from 'lucide-vue-next'
 import { logApi, systemApi } from '@/services/api'
 import { LAYOUT_ALGORITHM_OPTIONS, LAYOUT_DIRECTION_OPTIONS } from '@/utils/flowOptions'
 import type { EdgeType } from '@/utils/flowOptions'
@@ -117,15 +117,16 @@ const handleOpenBackupDir = async () => {
 <template>
   <div
     v-if="visible"
-    class="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 animate-in fade-in duration-200"
+    class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-[2px] animate-in fade-in duration-200"
+    @click.self="$emit('close')"
   >
-    <div class="bg-white rounded-xl shadow-2xl border border-slate-200 flex overflow-hidden w-[min(500px,calc(100vw-2rem))] max-h-[calc(100vh-2rem)]">
+    <div class="flex max-h-[calc(100vh-2rem)] w-[min(620px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-white/70 bg-white shadow-[0_24px_80px_-24px_rgba(15,23,42,0.45)]">
       <div class="flex-1 min-h-0 flex flex-col bg-white">
-        <div class="flex items-center justify-between p-4 border-b border-slate-100">
-          <h3 class="font-bold text-slate-700 flex items-center gap-2">
-            <Settings :size="16" />
-            应用设置
-          </h3>
+        <div class="flex items-center justify-between border-b border-slate-100 bg-gradient-to-r from-indigo-50/80 via-white to-white px-5 py-4">
+          <div class="flex items-center gap-3">
+            <span class="grid h-9 w-9 place-items-center rounded-xl bg-indigo-500 text-white shadow-sm shadow-indigo-200"><Settings :size="17" /></span>
+            <div><h3 class="text-sm font-bold text-slate-800">应用设置</h3><p class="mt-0.5 text-[10px] text-slate-400">画布、工作区与开发选项</p></div>
+          </div>
           <div class="flex items-center gap-2">
             <button
               class="px-2.5 py-1.5 text-[11px] font-medium text-slate-500 hover:bg-slate-100 rounded-lg transition-colors flex items-center gap-1"
@@ -134,10 +135,13 @@ const handleOpenBackupDir = async () => {
               <RotateCcw :size="12" />
               重置默认
             </button>
+            <button class="grid h-8 w-8 place-items-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700" title="关闭" @click="$emit('close')">
+              <X :size="15" />
+            </button>
           </div>
         </div>
 
-        <div class="flex-1 min-h-0 p-5 overflow-y-auto custom-scrollbar">
+        <div class="custom-scrollbar min-h-0 flex-1 overflow-y-auto bg-slate-50/60 p-5">
           <div class="space-y-6">
             <!-- 画布默认配置 -->
             <div class="space-y-3">
@@ -287,7 +291,8 @@ const handleOpenBackupDir = async () => {
                     : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-300'"
                   @click="restoreWorkspaceOnStart = !restoreWorkspaceOnStart"
                 >
-                  {{ restoreWorkspaceOnStart ? '已开启：加载同一资源后恢复标签页' : '已关闭：加载资源后保持空白工作区' }}
+                  <span class="block font-semibold">{{ restoreWorkspaceOnStart ? '自动恢复已开启' : '自动恢复已关闭' }}</span>
+                  <span class="mt-1 block text-[10px] opacity-75">{{ restoreWorkspaceOnStart ? '启动后加载上次资源，并重连设备与 Agent；失败最多重试 5 次' : '启动后保持空白工作区，不自动连接外部服务' }}</span>
                 </button>
               </div>
 
@@ -373,7 +378,7 @@ const handleOpenBackupDir = async () => {
           </div>
         </div>
 
-        <div class="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-2">
+        <div class="flex justify-end gap-2 border-t border-slate-100 bg-white px-5 py-3.5">
           <button
             class="px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-200 rounded-lg transition-colors"
             @click="$emit('close')"

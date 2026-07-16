@@ -275,6 +275,8 @@ pub struct AppConfig {
     #[serde(default)]
     pub agent_socket_id: Option<String>,
     #[serde(default)]
+    pub last_device: Option<serde_json::Value>,
+    #[serde(default)]
     pub canvas_settings: CanvasSettings,
     #[serde(default)]
     pub restore_workspace_on_start: Option<bool>,
@@ -343,6 +345,13 @@ impl AppConfig {
                     }
                     "agent_socket_id" => {
                         self.agent_socket_id = value.as_str().map(|s| s.to_string());
+                    }
+                    "last_device" => {
+                        self.last_device = if value.is_null() {
+                            None
+                        } else {
+                            Some(value.clone())
+                        };
                     }
                     "canvas_settings" => {
                         if let Ok(v) = serde_json::from_value::<CanvasSettings>(value.clone()) {

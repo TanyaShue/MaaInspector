@@ -5,6 +5,7 @@ import {
 } from 'lucide-vue-next'
 import { deviceApi, systemApi } from '@/services/api'
 import { ElMessage } from 'element-plus'
+import { useAppConfigStore } from '@/stores/appConfig'
 import Dropdown from '@/components/Flow/Common/Dropdown.vue'
 import StatusIndicator from '@/components/Flow/Common/StatusIndicator.vue'
 import type { DropdownOption } from '@/components/Flow/Common/types'
@@ -15,6 +16,7 @@ const props = defineProps<{
   isConnected: boolean
   snapshot?: DevicePanelSnapshot
 }>()
+const appConfig = useAppConfigStore()
 
 const emit = defineEmits<{
   'device-connected': [status: boolean]
@@ -164,14 +166,14 @@ const handleSearchDevices = async () => {
 }
 
 // 连接设备
-const handleDeviceConnect = async () => {
+const handleDeviceConnect = async (): Promise<boolean> => {
   const device = currentDevice.value
   if (!device) {
     ElMessage.error('请先搜索并选择设备')
-    return
+    return false
   }
 
-  if (status.value === 'connecting') return
+  if (status.value === 'connecting') return false
   status.value = 'connecting'
   message.value = '连接中...'
 
@@ -200,10 +202,7 @@ const handleDeviceConnect = async () => {
       status.value = 'failed'
       message.value = msg
       emit('device-connected', false)
-      setTimeout(() => {
-        if (status.value === 'failed') status.value = 'disconnected'
-      }, 3000)
-      return
+      return false
     }
 
     status.value = 'connected'
@@ -211,14 +210,21 @@ const handleDeviceConnect = async () => {
     if (res?.info) info.value = res.info
     emit('device-connected', true)
 
+    appConfig.rememberDevice({
+      ...device,
+      type: deviceType.value,
+      screencap_method: win32ScreencapMethod.value,
+      mouse_method: win32MouseMethod.value,
+      keyboard_method: win32KeyboardMethod.value
+    })
+
     startScreenshotTimer()
+    return true
   } catch (e: unknown) {
     status.value = 'failed'
     message.value = '连接失败: ' + (e instanceof Error ? e.message : '未知错误')
     emit('device-connected', false)
-    setTimeout(() => {
-      if (status.value === 'failed') status.value = 'disconnected'
-    }, 3000)
+    return false
   }
 }
 
@@ -238,7 +244,18 @@ const loadLastDevice = (lastDevice: ApiDeviceInfo) => {
   message.value = '已加载上次连接的设备'
 }
 
-defineExpose({ loadLastDevice, status, message, info, currentDevice })
+const autoRestoreDevice = async (lastDevice: ApiDeviceInfo, maxAttempts = 5): Promise<boolean> => {
+  loadLastDevice(lastDevice)
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    message.value = attempt === 1 ? '正在自动连接上次设备...' : `正在重试连接设备 (${attempt}/${maxAttempts})...`
+    if (await handleDeviceConnect()) return true
+    if (attempt < maxAttempts) await new Promise(resolve => setTimeout(resolve, 600))
+  }
+  message.value = `自动连接失败，已尝试 ${maxAttempts} 次`
+  return false
+}
+
+defineExpose({ loadLastDevice, autoRestoreDevice, status, message, info, currentDevice })
 
 // 设备切换时重置连接状态
 watch(selectedDeviceIndex, (nv, ov) => {

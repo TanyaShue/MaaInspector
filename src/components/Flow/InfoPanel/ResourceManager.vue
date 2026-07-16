@@ -123,7 +123,7 @@ const normalizeProfiles = (profiles?: ResourceProfile[]): EditableProfile[] =>
   }))
 
 // 加载资源
-const handleResourceLoad = async () => {
+const handleResourceLoad = async (): Promise<boolean> => {
   try {
     internalStatus.value = 'connecting'
     internalMessage.value = '加载中...'
@@ -134,7 +134,7 @@ const handleResourceLoad = async () => {
     if (!ok) {
       internalStatus.value = 'failed'
       internalMessage.value = (res as any)?.message || '资源加载失败'
-      return
+      return false
     }
 
     internalStatus.value = 'connected'
@@ -159,7 +159,7 @@ const handleResourceLoad = async () => {
             emit('update:selectedFile', activeRestoredFile)
           }
           emit('restore-tabs', restoredTabs)
-          return
+          return true
         }
       }
 
@@ -168,11 +168,23 @@ const handleResourceLoad = async () => {
         loadFileById(selectedFileId)
       }
     }
+    return true
   } catch (e: unknown) {
     console.error("资源加载流程异常", e)
     internalStatus.value = 'failed'
     internalMessage.value = '加载失败'
+    return false
   }
+}
+
+const handleResourceLoadWithRetry = async (maxAttempts = 5): Promise<boolean> => {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    internalMessage.value = attempt === 1 ? '正在自动恢复资源...' : `正在重试加载资源 (${attempt}/${maxAttempts})...`
+    if (await handleResourceLoad()) return true
+    if (attempt < maxAttempts) await new Promise(resolve => setTimeout(resolve, 600))
+  }
+  internalMessage.value = `自动恢复失败，已尝试 ${maxAttempts} 次`
+  return false
 }
 
 // 切换文件
@@ -225,6 +237,7 @@ const setMessage = (msg: string) => {
 // 暴露方法
 defineExpose({
   handleResourceLoad,
+  handleResourceLoadWithRetry,
   executeFileSwitch,
   setProfiles,
   setProfileIndex,

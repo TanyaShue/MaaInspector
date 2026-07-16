@@ -66,4 +66,27 @@ describe('ResourceManager', () => {
     ])
     expect(wrapper.emitted('update:selectedFile')?.[0]).toEqual(['D:/maa|pipeline.json'])
   })
+
+  it('retries automatic resource loading until it succeeds', async () => {
+    vi.useFakeTimers()
+    vi.mocked(resourceApi.load)
+      .mockRejectedValueOnce(new Error('not ready'))
+      .mockRejectedValueOnce(new Error('still not ready'))
+      .mockResolvedValue({ success: true, list: [] })
+
+    const wrapper = mount(ResourceManager, {
+      props: {
+        profiles: [{ name: 'default', paths: ['D:/maa'] }],
+        profileIndex: 0
+      },
+      global: { stubs: { Dropdown: true, StatusIndicator: true } }
+    })
+
+    const restoring = wrapper.vm.handleResourceLoadWithRetry(5)
+    await vi.runAllTimersAsync()
+
+    await expect(restoring).resolves.toBe(true)
+    expect(resourceApi.load).toHaveBeenCalledTimes(3)
+    vi.useRealTimers()
+  })
 })
