@@ -146,9 +146,13 @@ jobs:
       - name: Prepare and validate updater signing key
         env:
           TAURI_SIGNING_PRIVATE_KEY_BASE64: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_BASE64 }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY_BASE64)) {
             throw "Missing GitHub Actions secret: TAURI_SIGNING_PRIVATE_KEY_BASE64"
+          }
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD)) {
+            throw "Missing GitHub Actions secret: TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
           }
 
           try {
@@ -172,6 +176,7 @@ jobs:
           Remove-Item -LiteralPath "pnpm-lock.yaml.sig" -Force -ErrorAction SilentlyContinue
 
           "TAURI_SIGNING_PRIVATE_KEY=$key" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0

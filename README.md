@@ -124,16 +124,23 @@ git tag v0.1.5
 git push origin v0.1.5
 ```
 
-签名私钥保存在 GitHub Actions Secret `TAURI_SIGNING_PRIVATE_KEY` 中；客户端公钥在
-`src-tauri/tauri.conf.json`。本机生成的私钥位于被 Git 忽略的 `.tauri/maainspector.key`，
-请另外放到安全的密码管理器或离线介质中备份。私钥一旦丢失，已安装的客户端将无法验证后续更新，
-不能通过简单生成新密钥恢复。
+签名私钥和密码分别保存在 GitHub Actions Secret `TAURI_SIGNING_PRIVATE_KEY_BASE64`、
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 中；客户端公钥在 `src-tauri/tauri.conf.json`。
+本机生成的私钥位于被 Git 忽略的 `.tauri/maainspector.key`。请把私钥和密码一起放到安全的
+密码管理器或离线介质中备份。任一项丢失后，已安装的客户端都无法验证后续更新，不能通过简单生成
+新密钥恢复。
 
 需要为新的 fork 配置更新时，请生成独立密钥并写入该 fork 的 Secret：
 
 ```powershell
-pnpm tauri signer generate --ci --write-keys .tauri\maainspector.key
-Get-Content .tauri\maainspector.key -Raw | gh secret set TAURI_SIGNING_PRIVATE_KEY
+$passwordBytes = New-Object byte[] 32
+[Security.Cryptography.RandomNumberGenerator]::Fill($passwordBytes)
+$password = [Convert]::ToBase64String($passwordBytes).Replace('+', '-').Replace('/', '_').TrimEnd('=')
+.\node_modules\.bin\tauri.cmd signer generate --ci --force --password $password --write-keys .tauri\maainspector.key
+
+$keyBase64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes((Resolve-Path '.tauri\maainspector.key')))
+gh secret set TAURI_SIGNING_PRIVATE_KEY_BASE64 --body $keyBase64
+gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --body $password
 ```
 
 随后把 `.tauri/maainspector.key.pub` 的完整内容更新到 `tauri.conf.json` 的
