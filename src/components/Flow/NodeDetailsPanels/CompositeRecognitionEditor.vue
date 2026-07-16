@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Crop, Crosshair, ChevronDown, Plus, Trash2, ImageIcon } from 'lucide-vue-next'
+import { Crop, Crosshair, ChevronDown, Plus, Trash2, ImageIcon, Pipette } from 'lucide-vue-next'
 import { orderByOptions, detectorOptions, recognitionTypes } from '@/utils/node-config'
 import type { NodeFormMethods } from '@/composables/useNodeForm'
+import type { PickerPayload } from '@/composables/useDeviceScreenPicker'
+import { isSupportedColorMethod, type ColorRangeResult } from '@/utils/colorRange'
 
 type CompositeItem = Record<string, unknown> & { recognition: string }
 
@@ -12,13 +14,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'open-picker', payload: {
-    field: string
-    referenceField: string | null
-    referenceLabel: string | null
-    referenceRect: number[] | null
-    onConfirm?: (val: any) => void
-  }): void
+  (e: 'open-picker', payload: PickerPayload): void
   (e: 'open-image-manager', payload: { compositeKey: 'all_of' | 'any_of', compositeIndex: number }): void
 }>()
 
@@ -191,6 +187,31 @@ const openChildPicker = (idx: number, item: CompositeItem, key: 'roi' | 'roi_off
         }
         setChildValue(idx, key, val)
       }
+    }
+  })
+}
+
+const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
+  const method = Number(getChildValue(item, 'method', 4))
+  if (!isSupportedColorMethod(method)) return
+  const roi = getChildValue(item, 'roi', null) as number[] | null
+  emit('open-picker', {
+    field: 'color_range',
+    mode: 'color_range',
+    method,
+    referenceField: 'roi',
+    referenceLabel: '子识别 ROI',
+    referenceRect: roi,
+    initialRect: roi,
+    onConfirm: (value) => {
+      const result = value as ColorRangeResult
+      if (!Array.isArray(result?.lower) || !Array.isArray(result?.upper)) return
+      const next = [...compositeItems.value]
+      const latestItem = { ...(next[idx] || {}) } as CompositeItem
+      latestItem.lower = result.lower
+      latestItem.upper = result.upper
+      next[idx] = latestItem
+      saveCompositeItems(next)
     }
   })
 }
@@ -527,6 +548,23 @@ const openChildPicker = (idx: number, item: CompositeItem, key: 'roi' | 'roi_off
                 placeholder="[R,G,B]"
                 @input="setChildJsonValue(idx, 'upper', getInputValue($event))"
               >
+            </div>
+            <div class="col-span-2 space-y-1">
+              <button
+                class="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-pink-200 bg-pink-50 text-pink-600 text-xs font-medium hover:bg-pink-100 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="!isSupportedColorMethod(Number(getChildValue(item, 'method', 4)))"
+                :title="isSupportedColorMethod(Number(getChildValue(item, 'method', 4))) ? '从设备截图或本地图片统计颜色范围' : '仅支持 method 4（RGB）、40（HSV）和 6（灰度）'"
+                @click="openChildColorRangePicker(idx, item)"
+              >
+                <Pipette :size="12" />
+                从截图填充
+              </button>
+              <p
+                v-if="!isSupportedColorMethod(Number(getChildValue(item, 'method', 4)))"
+                class="text-[10px] text-amber-600"
+              >
+                当前 method 暂不支持，仅支持 4、40、6。
+              </p>
             </div>
             <div class="space-y-1">
               <label class="text-[10px] font-semibold text-slate-500 uppercase">算法 (4=RGB)</label>

@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Pipette } from 'lucide-vue-next'
 import type { NodeFormMethods } from '@/composables/useNodeForm'
+import type { PickerPayload } from '@/composables/useDeviceScreenPicker'
+import { isSupportedColorMethod, type ColorRangeResult } from '@/utils/colorRange'
 import type { RecognitionType, SelectOption } from '@/utils/node-config'
 import RecognitionCommonFields from './RecognitionCommonFields.vue'
 import CompositeRecognitionEditor from './CompositeRecognitionEditor.vue'
@@ -15,25 +18,36 @@ const props = defineProps<{
   form: NodeFormMethods
 }>()
 
-type PickerPayload = {
-  field: string
-  referenceField?: string | null
-  referenceLabel?: string | null
-  referenceRect?: number[] | null
-  onConfirm?: (val: any) => void
-}
-
 const emit = defineEmits<{
   (e: 'open-picker', payload: string | PickerPayload, referenceField?: string | null, referenceLabel?: string): void
   (e: 'open-image-manager', payload?: { compositeKey?: 'all_of' | 'any_of'; compositeIndex?: number }): void
 }>()
 
-const { getValue, setValue, getJsonValue, setJsonValue } = props.form
+const { getValue, setValue, setValues, getJsonValue, setJsonValue } = props.form
 
 const isCompositeRecognition = computed(() => ['And', 'Or'].includes(props.currentRecognition as string))
 
 const getInputValue = (event: Event) => (event.target as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? ''
 const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.checked ?? false
+
+const colorMethod = computed(() => Number(getValue('method', 4)))
+const canFillColorRange = computed(() => isSupportedColorMethod(colorMethod.value))
+
+const openColorRangePicker = () => {
+  if (!canFillColorRange.value) return
+  emit('open-picker', {
+    field: 'color_range',
+    mode: 'color_range',
+    method: colorMethod.value,
+    referenceField: 'roi',
+    referenceLabel: 'ROI',
+    onConfirm: (value) => {
+      const result = value as ColorRangeResult
+      if (!Array.isArray(result?.lower) || !Array.isArray(result?.upper)) return
+      setValues({ lower: result.lower, upper: result.upper })
+    }
+  })
+}
 </script>
 
 <template>
@@ -124,6 +138,20 @@ const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.
                   placeholder="[R,G,B]"
                   @input="setJsonValue('upper', getInputValue($event))"
                 >
+              </div>
+              <div class="col-span-2 space-y-1">
+                <button
+                  class="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-pink-200 bg-pink-50 text-pink-600 text-xs font-medium hover:bg-pink-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  :disabled="!canFillColorRange"
+                  :title="canFillColorRange ? '从设备截图或本地图片统计颜色范围' : '仅支持 method 4（RGB）、40（HSV）和 6（灰度）'"
+                  @click="openColorRangePicker"
+                >
+                  <Pipette :size="12" />
+                  从截图填充
+                </button>
+                <p v-if="!canFillColorRange" class="text-[10px] text-amber-600">
+                  当前 method 暂不支持，仅支持 4、40、6。
+                </p>
               </div>
               <div class="space-y-1">
                 <label class="text-[10px] font-semibold text-slate-500 uppercase">算法 (4=RGB)</label>

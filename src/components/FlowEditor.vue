@@ -201,7 +201,10 @@ onBeforeUnmount(() => {
     </VueFlow>
     <ContextMenu
       v-if="menu.visible"
-      v-bind="menu"
+      :x="menu.x"
+      :y="menu.y"
+      :type="menu.type"
+      :data="menu.data"
       :current-edge-type="currentEdgeType"
       :current-spacing="currentSpacing"
       :current-algorithm="currentAlgorithm"

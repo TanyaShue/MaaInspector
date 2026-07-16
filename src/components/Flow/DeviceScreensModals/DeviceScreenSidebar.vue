@@ -2,19 +2,20 @@
 import { computed, ref, watch } from 'vue'
 import {
   Crosshair, Check, X, MousePointer2, ScanText, Loader2, ImageIcon,
-  Copy, Maximize, ArrowLeftRight
+  Copy, Maximize, ArrowLeftRight, Palette
 } from 'lucide-vue-next'
 import DeviceScreenImageList from './DeviceScreenImageList.vue'
 import DeviceScreenMaskEditor from './DeviceScreenMaskEditor.vue'
 
-type ModeType = 'coordinate' | 'ocr' | 'image_manager'
 interface Selection { x: number; y: number; w: number; h: number }
 interface GuideItem { icon: any; text: string }
 interface OcrCandidate { box?: number[]; score: number; text: string }
 import type { TemplateImage } from '@/utils/flowTypes'
+import type { DevicePickerMode } from '@/composables/useDeviceScreenPicker'
+import type { ColorRangeResult } from '@/utils/colorRange'
 
 const props = defineProps<{
-  mode?: ModeType
+  mode?: DevicePickerMode
   title?: string
   selection: Selection
   ocrResult?: string
@@ -31,6 +32,9 @@ const props = defineProps<{
   localImages?: TemplateImage[]
   localTempImages?: TemplateImage[]
   localDeletedImages?: TemplateImage[]
+  colorRange?: ColorRangeResult | null
+  colorRangeError?: string
+  isColorRangeLoading?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -261,6 +265,41 @@ const handleApply = (edited: string) => {
           </div>
         </div>
 
+        <div
+          v-if="props.mode === 'color_range'"
+          class="space-y-2"
+        >
+          <div class="text-xs font-semibold text-pink-500 uppercase tracking-wider flex items-center gap-1">
+            <Palette :size="12" /> 颜色范围
+          </div>
+          <div class="bg-white border border-slate-200 rounded-lg p-3 space-y-2 shadow-sm font-mono text-xs">
+            <div
+              v-if="isColorRangeLoading"
+              class="flex items-center gap-2 text-slate-500"
+            >
+              <Loader2 :size="13" class="animate-spin" />
+              正在统计选区颜色...
+            </div>
+            <div v-else-if="colorRange" class="space-y-2">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-slate-400">下限</span>
+                <span class="font-bold text-slate-700">[{{ colorRange.lower.join(', ') }}]</span>
+              </div>
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-slate-400">上限</span>
+                <span class="font-bold text-slate-700">[{{ colorRange.upper.join(', ') }}]</span>
+              </div>
+            </div>
+            <div
+              v-else
+              class="text-[11px] leading-relaxed"
+              :class="colorRangeError ? 'text-rose-500' : 'text-slate-400'"
+            >
+              {{ colorRangeError || '框选区域后将自动统计颜色上下限' }}
+            </div>
+          </div>
+        </div>
+
         <div class="space-y-2">
           <div class="text-xs font-semibold text-indigo-500 uppercase tracking-wider flex items-center gap-1">
             操作指南
@@ -313,11 +352,11 @@ const handleApply = (edited: string) => {
         class="p-4 border-t border-slate-200 bg-white space-y-2 shrink-0"
       >
         <button
-          :disabled="props.mode === 'ocr' ? (!ocrResult && !isOcrLoading) : selection.w === 0"
+          :disabled="props.mode === 'ocr' ? (!ocrResult && !isOcrLoading) : props.mode === 'color_range' ? (!colorRange || isColorRangeLoading) : selection.w === 0"
           class="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
           @click="handleConfirm"
         >
-          <Check :size="16" /> {{ props.mode === 'ocr' ? '确认结果' : '确认选取' }}
+          <Check :size="16" /> {{ props.mode === 'ocr' ? '确认结果' : props.mode === 'color_range' ? '应用颜色范围' : '确认选取' }}
         </button>
         <button
           class="w-full py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg text-sm font-medium flex items-center justify-center gap-2"

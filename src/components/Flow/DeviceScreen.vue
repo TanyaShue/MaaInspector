@@ -5,8 +5,8 @@ import { deviceApi } from '@/services/api'
 import DeviceScreenCanvas from './DeviceScreensModals/DeviceScreenCanvas.vue'
 import DeviceScreenSidebar from './DeviceScreensModals/DeviceScreenSidebar.vue'
 import type { TemplateImage } from '@/utils/flowTypes'
-
-type ModeType = 'coordinate' | 'ocr' | 'image_manager'
+import type { DevicePickerMode } from '@/composables/useDeviceScreenPicker'
+import type { ColorRangeResult } from '@/utils/colorRange'
 
 interface Selection {
   x: number
@@ -27,7 +27,8 @@ interface OcrCandidate {
 
 const props = defineProps<{
   visible: boolean
-  mode?: ModeType
+  mode?: DevicePickerMode
+  colorMethod?: number
   referenceRect?: number[] | null
   referenceLabel?: string
   initialRect?: number[] | null
@@ -77,6 +78,10 @@ const canvasRef = ref<InstanceType<typeof DeviceScreenCanvas> | null>(null)
 const imageSize = ref({ width: 1280, height: 720 })
 const ocrCandidates = ref<OcrCandidate[]>([])
 const selectedOcrIndex = ref(0)
+const colorRange = ref<ColorRangeResult | null>(null)
+const colorRangeError = ref('')
+const isColorRangeLoading = ref(false)
+let colorRangeRequestId = 0
 
 // 选区状态 (共享给 Sidebar 和 Canvas)
 const selection = reactive<Selection>({x: 0, y: 0, w: 0, h: 0})
@@ -159,10 +164,14 @@ const hasTemplateChanged = computed(() => {
 // --- 初始化与监听 ---
 watch(() => props.visible, async (val: boolean) => {
   if (val) {
+    colorRangeRequestId++
     if (canvasRef.value) canvasRef.value.resetView()
     ocrResult.value = ''
     ocrCandidates.value = []
     selectedOcrIndex.value = 0
+    colorRange.value = null
+    colorRangeError.value = ''
+    isColorRangeLoading.value = false
     previewUrl.value = ''
     imageCounter.value = 1
 
@@ -206,6 +215,11 @@ const fetchScreenshot = async () => {
     const size = Array.isArray((res as any)?.size) ? (res as any).size : null
     if (img && typeof img === 'string') {
       imageUrl.value = img
+      if (props.mode === 'color_range') {
+        colorRangeRequestId++
+        colorRange.value = null
+        colorRangeError.value = ''
+      }
       if (size && size.length >= 2 && Number(size[0]) > 0 && Number(size[1]) > 0) {
         imageSize.value = {
           width: Number(size[0]),
@@ -231,21 +245,54 @@ const handleSelectionChange = (newSelection: Selection) => {
   selection.y = newSelection.y
   selection.w = newSelection.w
   selection.h = newSelection.h
+  if (props.mode === 'color_range') {
+    colorRangeRequestId++
+    isColorRangeLoading.value = false
+    colorRange.value = null
+    colorRangeError.value = ''
+  }
+}
+
+const updateColorRange = async (previewImageUrl: string) => {
+  if (props.mode !== 'color_range' || selection.w <= 0 || selection.h <= 0) return
+  const requestId = ++colorRangeRequestId
+  isColorRangeLoading.value = true
+  colorRangeError.value = ''
+  try {
+    const result = await canvasRef.value?.calculateSelectionColorRange(
+      props.colorMethod ?? 4,
+      previewImageUrl
+    ) ?? null
+    if (requestId !== colorRangeRequestId) return
+    colorRange.value = result
+    if (!result) colorRangeError.value = '选区中没有可用像素'
+  } catch (error) {
+    if (requestId !== colorRangeRequestId) return
+    console.error('[DeviceScreen] 颜色范围统计失败:', error)
+    colorRange.value = null
+    colorRangeError.value = '无法读取选区像素，请刷新或重新选择图片'
+  } finally {
+    if (requestId === colorRangeRequestId) isColorRangeLoading.value = false
+  }
 }
 
 const handlePreviewGenerated = (base64: string) => {
   previewUrl.value = base64
+  if (base64 && props.mode === 'color_range') void updateColorRange(base64)
 }
 
 // 处理本地上传的图片
 const handleLocalImageUpload = (base64: string) => {
   imageUrl.value = base64
+  colorRangeRequestId++
   // 上传新图后重置选区，因为旧选区可能不适用
   selection.x = 0
   selection.y = 0
   selection.w = 0
   selection.h = 0
   previewUrl.value = ''
+  colorRange.value = null
+  colorRangeError.value = ''
 
   // 重置视图位置
   if (canvasRef.value) {
@@ -314,6 +361,10 @@ const handleConfirm = () => {
       all: ocrCandidates.value,
       filtered: ocrCandidates.value
     })
+    emit('close')
+  } else if (props.mode === 'color_range') {
+    if (!colorRange.value) return
+    emit('confirm', colorRange.value)
     emit('close')
   } else if (props.mode === 'image_manager') {
     // 逻辑在 handleImageManagerSave 中，这里只处理普通确认
@@ -427,6 +478,9 @@ saveImagePath.value = generateDefaultSavePath()
         :reference-rect="referenceRect"
         :reference-label="referenceLabel"
         :mode="mode"
+        :color-range="colorRange"
+        :color-range-error="colorRangeError"
+        :is-color-range-loading="isColorRangeLoading"
         :initial-selection="selection"
         :image-size="imageSize"
         @refresh="fetchScreenshot"

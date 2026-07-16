@@ -2,8 +2,9 @@ import { inject, reactive, ref } from 'vue'
 import type { useImageManager } from '@/composables/useImageManager'
 import type { TemplateImage } from '@/utils/flowTypes'
 import { normalizeTemplateList } from '@/utils/templateUtils'
+import type { ColorRangeResult } from '@/utils/colorRange'
 
-export type DevicePickerMode = 'coordinate' | 'ocr' | 'image_manager'
+export type DevicePickerMode = 'coordinate' | 'ocr' | 'image_manager' | 'color_range'
 
 export interface ImageItem extends TemplateImage {
   _source?: string
@@ -47,10 +48,13 @@ export interface TemplateTargetPayload {
 
 export interface PickerPayload {
   field: string
+  mode?: DevicePickerMode
+  method?: number
+  initialRect?: number[] | null
   referenceField?: string | null
   referenceLabel?: string | null
   referenceRect?: number[] | null
-  onConfirm?: (val: DevicePickResult | number[] | OcrPickResult) => void
+  onConfirm?: (val: DevicePickResult | number[] | OcrPickResult | ColorRangeResult) => void
 }
 
 export interface DeviceScreenConfig {
@@ -61,12 +65,13 @@ export interface DeviceScreenConfig {
   referenceLabel: string
   title: string
   mode: DevicePickerMode
+  colorMethod: number
   imageList: ImageItem[]
   tempImageList: ImageItem[]
   deletedImageList: ImageItem[]
   filename: string
   nodeId: string
-  onConfirm?: ((val: DevicePickResult | number[] | OcrPickResult) => void) | null
+  onConfirm?: ((val: DevicePickResult | number[] | OcrPickResult | ColorRangeResult) => void) | null
   templateTarget?: TemplateTarget | null
 }
 
@@ -94,6 +99,7 @@ export function useDeviceScreenPicker(options: UseDeviceScreenPickerOptions) {
     referenceLabel: '',
     title: '区域选择',
     mode: 'coordinate',
+    colorMethod: 4,
     imageList: [],
     tempImageList: [],
     deletedImageList: [],
@@ -166,18 +172,21 @@ export function useDeviceScreenPicker(options: UseDeviceScreenPickerOptions) {
     const payload = normalizePickerPayload(fieldParam, referenceField, refLabel)
     const {
       field,
+      mode,
+      method = 4,
+      initialRect,
       referenceField: refField = null,
       referenceLabel: refLabelFinal = null,
       referenceRect: refRectOverride = null,
       onConfirm
     } = payload
 
-    const finalMode: DevicePickerMode =
+    const finalMode: DevicePickerMode = mode ?? (
       field === 'expected' || field === 'replace'
         ? 'ocr'
         : field === 'template'
           ? 'image_manager'
-          : 'coordinate'
+          : 'coordinate')
 
     const currentRect = parseRect(getValue(field))
     const roiRect = parseRect(getValue('roi'))
@@ -190,6 +199,7 @@ export function useDeviceScreenPicker(options: UseDeviceScreenPickerOptions) {
     }
 
     deviceScreenConfig.initialRect = (() => {
+      if (initialRect !== undefined) return parseRect(initialRect)
       if (field.includes('offset') && refRect && currentRect) {
         return [
           refRect[0] + currentRect[0],
@@ -207,12 +217,15 @@ export function useDeviceScreenPicker(options: UseDeviceScreenPickerOptions) {
     deviceScreenConfig.referenceField = refField
     deviceScreenConfig.referenceRect = refRect
     deviceScreenConfig.mode = finalMode
+    deviceScreenConfig.colorMethod = method
     deviceScreenConfig.referenceLabel = refLabelFinal || refField || '参考区域'
     deviceScreenConfig.title =
       finalMode === 'ocr'
         ? 'OCR 区域识别'
         : finalMode === 'image_manager'
           ? '模板图片管理'
+          : finalMode === 'color_range'
+            ? '选取颜色范围'
           : (field.includes('offset') ? `设置偏移 (${field})` : `选取区域 (${field})`)
     deviceScreenConfig.imageList = []
     deviceScreenConfig.onConfirm = onConfirm || null
@@ -245,7 +258,7 @@ export function useDeviceScreenPicker(options: UseDeviceScreenPickerOptions) {
 
   const handleDevicePick = (result: unknown) => {
     if (deviceScreenConfig.onConfirm) {
-      deviceScreenConfig.onConfirm(result as DevicePickResult | number[] | OcrPickResult)
+      deviceScreenConfig.onConfirm(result as DevicePickResult | number[] | OcrPickResult | ColorRangeResult)
       showDeviceScreen.value = false
       return
     }

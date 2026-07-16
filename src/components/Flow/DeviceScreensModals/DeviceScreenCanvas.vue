@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { Smartphone, RefreshCw, RotateCcw, Upload } from 'lucide-vue-next'
+import { calculateColorRange, calculateSelectionPixelBounds, type ColorRangeResult } from '@/utils/colorRange'
+import type { DevicePickerMode } from '@/composables/useDeviceScreenPicker'
 
-type ModeType = 'coordinate' | 'ocr' | 'image_manager'
 interface Selection { x: number; y: number; w: number; h: number }
 
 const props = defineProps<{
@@ -10,7 +11,7 @@ const props = defineProps<{
   isLoading?: boolean
   referenceRect?: number[] | null
   referenceLabel?: string
-  mode?: ModeType
+  mode?: DevicePickerMode
   initialSelection?: Selection
   imageSize?: { width: number; height: number }
 }>()
@@ -81,6 +82,16 @@ const loadImage = (src: string) => new Promise<HTMLImageElement>((resolve, rejec
   img.src = src
 })
 
+const getCurrentImage = async () => {
+  const current = screenImageRef.value
+  if (
+    current?.complete &&
+    current.naturalWidth > 0 &&
+    current.getAttribute('src') === props.imageUrl
+  ) return current
+  return loadImage(props.imageUrl || '')
+}
+
 const generatePreviewSnapshot = async (): Promise<string> => {
   if (!props.imageUrl || selection.w <= 0 || selection.h <= 0) {
     emit('preview-generated', '')
@@ -88,10 +99,7 @@ const generatePreviewSnapshot = async (): Promise<string> => {
   }
 
   try {
-    const img =
-      screenImageRef.value?.complete && screenImageRef.value.naturalWidth > 0
-        ? screenImageRef.value
-        : await loadImage(props.imageUrl)
+    const img = await getCurrentImage()
     const canvas = document.createElement('canvas')
     const ctx = canvas.getContext('2d')
     if (!ctx) {
@@ -99,18 +107,20 @@ const generatePreviewSnapshot = async (): Promise<string> => {
       return ''
     }
     const { width, height } = logicalImageSize.value
-    const scaleX = img.naturalWidth / width
-    const scaleY = img.naturalHeight / height
-    const sourceX = Math.round(selection.x * scaleX)
-    const sourceY = Math.round(selection.y * scaleY)
-    const destW = Math.max(1, Math.round(selection.w * scaleX))
-    const destH = Math.max(1, Math.round(selection.h * scaleY))
-    canvas.width = destW
-    canvas.height = destH
+    const source = calculateSelectionPixelBounds(selection, { width, height }, {
+      width: img.naturalWidth,
+      height: img.naturalHeight
+    })
+    if (!source) {
+      emit('preview-generated', '')
+      return ''
+    }
+    canvas.width = source.w
+    canvas.height = source.h
     ctx.drawImage(
       img,
-      sourceX, sourceY, destW, destH,
-      0, 0, destW, destH
+      source.x, source.y, source.w, source.h,
+      0, 0, source.w, source.h
     )
     const preview = canvas.toDataURL('image/png')
     emit('preview-generated', preview)
@@ -120,6 +130,34 @@ const generatePreviewSnapshot = async (): Promise<string> => {
     emit('preview-generated', '')
     return ''
   }
+}
+
+const calculateSelectionColorRange = async (
+  method: number,
+  previewImageUrl?: string
+): Promise<ColorRangeResult | null> => {
+  if (!previewImageUrl && (!props.imageUrl || selection.w <= 0 || selection.h <= 0)) return null
+
+  const img = previewImageUrl ? await loadImage(previewImageUrl) : await getCurrentImage()
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  if (!ctx) return null
+
+  if (previewImageUrl) {
+    canvas.width = img.naturalWidth
+    canvas.height = img.naturalHeight
+    ctx.drawImage(img, 0, 0)
+  } else {
+    const source = calculateSelectionPixelBounds(selection, logicalImageSize.value, {
+      width: img.naturalWidth,
+      height: img.naturalHeight
+    })
+    if (!source) return null
+    canvas.width = source.w
+    canvas.height = source.h
+    ctx.drawImage(img, source.x, source.y, source.w, source.h, 0, 0, source.w, source.h)
+  }
+  return calculateColorRange(ctx.getImageData(0, 0, canvas.width, canvas.height).data, method)
 }
 
 // 处理本地图片上传并缩放
@@ -249,7 +287,7 @@ onUnmounted(() => {
 })
 
 // 暴露 resetView 给父组件
-defineExpose({ resetView, generatePreviewSnapshot, isDragging })
+defineExpose({ resetView, generatePreviewSnapshot, calculateSelectionColorRange, isDragging })
 </script>
 
 <template>

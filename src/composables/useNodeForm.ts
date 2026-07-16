@@ -40,7 +40,7 @@ export function useNodeForm(props: UseNodeFormProps, emit: UseNodeFormEmit) {
     return (val !== undefined ? val : (defaultVal ?? (DEFAULTS as Record<string, unknown>)[key])) as T
   }
 
-  const setValue = (key: string, value: unknown) => {
+  const assignValue = (key: string, value: unknown) => {
     const defaults = DEFAULTS as Record<string, unknown>
     if (key === 'target' && value === true) {
       delete (formData.value as Record<string, unknown>)[key]
@@ -49,6 +49,15 @@ export function useNodeForm(props: UseNodeFormProps, emit: UseNodeFormEmit) {
     } else {
       (formData.value as Record<string, unknown>)[key] = value as never
     }
+  }
+
+  const setValue = (key: string, value: unknown) => {
+    assignValue(key, value)
+    emitUpdateData()
+  }
+
+  const setValues = (values: Record<string, unknown>) => {
+    Object.entries(values).forEach(([key, value]) => assignValue(key, value))
     emitUpdateData()
   }
 
@@ -172,7 +181,7 @@ export function useNodeForm(props: UseNodeFormProps, emit: UseNodeFormEmit) {
   }, { deep: true })
 
   return {
-    formData, jsonStr, jsonError, getValue, setValue, getArrayValue, setArrayValue,
+    formData, jsonStr, jsonError, getValue, setValue, setValues, getArrayValue, setArrayValue,
     getArrayList, setArrayList, getJsonValue, setJsonValue, getTargetValue, setTargetValue, handleJsonInput,
     updateJsonFromForm,
     focusData, availableFocusEvents, addFocusParam, removeFocusParam, updateFocusParam

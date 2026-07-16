@@ -339,6 +339,7 @@ watch(() => props.visible, (val) => {
       :reference-rect="deviceScreenConfig.referenceRect"
       :reference-label="deviceScreenConfig.referenceLabel"
       :mode="deviceScreenConfig.mode"
+      :color-method="deviceScreenConfig.colorMethod"
       :image-list="deviceScreenConfig.imageList"
       :temp-image-list="deviceScreenConfig.tempImageList"
       :deleted-image-list="deviceScreenConfig.deletedImageList"

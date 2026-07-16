@@ -39,4 +39,31 @@ describe('useDeviceScreenPicker', () => {
 
     expect(setValue).toHaveBeenCalledWith('expected', '浏览器')
   })
+
+  it('opens color range mode with the current ROI and forwards the result', () => {
+    const state: Record<string, unknown> = { roi: [10, 20, 30, 40] }
+    const onConfirm = vi.fn()
+    const picker = useDeviceScreenPicker({
+      formData: state,
+      getValue: (key: string, fallback?: unknown) => state[key] ?? fallback,
+      setValue: vi.fn(),
+      onUpdateData: vi.fn()
+    })
+
+    picker.openDevicePicker({
+      field: 'color_range',
+      mode: 'color_range',
+      method: 40,
+      referenceField: 'roi',
+      onConfirm
+    })
+
+    expect(picker.deviceScreenConfig.mode).toBe('color_range')
+    expect(picker.deviceScreenConfig.colorMethod).toBe(40)
+    expect(picker.deviceScreenConfig.initialRect).toEqual([10, 20, 30, 40])
+
+    const result = { lower: [0, 100, 120], upper: [20, 255, 255] }
+    picker.handleDevicePick(result)
+    expect(onConfirm).toHaveBeenCalledWith(result)
+  })
 })

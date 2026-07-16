@@ -55,6 +55,20 @@ const emit = defineEmits<{
 const mainMenuRef = ref<HTMLElement | null>(null)
 const mainMenuHeight = ref<number>(0)
 const adjustedPosition = ref<{ x: number; y: number }>({ x: props.x, y: props.y })
+const activeSubmenu = ref<string | null>(null)
+
+const getSubmenuKey = (item: Extract<MenuItem, { type: 'item' }>, index: number) =>
+  item.key || `${item.action}-${index}`
+
+const showSubmenu = (item: Extract<MenuItem, { type: 'item' }>, index: number) => {
+  if (item.submenu) activeSubmenu.value = getSubmenuKey(item, index)
+}
+
+const shouldOpenSubmenuLeft = (item: Extract<MenuItem, { type: 'item' }>) => {
+  const mainMenuWidth = 224
+  const submenuWidth = item.key === 'add-node' ? 280 : 224
+  return adjustedPosition.value.x + mainMenuWidth + 4 + submenuWidth > window.innerWidth - 8
+}
 
 const handleAction = (action: string, payload: string | EdgeType | SpacingKey | LayoutAlgorithm | LayoutDirection | null = null) => {
   emit('action', {action, type: props.type, data: props.data ?? null, payload})
@@ -278,10 +292,14 @@ const menuItems = computed<MenuItem[]>(() => {
         <li
           v-else-if="item.type === 'item'"
           class="relative menu-item-with-submenu"
+          :class="{ 'submenu-opens-left': item.submenu && shouldOpenSubmenuLeft(item) }"
+          @mouseenter="showSubmenu(item, index)"
+          @mouseleave="activeSubmenu = null"
         >
           <div
+            data-testid="submenu-trigger"
             class="flex items-center justify-between px-3 py-2.5 cursor-pointer transition-colors hover:bg-slate-50 active:bg-slate-100 group/main"
-            @click="handleAction(item.action)"
+            @click.stop="item.submenu ? showSubmenu(item, index) : handleAction(item.action)"
           >
             <div class="flex items-center gap-2.5">
               <component 
@@ -305,7 +323,13 @@ const menuItems = computed<MenuItem[]>(() => {
 
           <div
             v-if="item.submenu"
-            class="submenu-panel absolute left-full top-0 ml-1 bg-white rounded-lg shadow-xl border border-slate-100 z-[60] overflow-hidden flex flex-col"
+            v-show="activeSubmenu === getSubmenuKey(item, index)"
+            data-testid="submenu-panel"
+            class="submenu-panel absolute top-0 bg-white rounded-lg shadow-xl border border-slate-100 z-[60] overflow-hidden flex flex-col"
+            :class="[
+              { 'submenu-panel-visible': activeSubmenu === getSubmenuKey(item, index) },
+              shouldOpenSubmenuLeft(item) ? 'right-full mr-1' : 'left-full ml-1'
+            ]"
             :style="{ maxHeight: mainMenuHeight > 0 ? `${mainMenuHeight}px` : 'none', width: item.key === 'add-node' ? '280px' : '14rem' }"
           >
             <ul class="py-1 overflow-y-auto custom-scrollbar">
@@ -360,7 +384,7 @@ const menuItems = computed<MenuItem[]>(() => {
 
 <style scoped>
 .context-menu-surface {
-  contain: layout paint style;
+  contain: style;
   isolation: isolate;
   will-change: transform, opacity;
 }
@@ -374,7 +398,8 @@ const menuItems = computed<MenuItem[]>(() => {
 }
 
 /* 当父菜单项悬停时显示子菜单 */
-.menu-item-with-submenu:hover > .submenu-panel {
+.menu-item-with-submenu:hover > .submenu-panel,
+.submenu-panel-visible {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
@@ -400,6 +425,11 @@ const menuItems = computed<MenuItem[]>(() => {
   z-index: 1;
 }
 
+.menu-item-with-submenu.submenu-opens-left > div::after {
+  left: auto;
+  right: 100%;
+}
+
 /* 子菜单向左延伸的隐形桥，并向上下扩展 */
 .submenu-panel::before {
   content: '';
@@ -411,6 +441,11 @@ const menuItems = computed<MenuItem[]>(() => {
   background: transparent;
   pointer-events: auto;
   z-index: 1;
+}
+
+.submenu-opens-left > .submenu-panel::before {
+  right: auto;
+  left: 100%;
 }
 
 /* 子菜单项的平滑过渡 */
