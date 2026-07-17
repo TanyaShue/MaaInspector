@@ -33,7 +33,7 @@ const createEmit = () => vi.fn()
 
 const createResourceManager = (files: ResourceFileInfo[]) => ({
   availableFiles: files,
-  handleResourceLoad: vi.fn().mockResolvedValue(undefined),
+  handleResourceLoad: vi.fn().mockResolvedValue(true),
   findFileById: vi.fn((id: string) => files.find(file => `${file.source}|${file.value ?? ''}` === id)),
   executeFileSwitch: vi.fn().mockResolvedValue(undefined),
   setMessage: vi.fn()
@@ -152,5 +152,19 @@ describe('useInfoPanelVm', () => {
     expect(resourceManager.handleResourceLoad).toHaveBeenCalled()
     expect(resourceManager.executeFileSwitch).toHaveBeenCalledWith('new.json', 'D:/maa')
     expect(resourceManager.setMessage).toHaveBeenLastCalledWith('新建成功并已加载')
+  })
+
+  it('reloads the active resource after saving its settings', async () => {
+    const vm = useInfoPanelVm({ tabs: [] }, createEmit())
+    const resourceManager = createResourceManager([])
+    vm.resourceManagerRef.value = resourceManager
+
+    await vm.saveResourceSettings({
+      profiles: [{ name: 'default', paths: ['D:/maa'], schema_path: '' }],
+      index: 0
+    })
+
+    expect(resourceManager.handleResourceLoad).toHaveBeenCalledTimes(1)
+    expect(vm.showResourceSettings.value).toBe(false)
   })
 })

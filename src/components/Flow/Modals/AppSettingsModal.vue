@@ -214,10 +214,10 @@ const handleOpenBackupDir = async () => {
           </button>
         </nav>
 
-        <main ref="scrollContainer" class="custom-scrollbar min-w-0 flex-1 scroll-smooth overflow-y-auto bg-white px-7 py-2" @scroll.passive="handleContentScroll">
-          <section :ref="el => setSectionRef('canvas', el)" class="scroll-mt-2 py-6">
-            <h4 class="text-base font-bold text-slate-800">画布</h4><p class="mt-1 text-xs text-slate-400">新建流程图和自动布局的默认行为</p>
-            <div class="mt-5 divide-y divide-slate-100 border-y border-slate-100">
+        <main ref="scrollContainer" class="custom-scrollbar min-w-0 flex-1 scroll-smooth overflow-y-auto bg-slate-50/40 px-7 py-5" @scroll.passive="handleContentScroll">
+          <section :ref="el => setSectionRef('canvas', el)" class="setting-section scroll-mt-5">
+            <h4>画布</h4><p class="section-description">新建流程图和自动布局的默认行为</p>
+            <div class="setting-group mt-4 divide-y divide-slate-100">
               <div class="setting-row"><div><h5>连线类型</h5><p>新建流程图使用的默认连线样式</p></div><div class="option-grid grid-cols-2"><button :class="{ active: edgeType === 'smoothstep' }" @click="edgeType = 'smoothstep'">直角连线</button><button :class="{ active: edgeType === 'default' }" @click="edgeType = 'default'">贝塞尔曲线</button></div></div>
               <div class="setting-row"><div><h5>节点间距</h5><p>自动布局时节点之间的默认间距</p></div><div class="option-grid grid-cols-3"><button v-for="item in [{ value: 'compact', label: '紧凑' }, { value: 'normal', label: '默认' }, { value: 'loose', label: '宽松' }]" :key="item.value" :class="{ active: spacing === item.value }" @click="spacing = item.value as SpacingKey">{{ item.label }}</button></div></div>
               <div class="setting-row"><div><h5>布局算法</h5><p>根据流程规模选择默认排布方式</p></div><div class="option-grid grid-cols-3"><button v-for="option in LAYOUT_ALGORITHM_OPTIONS" :key="option.value" :class="{ active: layoutAlgorithm === option.value }" @click="layoutAlgorithm = option.value">{{ option.label }}</button></div></div>
@@ -225,31 +225,31 @@ const handleOpenBackupDir = async () => {
             </div>
           </section>
 
-          <section :ref="el => setSectionRef('workspace', el)" class="scroll-mt-2 py-6">
-            <h4 class="text-base font-bold text-slate-800">工作区</h4><p class="mt-1 text-xs text-slate-400">文件格式、启动恢复与标签页性能</p>
-            <div class="mt-5 divide-y divide-slate-100 border-y border-slate-100">
+          <section :ref="el => setSectionRef('workspace', el)" class="setting-section scroll-mt-5">
+            <h4>工作区</h4><p class="section-description">文件格式、启动恢复与标签页性能</p>
+            <div class="setting-group mt-4 divide-y divide-slate-100">
               <div class="setting-row"><div><h5>Pipeline 版本</h5><p>保存 Pipeline 文件时使用的格式版本</p></div><div class="option-grid grid-cols-2"><button :class="{ active: pipelineVersion === 'V1' }" @click="pipelineVersion = 'V1'">V1</button><button :class="{ active: pipelineVersion === 'V2' }" @click="pipelineVersion = 'V2'">V2</button></div></div>
               <div class="setting-row"><div><h5>启动时恢复工作区</h5><p>自动加载上次资源，并重连设备与 Agent</p></div><button class="toggle" :class="{ enabled: restoreWorkspaceOnStart }" @click="restoreWorkspaceOnStart = !restoreWorkspaceOnStart"><span /></button></div>
               <div class="setting-row"><div><h5>低消耗模式</h5><p>{{ lowMemoryMode ? '切换标签页时重建编辑器，减少内存占用' : '保留编辑器实例，标签页切换更快速' }}</p></div><button class="toggle" :class="{ enabled: lowMemoryMode }" @click="lowMemoryMode = !lowMemoryMode"><span /></button></div>
             </div>
           </section>
 
-          <section :ref="el => setSectionRef('storage', el)" class="scroll-mt-2 py-6">
-            <h4 class="text-base font-bold text-slate-800">存储与备份</h4><p class="mt-1 text-xs text-slate-400">查看 MaaInspector 在本机保存的数据</p>
-            <div class="mt-5 divide-y divide-slate-100 border-y border-slate-100">
+          <section :ref="el => setSectionRef('storage', el)" class="setting-section scroll-mt-5">
+            <h4>存储与备份</h4><p class="section-description">查看 MaaInspector 在本机保存的数据</p>
+            <div class="setting-group mt-4 divide-y divide-slate-100">
               <div class="setting-row"><div><h5>数据备份</h5><p>备份按日期保存于软件目录的 backup 文件夹</p></div><button class="action-button" @click="handleOpenBackupDir"><FolderOpen :size="14" />打开备份目录</button></div>
               <div class="setting-row"><div><h5>运行日志</h5><p>查看前端与后端分别保存的日志文件</p></div><button class="action-button" @click="handleOpenLogDir"><FolderOpen :size="14" />打开日志目录</button></div>
             </div>
           </section>
 
-          <section :ref="el => setSectionRef('developer', el)" class="scroll-mt-2 py-6">
-            <h4 class="text-base font-bold text-slate-800">开发者</h4><p class="mt-1 text-xs text-slate-400">用于排查界面问题的高级工具</p>
-            <div class="mt-5 border-y border-slate-100"><div class="setting-row"><div><h5>开发者工具</h5><p>打开 WebView DevTools 检查界面和网络请求</p></div><button class="action-button" @click="handleOpenDevTools"><Terminal :size="14" />打开 DevTools</button></div></div>
+          <section :ref="el => setSectionRef('developer', el)" class="setting-section scroll-mt-5">
+            <h4>开发者</h4><p class="section-description">用于排查界面问题的高级工具</p>
+            <div class="setting-group mt-4"><div class="setting-row"><div><h5>开发者工具</h5><p>打开 WebView DevTools 检查界面和网络请求</p></div><button class="action-button" @click="handleOpenDevTools"><Terminal :size="14" />打开 DevTools</button></div></div>
           </section>
 
-          <section :ref="el => setSectionRef('about', el)" class="scroll-mt-2 py-6">
-            <h4 class="text-base font-bold text-slate-800">关于我们</h4><p class="mt-1 text-xs text-slate-400">项目信息、版本与软件更新</p>
-            <div class="mt-5 divide-y divide-slate-100 border-y border-slate-100">
+          <section :ref="el => setSectionRef('about', el)" class="setting-section scroll-mt-5">
+            <h4>关于我们</h4><p class="section-description">项目信息、版本与软件更新</p>
+            <div class="setting-group mt-4 divide-y divide-slate-100">
               <div class="setting-row items-start"><div><h5>MaaInspector</h5><p class="max-w-md leading-5">为 MaaFramework 打造的可视化节点编辑与调试工具。由 TanYaShue 和社区贡献者共同维护，基于 MIT 许可证开源。</p></div><button class="action-button" @click="openUrl('https://github.com/TanyaShue/MaaInspector')"><Github :size="14" />GitHub<ExternalLink :size="11" /></button></div>
               <div class="setting-row items-start">
                 <div class="min-w-0 flex-1"><h5>软件更新</h5><p>当前版本 v{{ currentVersion || '—' }}</p>
@@ -277,9 +277,14 @@ const handleOpenBackupDir = async () => {
 .custom-scrollbar { scrollbar-width: thin; scrollbar-color: rgb(203 213 225) transparent; }
 .custom-scrollbar::-webkit-scrollbar { width: 6px; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: rgb(203 213 225); border-radius: 999px; }
-.setting-row { display: flex; min-height: 88px; align-items: center; justify-content: space-between; gap: 2rem; padding: 1.25rem 0; }
-.setting-row h5 { font-size: 0.75rem; font-weight: 700; color: rgb(51 65 85); }
-.setting-row p { margin-top: 0.3rem; font-size: 0.6875rem; color: rgb(148 163 184); }
+.setting-section { padding: 0.75rem 0 1.75rem; }
+.setting-section + .setting-section { border-top: 1px solid rgb(226 232 240); padding-top: 1.75rem; }
+.setting-section > h4 { font-size: 0.875rem; font-weight: 600; color: rgb(51 65 85); }
+.section-description { margin-top: 0.25rem; font-size: 0.6875rem; color: rgb(148 163 184); }
+.setting-group { overflow: hidden; border: 1px solid rgb(226 232 240); border-radius: 0.75rem; background: white; box-shadow: 0 1px 2px rgb(15 23 42 / 0.03); }
+.setting-row { display: flex; min-height: 82px; align-items: center; justify-content: space-between; gap: 2rem; padding: 1rem 1.125rem; }
+.setting-row h5 { font-size: 0.75rem; font-weight: 500; color: rgb(71 85 105); }
+.setting-row p { margin-top: 0.3rem; font-size: 0.6875rem; line-height: 1.1rem; color: rgb(148 163 184); }
 .option-grid { display: grid; width: 18rem; gap: 0.375rem; }
 .option-grid button { border: 1px solid rgb(226 232 240); border-radius: 0.5rem; background: white; padding: 0.5rem 0.7rem; font-size: 0.6875rem; font-weight: 600; color: rgb(100 116 139); transition: 150ms; }
 .option-grid button:hover { border-color: rgb(165 180 252); color: rgb(79 70 229); }

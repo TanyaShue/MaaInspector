@@ -44,7 +44,12 @@ export const useFlowStateExport = (
 
   const isDirty = computed(() => {
     if (!originalDataSnapshot.value) return false
-    return dataRevision.value !== cleanRevision.value
+    if (dataRevision.value === cleanRevision.value) return false
+
+    // A revision counter is cheap on the edit hot path, but it cannot tell when
+    // inverse operations (for example add then delete) restore the file exactly.
+    // Rebuild the snapshot only when consumers actually ask for dirty state.
+    return recalcDataSnapshot() !== originalDataSnapshot.value
   })
 
   const recalcDataSnapshot = () => {

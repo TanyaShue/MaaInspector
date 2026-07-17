@@ -222,10 +222,9 @@ defineExpose({ executeFileSwitch, handleSaveNodes, triggerLoadFromCache: trigger
       </div>
 
         <button
-          v-if="props.isDirty"
-          :disabled="systemState.isSaving.value"
-          class="flex h-7 w-8 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-600 shadow-sm transition-colors hover:border-amber-300 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
-          title="保存更改"
+          :disabled="systemState.isSaving.value || !props.isDirty"
+          class="flex h-7 w-8 items-center justify-center rounded-lg border shadow-sm transition-colors disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-white disabled:text-slate-300 enabled:border-amber-200 enabled:bg-amber-50 enabled:text-amber-600 enabled:hover:border-amber-300 enabled:hover:bg-amber-100"
+          :title="props.isDirty ? '保存更改' : '当前资源没有可保存的更改'"
           @click="handleSaveNodes"
         >
           <component

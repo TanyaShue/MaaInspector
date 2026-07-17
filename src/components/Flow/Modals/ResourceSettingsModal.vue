@@ -113,7 +113,7 @@ const save = () => {
       class="bg-white rounded-xl shadow-2xl border border-slate-200 flex overflow-hidden w-[min(700px,calc(100vw-2rem))] h-[560px] max-h-[calc(100vh-2rem)]"
     >
       <div class="w-[200px] bg-slate-50 border-r border-slate-100 flex flex-col min-h-0">
-        <div class="p-3 text-xs font-bold text-slate-500 border-b border-slate-100">
+        <div class="p-3 text-xs font-medium text-slate-500 border-b border-slate-200">
           配置列表 (Profiles)
         </div>
         <div class="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
@@ -123,7 +123,7 @@ const save = () => {
             class="px-3 py-2 rounded-lg cursor-pointer text-xs truncate border transition-all"
             :class="
               editProfIndex === idx
-                ? 'bg-white border-slate-200 shadow-sm text-indigo-600 font-bold'
+                ? 'bg-white border-slate-200 shadow-sm text-indigo-600 font-medium'
                 : 'border-transparent text-slate-600 hover:bg-slate-100'
             "
             @click="editProfIndex = idx"
@@ -144,7 +144,7 @@ const save = () => {
 
       <div class="flex-1 min-w-0 min-h-0 flex flex-col bg-white">
         <div class="flex items-center justify-between p-4 border-b border-slate-100">
-          <h3 class="font-bold text-slate-700 flex items-center gap-2">
+          <h3 class="text-sm font-semibold text-slate-700 flex items-center gap-2">
             <Database :size="16" />
             编辑资源配置
           </h3>
@@ -158,20 +158,20 @@ const save = () => {
 
         <div
           v-if="editingProfiles[editProfIndex]"
-          class="flex-1 min-h-0 p-5 overflow-hidden flex flex-col gap-4"
+          class="flex-1 min-h-0 p-5 overflow-hidden flex flex-col gap-5"
         >
           <div class="space-y-1">
-            <label class="text-[10px] font-bold text-slate-400 uppercase">Profile Name</label>
+            <label class="text-[10px] font-medium tracking-wide text-slate-500">配置名称</label>
             <input
               v-model="editingProfiles[editProfIndex].name"
               type="text"
-              class="w-full bg-white border border-slate-200 rounded-lg py-2 pr-3 text-xs text-slate-600 outline-none transition-all shadow-sm focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50 font-bold text-indigo-600"
+              class="w-full bg-white border border-slate-200 rounded-lg py-2 px-3 text-xs text-slate-700 outline-none transition-all shadow-sm focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50"
             />
           </div>
 
           <div class="space-y-1">
             <div class="flex items-center justify-between">
-              <label class="text-[10px] font-bold text-slate-400 uppercase"
+              <label class="text-[10px] font-medium tracking-wide text-slate-500"
                 >Schema 文件目录（可选）</label
               >
               <button
@@ -191,7 +191,7 @@ const save = () => {
 
           <div class="flex-1 flex flex-col min-h-0">
             <div class="flex items-center justify-between mb-1">
-              <label class="text-[10px] font-bold text-slate-400 uppercase"
+              <label class="text-[10px] font-medium tracking-wide text-slate-500"
                 >Resource Paths (按加载顺序)</label
               >
               <div class="flex items-center gap-2">
@@ -274,15 +274,15 @@ const save = () => {
           <span class="text-xs">请选择或新建资源配置</span>
         </div>
 
-        <div class="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-2">
+        <div class="p-4 border-t border-slate-200 bg-slate-50/70 flex justify-end gap-2">
           <button
-            class="px-3 py-1.5 text-xs font-bold text-slate-500 hover:bg-slate-200 rounded transition-colors"
+            class="px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-200 rounded transition-colors"
             @click="$emit('close')"
           >
             取消
           </button>
           <button
-            class="px-3 py-1.5 text-xs font-bold bg-indigo-500 text-white rounded shadow-sm hover:bg-indigo-600 transition-colors flex items-center gap-1"
+            class="px-3 py-1.5 text-xs font-medium bg-indigo-500 text-white rounded shadow-sm hover:bg-indigo-600 transition-colors flex items-center gap-1"
             @click="save"
           >
             <Save :size="14" />

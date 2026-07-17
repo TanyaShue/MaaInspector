@@ -65,4 +65,15 @@ describe('frontend logger', () => {
     console.error('failed')
     await expect(flushFrontendLogs()).resolves.toBeUndefined()
   })
+
+  it('suppresses the benign stale callback warning produced by a Tauri dev reload', () => {
+    const originalWarn = vi.fn()
+    console.warn = originalWarn
+    installFrontendLogger()
+
+    console.warn("[TAURI] Couldn't find callback id 123. This might happen when the app is reloaded while Rust is running an asynchronous operation.")
+
+    expect(originalWarn).not.toHaveBeenCalled()
+    expect(invokeMock).not.toHaveBeenCalled()
+  })
 })

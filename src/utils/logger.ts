@@ -30,10 +30,19 @@ export function installFrontendLogger() {
     const original = console[level]?.bind(console) as ((...args: unknown[]) => void) | undefined
     originalConsole[level] = original
     console[level] = (...args: unknown[]) => {
+      if (isStaleTauriCallbackWarning(args)) return
       original?.(...args)
       enqueueLog(level, 'console', buildMessage(args), { args: serializeArgs(args) })
     }
   }
+}
+
+function isStaleTauriCallbackWarning(args: unknown[]) {
+  return args.some(arg =>
+    typeof arg === 'string' &&
+    arg.includes("[TAURI] Couldn't find callback id") &&
+    arg.includes('app is reloaded while Rust is running an asynchronous operation')
+  )
 }
 
 export function uninstallFrontendLogger() {

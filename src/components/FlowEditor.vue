@@ -143,7 +143,6 @@ onBeforeUnmount(() => {
     class="w-full h-full min-h-[500px] bg-slate-50 relative"
   >
     <VueFlow
-      v-memo="[nodes, renderedEdges, isFileLoaded, onlyRenderVisibleElements]"
       class="flow-canvas-layer"
       :nodes="nodes"
       :edges="renderedEdges"

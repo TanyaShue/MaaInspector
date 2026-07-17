@@ -28,14 +28,24 @@ const createStateExport = () => {
 }
 
 describe('useFlowStateExport dirty tracking', () => {
-  it('marks the graph dirty without serializing all node data on the edit hot path', () => {
+  it('defers serialization until dirty state is consumed', () => {
     const { state, getNodesData } = createStateExport()
 
     state.markDataChanged()
     state.markDataChanged()
 
-    expect(state.isDirty.value).toBe(true)
     expect(getNodesData).not.toHaveBeenCalled()
+    expect(state.isDirty.value).toBe(true)
+    expect(getNodesData).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns to clean when inverse edits restore the original content', () => {
+    const { state, getNodesData } = createStateExport()
+    state.clearDirty()
+    state.markDataChanged()
+    getNodesData.mockReturnValue({ Start: { recognition: 'DirectHit' } })
+
+    expect(state.isDirty.value).toBe(false)
   })
 
   it('serializes once when establishing a clean baseline and clears dirty state', () => {

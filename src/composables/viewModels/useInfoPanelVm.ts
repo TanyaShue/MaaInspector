@@ -1,4 +1,4 @@
-import { computed, getCurrentInstance, onMounted, ref } from 'vue'
+import { computed, getCurrentInstance, nextTick, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { resourceApi } from '@/services/api'
 import { useAppConfigStore } from '@/stores/appConfig'
@@ -25,7 +25,7 @@ interface UseInfoPanelVmProps {
 
 interface ResourceManagerPort {
   availableFiles: ResourceFileInfo[]
-  handleResourceLoad: () => Promise<void>
+  handleResourceLoad: () => Promise<boolean>
   handleResourceLoadWithRetry?: (maxAttempts?: number) => Promise<boolean>
   findFileById: (id: string) => ResourceFileInfo | undefined
   executeFileSwitch: (filename: string, source?: string) => Promise<void>
@@ -228,9 +228,17 @@ export function useInfoPanelVm(props: UseInfoPanelVmProps, emit: InfoPanelEmit) 
     })
   }
 
-  const saveResourceSettings = (data: { profiles: EditableProfile[]; index?: number }) => {
-    void appConfig.updateResourceProfiles(data.profiles, data.index)
-    showResourceSettings.value = false
+  const saveResourceSettings = async (data: { profiles: EditableProfile[]; index?: number }) => {
+    const rm = resourceManagerRef.value
+    try {
+      await appConfig.updateResourceProfiles(data.profiles, data.index)
+      await nextTick()
+      showResourceSettings.value = false
+      if (rm) await rm.handleResourceLoad()
+    } catch (error) {
+      console.error('保存并重新加载资源配置失败', error)
+      ElMessage.error(`资源配置保存失败: ${error instanceof Error ? error.message : '未知错误'}`)
+    }
   }
 
   const handleAppSettingsSave = (payload: {
