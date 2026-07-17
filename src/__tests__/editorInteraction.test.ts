@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { isEditorActive, onlyWhenEditorActive, syncNodePositions } from '@/utils/editorInteraction'
+import {
+  isEditorActive,
+  normalizeKeyboardKey,
+  onlyWhenEditorActive,
+  syncNodePositions,
+} from '@/utils/editorInteraction'
 
 describe('editorInteraction', () => {
   it('treats an omitted active state as active for single-editor compatibility', () => {
@@ -34,6 +39,12 @@ describe('editorInteraction', () => {
 
     expect(handler).toHaveBeenCalledOnce()
     expect(handler).toHaveBeenCalledWith(event)
+  })
+
+  it('normalizes keyboard keys without throwing for incomplete events', () => {
+    expect(normalizeKeyboardKey({ key: 'S' })).toBe('s')
+    expect(normalizeKeyboardKey({})).toBe('')
+    expect(normalizeKeyboardKey({ key: undefined })).toBe('')
   })
 
   it('syncs only final dragged positions without replacing the node array', () => {

@@ -32,6 +32,7 @@ export function useFlowWorkspaceVm() {
   const loadingRestoredTabs = ref<Set<string>>(new Set())
 
   const activeTab = computed(() => tabs.value.items.find(t => t.id === activeTabId.value) || tabs.value.items[0] || null)
+  const resourceLoaded = computed(() => appConfig.resource.loaded)
   const activeEditorRef = computed(() => editorRefs.value.get(activeTabId.value) || null)
   const activeEditorStatus = computed(() => activeEditorRef.value?.getEditorStatus() ?? {
     isDirty: false,
@@ -251,6 +252,7 @@ export function useFlowWorkspaceVm() {
     infoPanelRef,
     debugPanel,
     activeTab,
+    resourceLoaded,
     activeEditorRef,
     activeEditorStatus,
     isRestoringWorkspace,

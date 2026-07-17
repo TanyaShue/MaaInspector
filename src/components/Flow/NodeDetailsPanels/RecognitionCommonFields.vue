@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { Crop, Crosshair, ChevronDown } from 'lucide-vue-next'
 import { orderByOptions } from '@/utils/node-config'
 import type { NodeFormMethods } from '@/composables/useNodeForm'
+import FloatingDropdownMenu from '@/components/Flow/Common/FloatingDropdownMenu.vue'
 
 const props = defineProps<{
   form: NodeFormMethods
@@ -17,6 +18,7 @@ const { getValue, setValue, getJsonValue, setJsonValue } = props.form
 const getInputValue = (event: Event) => (event.target as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? ''
 
 const isOrderByDropdownOpen = ref(false)
+const orderByAnchor = ref<HTMLElement | null>(null)
 
 const selectOrderBy = (val: string) => {
   setValue('order_by', val)
@@ -64,6 +66,7 @@ const selectOrderBy = (val: string) => {
     <div class="space-y-1 relative">
       <label class="text-[10px] font-semibold text-slate-500 uppercase">排序方式</label>
       <button
+        ref="orderByAnchor"
         class="w-full flex items-center justify-between px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 text-left"
         @click="isOrderByDropdownOpen = !isOrderByDropdownOpen"
       >
@@ -76,20 +79,23 @@ const selectOrderBy = (val: string) => {
           :class="{ 'rotate-180': isOrderByDropdownOpen }"
         />
       </button>
-      <div
-        v-if="isOrderByDropdownOpen"
-        class="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-[160px] overflow-y-auto custom-scrollbar-dark z-50 flex flex-col py-1"
+      <FloatingDropdownMenu
+        :open="isOrderByDropdownOpen"
+        :anchor="orderByAnchor"
+        :max-height="200"
       >
-        <button
-          v-for="opt in orderByOptions"
-          :key="opt.value"
-          class="px-3 py-1.5 text-xs text-left hover:bg-slate-50 transition-colors"
-          :class="getValue('order_by', 'Horizontal') === opt.value ? 'text-indigo-600 bg-indigo-50/50' : 'text-slate-700'"
-          @click="selectOrderBy(opt.value)"
-        >
-          {{ opt.label }}
-        </button>
-      </div>
+        <div class="flex flex-col py-1">
+          <button
+            v-for="opt in orderByOptions"
+            :key="opt.value"
+            class="px-3 py-1.5 text-xs text-left hover:bg-slate-50 transition-colors"
+            :class="getValue('order_by', 'Horizontal') === opt.value ? 'text-indigo-600 bg-indigo-50/50' : 'text-slate-700'"
+            @click="selectOrderBy(opt.value)"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
+      </FloatingDropdownMenu>
     </div>
     <div class="space-y-1">
       <label class="text-[10px] font-semibold text-slate-500 uppercase">结果索引</label>

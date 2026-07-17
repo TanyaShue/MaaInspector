@@ -63,6 +63,17 @@ describe('useFlowWorkspaceVm', () => {
     expect(vm.tabs.value.items[0].id).toBe(firstTabId)
   })
 
+  it('exposes whether resources are loaded for the workspace empty state', () => {
+    const store = useAppConfigStore()
+    const vm = useFlowWorkspaceVm()
+
+    expect(vm.resourceLoaded.value).toBe(false)
+
+    store.markResourceLoaded()
+
+    expect(vm.resourceLoaded.value).toBe(true)
+  })
+
   it('loads nodes into the ensured workspace tab and binds the resource file', async () => {
     const vm = useFlowWorkspaceVm()
     const tab = useAppConfigStore().ensureWorkspaceTab()

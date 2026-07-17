@@ -45,6 +45,23 @@ pub struct ResourceFileInfo {
     pub filename: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomCompletionOption {
+    pub value: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub param_schema: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CustomCompletionRules {
+    #[serde(default)]
+    pub action: Vec<CustomCompletionOption>,
+    #[serde(default)]
+    pub recognition: Vec<CustomCompletionOption>,
+}
+
 /// Resource load response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceLoadResponse {
@@ -59,6 +76,8 @@ pub struct ResourceLoadResponse {
     /// MaaFramework load message
     #[serde(skip_serializing_if = "Option::is_none")]
     pub maafw_message: Option<String>,
+    #[serde(default)]
+    pub custom_completions: CustomCompletionRules,
 }
 
 /// File nodes response

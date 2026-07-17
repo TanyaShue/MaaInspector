@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { ChevronDown, Check, Settings } from 'lucide-vue-next'
 import type { NodeFormMethods } from '@/composables/useNodeForm'
 import type { ActionType, RecognitionType, SelectOption } from '@/utils/node-config'
+import FloatingDropdownMenu from '@/components/Flow/Common/FloatingDropdownMenu.vue'
 
 type DropdownKey = 'recognition' | 'action' | string
 
@@ -30,6 +32,8 @@ const emit = defineEmits<{
 
 const { getValue, setValue } = props.form
 const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.checked ?? false
+const recognitionAnchor = ref<HTMLElement | null>(null)
+const actionAnchor = ref<HTMLElement | null>(null)
 
 const toggleDropdown = (key: DropdownKey) => {
   emit('toggle-dropdown', key)
@@ -62,6 +66,7 @@ const toggleDropdown = (key: DropdownKey) => {
       <div class="flex gap-2">
         <div class="relative flex-1">
           <button
+            ref="recognitionAnchor"
             class="w-full flex items-center justify-between px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 cursor-pointer text-left"
             @click="toggleDropdown('recognition')"
           >
@@ -85,36 +90,39 @@ const toggleDropdown = (key: DropdownKey) => {
             />
           </button>
 
-          <div
-            v-if="isRecognitionDropdownOpen"
-            class="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-[220px] overflow-y-auto custom-scrollbar-dark flex flex-col py-1"
+          <FloatingDropdownMenu
+            :open="isRecognitionDropdownOpen"
+            :anchor="recognitionAnchor"
+            :max-height="220"
           >
-            <button
-              v-for="type in recognitionTypes"
-              :key="type.value"
-              class="flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-slate-50 transition-colors shrink-0"
-              :class="{
-                'bg-indigo-50/60 text-indigo-600': currentRecognition === type.value,
-                'text-slate-700': currentRecognition !== type.value
-              }"
-              @click="emit('select-recognition', type.value)"
-            >
-              <component
-                :is="type.icon"
-                v-if="type.icon"
-                :size="14"
-                :class="type.color"
-                class="shrink-0"
-              />
-              <span class="truncate">{{ type.label }}</span>
-              <span class="ml-auto text-[10px] font-mono text-slate-400">{{ type.value }}</span>
-              <Check
-                v-if="currentRecognition === type.value"
-                :size="12"
-                class="text-indigo-600 ml-2"
-              />
-            </button>
-          </div>
+            <div class="flex flex-col py-1">
+              <button
+                v-for="type in recognitionTypes"
+                :key="type.value"
+                class="flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-slate-50 transition-colors shrink-0"
+                :class="{
+                  'bg-indigo-50/60 text-indigo-600': currentRecognition === type.value,
+                  'text-slate-700': currentRecognition !== type.value
+                }"
+                @click="emit('select-recognition', type.value)"
+              >
+                <component
+                  :is="type.icon"
+                  v-if="type.icon"
+                  :size="14"
+                  :class="type.color"
+                  class="shrink-0"
+                />
+                <span class="truncate">{{ type.label }}</span>
+                <span class="ml-auto text-[10px] font-mono text-slate-400">{{ type.value }}</span>
+                <Check
+                  v-if="currentRecognition === type.value"
+                  :size="12"
+                  class="text-indigo-600 ml-2"
+                />
+              </button>
+            </div>
+          </FloatingDropdownMenu>
         </div>
         <button
           :disabled="currentRecognition === 'DirectHit'"
@@ -131,6 +139,7 @@ const toggleDropdown = (key: DropdownKey) => {
       <div class="flex gap-2">
         <div class="relative flex-1">
           <button
+            ref="actionAnchor"
             class="w-full flex items-center justify-between px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 cursor-pointer text-left"
             @click="toggleDropdown('action')"
           >
@@ -154,36 +163,39 @@ const toggleDropdown = (key: DropdownKey) => {
             />
           </button>
 
-          <div
-            v-if="isActionDropdownOpen"
-            class="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-[220px] overflow-y-auto custom-scrollbar-dark flex flex-col py-1"
+          <FloatingDropdownMenu
+            :open="isActionDropdownOpen"
+            :anchor="actionAnchor"
+            :max-height="220"
           >
-            <button
-              v-for="type in actionTypes"
-              :key="type.value"
-              class="flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-slate-50 transition-colors shrink-0"
-              :class="{
-                'bg-indigo-50/60 text-indigo-600': currentAction === type.value,
-                'text-slate-700': currentAction !== type.value
-              }"
-              @click="emit('select-action', type.value)"
-            >
-              <component
-                :is="type.icon"
-                v-if="type.icon"
-                :size="14"
-                :class="type.color"
-                class="shrink-0"
-              />
-              <span class="truncate">{{ type.label }}</span>
-              <span class="ml-auto text-[10px] font-mono text-slate-400">{{ type.value }}</span>
-              <Check
-                v-if="currentAction === type.value"
-                :size="12"
-                class="text-indigo-600 ml-2"
-              />
-            </button>
-          </div>
+            <div class="flex flex-col py-1">
+              <button
+                v-for="type in actionTypes"
+                :key="type.value"
+                class="flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-slate-50 transition-colors shrink-0"
+                :class="{
+                  'bg-indigo-50/60 text-indigo-600': currentAction === type.value,
+                  'text-slate-700': currentAction !== type.value
+                }"
+                @click="emit('select-action', type.value)"
+              >
+                <component
+                  :is="type.icon"
+                  v-if="type.icon"
+                  :size="14"
+                  :class="type.color"
+                  class="shrink-0"
+                />
+                <span class="truncate">{{ type.label }}</span>
+                <span class="ml-auto text-[10px] font-mono text-slate-400">{{ type.value }}</span>
+                <Check
+                  v-if="currentAction === type.value"
+                  :size="12"
+                  class="text-indigo-600 ml-2"
+                />
+              </button>
+            </div>
+          </FloatingDropdownMenu>
         </div>
         <button
           :disabled="['DoNothing', 'StopTask'].includes(currentAction)"

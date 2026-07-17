@@ -11,7 +11,11 @@ import { parseFileId } from '@/utils/fileId'
 import type { FlowEdge, FlowNode, LoadNodesPayload, TemplateImage } from '@/utils/flowTypes'
 import { isPipelineV2Nodes, toPipelineV1Nodes } from '@/utils/pipelineTransform'
 import { perfLog, perfMark, perfNow } from '@/utils/perfTrace'
-import { onlyWhenEditorActive, type EditorActiveState } from '@/utils/editorInteraction'
+import {
+  normalizeKeyboardKey,
+  onlyWhenEditorActive,
+  type EditorActiveState,
+} from '@/utils/editorInteraction'
 import { provideNodeDetailsController } from '@/composables/useNodeDetailsController'
 import { getEdgeStyle } from '@/composables/flowGraph/useConnectionManager'
 import type { FlowEditorPort } from './types'
@@ -325,7 +329,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     if (subCanvas.value.visible) return
 
     const isMod = e.ctrlKey || e.metaKey
-    const key = e.key.toLowerCase()
+    const key = normalizeKeyboardKey(e)
 
     if (isMod && key === 's') {
       e.preventDefault()

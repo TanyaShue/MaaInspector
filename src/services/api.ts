@@ -32,7 +32,36 @@ export interface ApiDeviceInfo {
 export interface ResourceProfile {
   name?: string;
   paths?: string[];
+  schema_path?: string;
   [key: string]: unknown;
+}
+
+export interface JsonSchemaRule {
+  type?: string | string[];
+  title?: string;
+  description?: string;
+  default?: unknown;
+  enum?: unknown[];
+  properties?: Record<string, JsonSchemaRule>;
+  required?: string[];
+  oneOf?: JsonSchemaRule[];
+  anyOf?: JsonSchemaRule[];
+  minimum?: number;
+  maximum?: number;
+  pattern?: string;
+  [key: string]: unknown;
+}
+
+export interface CustomCompletionOption {
+  value: string;
+  title?: string;
+  description?: string;
+  param_schema?: JsonSchemaRule;
+}
+
+export interface CustomCompletionRules {
+  action: CustomCompletionOption[];
+  recognition: CustomCompletionOption[];
 }
 
 export interface ResourceFileInfo {
@@ -45,6 +74,7 @@ export interface ResourceFileInfo {
 export interface ResourceLoadResponse extends ApiResponse {
   r?: boolean;
   list?: ResourceFileInfo[];
+  custom_completions?: CustomCompletionRules;
 }
 
 export interface SystemState {
@@ -208,22 +238,28 @@ const invokeCommand = async <T>(command: string, args?: Record<string, unknown>)
   const start = typeof performance !== 'undefined' ? performance.now() : Date.now();
   try {
     const result = await invoke<T>(command, args);
-    const duration = Math.round(((typeof performance !== 'undefined' ? performance.now() : Date.now()) - start) * 10) / 10;
+    const duration =
+      Math.round(
+        ((typeof performance !== 'undefined' ? performance.now() : Date.now()) - start) * 10
+      ) / 10;
     if (duration >= SLOW_COMMAND_MS) {
       logWarn('api', `Slow invoke: ${command}`, {
         command,
         duration,
-        args: summarizeInvokeArgs(args)
+        args: summarizeInvokeArgs(args),
       });
     }
     return result;
   } catch (error) {
-    const duration = Math.round(((typeof performance !== 'undefined' ? performance.now() : Date.now()) - start) * 10) / 10;
+    const duration =
+      Math.round(
+        ((typeof performance !== 'undefined' ? performance.now() : Date.now()) - start) * 10
+      ) / 10;
     logWarn('api', `Invoke failed: ${command}`, {
       command,
       duration,
       error: serializeForLog(error),
-      args: summarizeInvokeArgs(args)
+      args: summarizeInvokeArgs(args),
     });
     throw error;
   }
@@ -243,27 +279,27 @@ export const systemApi = {
     return invokeCommand('system_get_backup_dir');
   },
 
-  searchDevices: async (deviceType?: string): Promise<ApiResponse<{ devices?: ApiDeviceInfo[] }>> => {
+  searchDevices: async (
+    deviceType?: string
+  ): Promise<ApiResponse<{ devices?: ApiDeviceInfo[] }>> => {
     return invokeCommand('system_search_devices', { deviceType });
-  }
+  },
 };
 
 export const logApi = {
   getDir: async (): Promise<string> => {
     return invokeCommand('log_get_dir');
-  }
+  },
 };
 
 // Device API
 export const deviceApi = {
-  connectAdb: async (
-    deviceData: {
-      adb_path: string;
-      address: string;
-      config?: Record<string, unknown>;
-      name?: string;
-    }
-  ): Promise<ApiResponse> => {
+  connectAdb: async (deviceData: {
+    adb_path: string;
+    address: string;
+    config?: Record<string, unknown>;
+    name?: string;
+  }): Promise<ApiResponse> => {
     return invokeCommand('device_connect_adb', {
       adbPath: deviceData.adb_path,
       address: deviceData.address,
@@ -272,17 +308,15 @@ export const deviceApi = {
     });
   },
 
-  connectWin32: async (
-    deviceData: {
-      hwnd: number | string;
-      name?: string;
-      window_name?: string;
-      class_name?: string;
-      screencap_method?: number;
-      mouse_method?: number;
-      keyboard_method?: number;
-    }
-  ): Promise<ApiResponse> => {
+  connectWin32: async (deviceData: {
+    hwnd: number | string;
+    name?: string;
+    window_name?: string;
+    class_name?: string;
+    screencap_method?: number;
+    mouse_method?: number;
+    keyboard_method?: number;
+  }): Promise<ApiResponse> => {
     return invokeCommand('device_connect_win32', {
       hwnd: deviceData.hwnd,
       name: deviceData.name,
@@ -300,19 +334,25 @@ export const deviceApi = {
 
   ocrText: async (roi: number[]): Promise<OcrRecognitionResponse> => {
     return invokeCommand('debug_ocr_text', { roi });
-  }
+  },
 };
 
 // Resource API
 export const resourceApi = {
-  load: async (profile: ResourceProfile | { paths?: string[] } | string): Promise<ResourceLoadResponse> => {
-    const paths = typeof profile === 'string'
-      ? [profile]
-      : Array.isArray((profile as ResourceProfile)?.paths)
-        ? (profile as ResourceProfile).paths
-        : (profile as { paths?: string[] })?.paths || [];
+  load: async (
+    profile: ResourceProfile | { paths?: string[] } | string
+  ): Promise<ResourceLoadResponse> => {
+    const paths =
+      typeof profile === 'string'
+        ? [profile]
+        : Array.isArray((profile as ResourceProfile)?.paths)
+          ? (profile as ResourceProfile).paths
+          : (profile as { paths?: string[] })?.paths || [];
 
-    return invokeCommand('resource_load', { paths });
+    const schemaPath =
+      typeof profile === 'string' ? undefined : (profile as ResourceProfile)?.schema_path;
+
+    return invokeCommand('resource_load', { paths, schemaPath });
   },
 
   getFileNodes: async <TNodes = Record<string, unknown>>(
@@ -322,10 +362,7 @@ export const resourceApi = {
     return invokeCommand('resource_get_file_nodes', { source, filename });
   },
 
-  getTemplateImages: async (
-    source: string,
-    filename: string
-  ): Promise<TemplateImagesResponse> => {
+  getTemplateImages: async (source: string, filename: string): Promise<TemplateImagesResponse> => {
     return invokeCommand('resource_get_templates', { source, filename });
   },
 
@@ -351,7 +388,7 @@ export const resourceApi = {
       query,
       useRegex,
       currentFilename,
-      currentSource
+      currentSource,
     });
   },
 
@@ -363,7 +400,7 @@ export const resourceApi = {
     return invokeCommand('resource_check_unused_images', {
       source,
       currentFilename,
-      delImages
+      delImages,
     });
   },
 
@@ -375,16 +412,16 @@ export const resourceApi = {
     return invokeCommand('resource_process_images', {
       source,
       deletePaths,
-      saveImages
+      saveImages,
     });
-  }
+  },
 };
 
 // Agent API
 export const agentApi = {
   connect: async (socketId: string): Promise<ApiResponse> => {
     return invokeCommand('agent_connect', { socketId });
-  }
+  },
 };
 
 // Debug API
@@ -410,12 +447,12 @@ export const debugApi = {
     const cleanupListeners = () => {
       const listeners = unlistenFns;
       unlistenFns = [];
-      listeners.forEach((unlisten) => {
+      listeners.forEach(unlisten => {
         try {
           unlisten();
         } catch (error) {
           logWarn('api.debug', 'Failed to release a debug node stream listener', {
-            error: serializeForLog(error)
+            error: serializeForLog(error),
           });
         }
       });
@@ -425,12 +462,12 @@ export const debugApi = {
       const eventNames = [
         'debug:node_next_list',
         'debug:node_recognition',
-        'debug:node_action'
+        'debug:node_action',
       ] as const;
       try {
         for (const eventName of eventNames) {
           if (cancelled) break;
-          const unlisten = await listen<DebugStreamPayload>(eventName, (event) => {
+          const unlisten = await listen<DebugStreamPayload>(eventName, event => {
             if (!cancelled) onData(event.payload);
           });
           if (cancelled) {
@@ -442,7 +479,7 @@ export const debugApi = {
       } catch (error) {
         cleanupListeners();
         logWarn('api.debug', 'Failed to subscribe to debug node stream', {
-          error: serializeForLog(error)
+          error: serializeForLog(error),
         });
       }
     };
@@ -453,5 +490,5 @@ export const debugApi = {
       cancelled = true;
       cleanupListeners();
     };
-  }
+  },
 };

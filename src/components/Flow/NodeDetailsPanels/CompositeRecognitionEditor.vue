@@ -1,10 +1,18 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Crop, Crosshair, ChevronDown, Plus, Trash2, ImageIcon, Pipette } from 'lucide-vue-next'
-import { orderByOptions, detectorOptions, recognitionTypes } from '@/utils/node-config'
+import {
+  colorMatchMethodOptions,
+  detectorOptions,
+  orderByOptions,
+  recognitionTypes,
+  templateMatchMethodOptions
+} from '@/utils/node-config'
 import type { NodeFormMethods } from '@/composables/useNodeForm'
 import type { PickerPayload } from '@/composables/useDeviceScreenPicker'
 import { isSupportedColorMethod, type ColorRangeResult } from '@/utils/colorRange'
+import CustomCompletionEditor from './CustomCompletionEditor.vue'
+import FloatingDropdownMenu from '@/components/Flow/Common/FloatingDropdownMenu.vue'
 
 type CompositeItem = Record<string, unknown> & { recognition: string }
 
@@ -15,29 +23,40 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'open-picker', payload: PickerPayload): void
-  (e: 'open-image-manager', payload: { compositeKey: 'all_of' | 'any_of', compositeIndex: number }): void
+  (
+    e: 'open-image-manager',
+    payload: { compositeKey: 'all_of' | 'any_of'; compositeIndex: number }
+  ): void
 }>()
 
 const { getValue, setValue } = props.form
 
-const getInputValue = (event: Event) => (event.target as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? ''
+const getInputValue = (event: Event) =>
+  (event.target as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? ''
 const getChecked = (event: Event) => (event.target as HTMLInputElement | null)?.checked ?? false
 
 const compositeExpanded = ref<Record<number, boolean>>({})
 const childOrderDropdown = ref<Record<number, boolean>>({})
+const childOrderAnchors = ref<Record<number, HTMLElement | null>>({})
 
-const compositeKey = computed(() => props.currentRecognition === 'And' ? 'all_of' : 'any_of')
-const childRecognitionOptions = computed(() => recognitionTypes.filter(r => !['And', 'Or', 'Anchor'].includes(r.value)))
+const compositeKey = computed(() => (props.currentRecognition === 'And' ? 'all_of' : 'any_of'))
+const childRecognitionOptions = computed(() =>
+  recognitionTypes.filter(r => !['And', 'Or', 'Anchor'].includes(r.value))
+)
 
 const compositeItems = computed<CompositeItem[]>(() => {
   const raw = getValue<unknown>(compositeKey.value, [])
   if (!Array.isArray(raw)) return []
-  return raw.map(item => (item && typeof item === 'object') ? { ...(item as CompositeItem) } : { recognition: 'TemplateMatch' })
+  return raw.map(item =>
+    item && typeof item === 'object'
+      ? { ...(item as CompositeItem) }
+      : { recognition: 'TemplateMatch' }
+  )
 })
 
 const saveCompositeItems = (items: Array<Record<string, unknown>>) => {
   const normalized = (items || []).map(item => {
-    const obj = (item && typeof item === 'object') ? { ...item } : {}
+    const obj = item && typeof item === 'object' ? { ...item } : {}
     if (!obj.recognition) obj.recognition = 'TemplateMatch'
     return obj as CompositeItem
   })
@@ -85,7 +104,7 @@ const updateCompositeField = (index: number, key: string, value: string | null) 
 const getRecognitionLabel = (value: string) =>
   recognitionTypes.find(r => r.value === value)?.label || value
 
-const getChildValue = <T = unknown>(item: CompositeItem, key: string, def?: T): T => {
+const getChildValue = <T = unknown,>(item: CompositeItem, key: string, def?: T): T => {
   const val = (item as Record<string, unknown>)[key]
   return (val !== undefined ? val : def) as T
 }
@@ -96,7 +115,7 @@ const setChildValue = (index: number, key: string, value: unknown) => {
   if (value === '' || value === null || value === undefined) {
     delete (item as Record<string, unknown>)[key]
   } else {
-    (item as Record<string, unknown>)[key] = value as unknown
+    ;(item as Record<string, unknown>)[key] = value as unknown
   }
   next[index] = item
   saveCompositeItems(next)
@@ -104,31 +123,44 @@ const setChildValue = (index: number, key: string, value: unknown) => {
 
 const getChildJsonValue = (item: CompositeItem, key: string) => {
   const val = getChildValue<unknown>(item, key, null)
-  return (val === null || val === undefined) ? '' : (typeof val === 'object' ? JSON.stringify(val) : String(val))
+  return val === null || val === undefined
+    ? ''
+    : typeof val === 'object'
+      ? JSON.stringify(val)
+      : String(val)
 }
 
 const setChildJsonValue = (index: number, key: string, rawVal: string, forceString = false) => {
-  if (!rawVal || !rawVal.trim()) { setChildValue(index, key, null); return }
+  if (!rawVal || !rawVal.trim()) {
+    setChildValue(index, key, null)
+    return
+  }
   try {
-    if (rawVal.startsWith('[') || rawVal.startsWith('{')) setChildValue(index, key, JSON.parse(rawVal))
+    if (rawVal.startsWith('[') || rawVal.startsWith('{'))
+      setChildValue(index, key, JSON.parse(rawVal))
     else {
-      if (forceString) { setChildValue(index, key, rawVal); return }
+      if (forceString) {
+        setChildValue(index, key, rawVal)
+        return
+      }
       const num = Number(rawVal)
       setChildValue(index, key, isNaN(num) ? rawVal : num)
     }
-  } catch (_e) { setChildValue(index, key, rawVal) }
+  } catch (_e) {
+    setChildValue(index, key, rawVal)
+  }
 }
 
 const getChildTemplateList = (item: CompositeItem): string[] => {
   const val = getChildValue<unknown>(item, 'template', '')
-  if (Array.isArray(val)) return val.map(v => (v === null || v === undefined) ? '' : String(v))
+  if (Array.isArray(val)) return val.map(v => (v === null || v === undefined ? '' : String(v)))
   if (val && typeof val === 'string') return [val]
   if (val === '' || val === null) return ['']
   return []
 }
 
 const setChildTemplateList = (index: number, list: string[]) => {
-  const normalized = (list || []).map(v => (v === null || v === undefined) ? '' : String(v))
+  const normalized = (list || []).map(v => (v === null || v === undefined ? '' : String(v)))
   if (normalized.length === 0) {
     setChildValue(index, 'template', null)
     return
@@ -142,7 +174,11 @@ const setChildTemplateList = (index: number, list: string[]) => {
     }
     return
   }
-  setChildValue(index, 'template', normalized.map(v => v.trim()))
+  setChildValue(
+    index,
+    'template',
+    normalized.map(v => v.trim())
+  )
 }
 
 const addChildTemplate = (index: number) => {
@@ -169,7 +205,21 @@ const toggleChildOrderDropdown = (idx: number) => {
   childOrderDropdown.value[idx] = !childOrderDropdown.value[idx]
 }
 
-const openChildPicker = (idx: number, item: CompositeItem, key: 'roi' | 'roi_offset', refKey?: string) => {
+const selectChildOrder = (index: number, value: string) => {
+  setChildValue(index, 'order_by', value)
+  toggleChildOrderDropdown(index)
+}
+
+const setChildOrderAnchor = (index: number, element: unknown) => {
+  childOrderAnchors.value[index] = element instanceof HTMLElement ? element : null
+}
+
+const openChildPicker = (
+  idx: number,
+  item: CompositeItem,
+  key: 'roi' | 'roi_offset',
+  refKey?: string
+) => {
   const refRectVal = refKey ? (getChildValue(item, refKey, null) as number[] | null) : null
   emit('open-picker', {
     field: key,
@@ -181,7 +231,12 @@ const openChildPicker = (idx: number, item: CompositeItem, key: 'roi' | 'roi_off
         if (key.includes('offset') && refKey) {
           const refRect = getChildValue(item, refKey, null) as number[] | null
           if (refRect) {
-            setChildValue(idx, key, [val[0] - refRect[0], val[1] - refRect[1], val[2] - refRect[2], val[3] - refRect[3]])
+            setChildValue(idx, key, [
+              val[0] - refRect[0],
+              val[1] - refRect[1],
+              val[2] - refRect[2],
+              val[3] - refRect[3]
+            ])
             return
           }
         }
@@ -203,7 +258,7 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
     referenceLabel: '子识别 ROI',
     referenceRect: roi,
     initialRect: roi,
-    onConfirm: (value) => {
+    onConfirm: value => {
       const result = value as ColorRangeResult
       if (!Array.isArray(result?.lower) || !Array.isArray(result?.upper)) return
       const next = [...compositeItems.value]
@@ -232,10 +287,7 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
       </button>
     </div>
 
-    <div
-      v-if="currentRecognition === 'And'"
-      class="grid grid-cols-2 gap-2"
-    >
+    <div v-if="currentRecognition === 'And'" class="grid grid-cols-2 gap-2">
       <div class="space-y-1">
         <label class="text-[10px] font-semibold text-slate-500 uppercase">box_index</label>
         <input
@@ -244,10 +296,8 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
           class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
           placeholder="0"
           @input="setValue('box_index', parseInt(getInputValue($event)) || 0)"
-        >
-        <p class="text-[10px] text-slate-400 leading-tight">
-          可选。输出第几个子识别的识别框。
-        </p>
+        />
+        <p class="text-[10px] text-slate-400 leading-tight">可选。输出第几个子识别的识别框。</p>
       </div>
     </div>
 
@@ -264,10 +314,7 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
       class="border border-slate-100 rounded-lg overflow-hidden"
     >
       <div class="flex items-center justify-between px-3 py-2 bg-slate-50">
-        <button
-          class="flex items-center gap-2 text-left flex-1"
-          @click="toggleCompositeItem(idx)"
-        >
+        <button class="flex items-center gap-2 text-left flex-1" @click="toggleCompositeItem(idx)">
           <ChevronDown
             :size="12"
             class="text-slate-400 transition-transform"
@@ -275,7 +322,9 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
           />
           <div class="flex flex-col">
             <span class="text-[11px] font-semibold text-slate-700">子识别 #{{ idx + 1 }}</span>
-            <span class="text-[10px] text-slate-500 font-mono">{{ getRecognitionLabel((item.recognition as string) || 'TemplateMatch') }}</span>
+            <span class="text-[10px] text-slate-500 font-mono">{{
+              getRecognitionLabel((item.recognition as string) || 'TemplateMatch')
+            }}</span>
           </div>
         </button>
         <div class="flex items-center gap-2">
@@ -284,11 +333,7 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
             :value="(item.recognition as string) || 'TemplateMatch'"
             @change="updateCompositeRecognition(idx, ($event.target as HTMLSelectElement).value)"
           >
-            <option
-              v-for="opt in childRecognitionOptions"
-              :key="opt.value"
-              :value="opt.value"
-            >
+            <option v-for="opt in childRecognitionOptions" :key="opt.value" :value="opt.value">
               {{ opt.label }}
             </option>
           </select>
@@ -302,21 +347,17 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
         </div>
       </div>
 
-      <div
-        v-show="compositeExpanded[idx] !== false"
-        class="p-3 space-y-2"
-      >
-        <div
-          v-if="currentRecognition === 'And'"
-          class="space-y-1"
-        >
-          <label class="text-[10px] font-semibold text-slate-500 uppercase">子识别别名 (sub_name)</label>
+      <div v-show="compositeExpanded[idx] !== false" class="p-3 space-y-2">
+        <div v-if="currentRecognition === 'And'" class="space-y-1">
+          <label class="text-[10px] font-semibold text-slate-500 uppercase"
+            >子识别别名 (sub_name)</label
+          >
           <input
             :value="(item.sub_name as string) || ''"
             class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
             placeholder="可选，供后续 ROI 引用"
             @input="updateCompositeField(idx, 'sub_name', getInputValue($event))"
-          >
+          />
         </div>
 
         <div class="grid grid-cols-2 gap-2">
@@ -328,7 +369,7 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
                 class="flex-1 min-w-0 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono"
                 placeholder="[x,y,w,h]"
                 @input="setChildJsonValue(idx, 'roi', getInputValue($event))"
-              >
+              />
               <button
                 class="px-2 bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 rounded-lg flex items-center justify-center"
                 @click="openChildPicker(idx, item, 'roi')"
@@ -345,7 +386,7 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
                 class="flex-1 min-w-0 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono"
                 placeholder="[x,y,w,h]"
                 @input="setChildJsonValue(idx, 'roi_offset', getInputValue($event))"
-              >
+              />
               <button
                 class="px-2 bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 rounded-lg flex items-center justify-center"
                 @click="openChildPicker(idx, item, 'roi_offset', 'roi')"
@@ -357,11 +398,16 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
           <div class="space-y-1 relative">
             <label class="text-[10px] font-semibold text-slate-500 uppercase">排序方式</label>
             <button
+              :ref="element => setChildOrderAnchor(idx, element)"
               class="w-full flex items-center justify-between px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 text-left"
               @click="toggleChildOrderDropdown(idx)"
             >
               <span class="truncate">
-                {{ orderByOptions.find(o => o.value === getChildValue(item, 'order_by', 'Horizontal'))?.label || getChildValue(item, 'order_by', 'Horizontal') }}
+                {{
+                  orderByOptions.find(
+                    o => o.value === getChildValue(item, 'order_by', 'Horizontal')
+                  )?.label || getChildValue(item, 'order_by', 'Horizontal')
+                }}
               </span>
               <ChevronDown
                 :size="12"
@@ -369,20 +415,27 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
                 :class="{ 'rotate-180': childOrderDropdown[idx] }"
               />
             </button>
-            <div
-              v-if="childOrderDropdown[idx]"
-              class="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-[160px] overflow-y-auto custom-scrollbar-dark z-40 flex flex-col py-1"
+            <FloatingDropdownMenu
+              :open="Boolean(childOrderDropdown[idx])"
+              :anchor="childOrderAnchors[idx]"
+              :max-height="200"
             >
-              <button
-                v-for="opt in orderByOptions"
-                :key="opt.value"
-                class="px-3 py-1.5 text-xs text-left hover:bg-slate-50 transition-colors"
-                :class="getChildValue(item, 'order_by', 'Horizontal') === opt.value ? 'text-indigo-600 bg-indigo-50/50' : 'text-slate-700'"
-                @click="setChildValue(idx, 'order_by', opt.value); toggleChildOrderDropdown(idx)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
+              <div class="flex flex-col py-1">
+                <button
+                  v-for="opt in orderByOptions"
+                  :key="opt.value"
+                  class="px-3 py-1.5 text-xs text-left hover:bg-slate-50 transition-colors"
+                  :class="
+                    getChildValue(item, 'order_by', 'Horizontal') === opt.value
+                      ? 'text-indigo-600 bg-indigo-50/50'
+                      : 'text-slate-700'
+                  "
+                  @click="selectChildOrder(idx, opt.value)"
+                >
+                  {{ opt.label }}
+                </button>
+              </div>
+            </FloatingDropdownMenu>
           </div>
           <div class="space-y-1">
             <label class="text-[10px] font-semibold text-slate-500 uppercase">结果索引</label>
@@ -392,7 +445,7 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400"
               placeholder="0"
               @input="setChildValue(idx, 'index', parseInt(getInputValue($event)) || 0)"
-            >
+            />
           </div>
         </div>
 
@@ -410,7 +463,7 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
                   class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono min-w-0"
                   placeholder="image/..."
                   @input="updateChildTemplate(idx, tIdx, getInputValue($event))"
-                >
+                />
                 <button
                   v-if="getChildTemplateList(item).length > 1"
                   class="px-2 bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 rounded-lg flex items-center justify-center"
@@ -420,16 +473,13 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
                   <Trash2 :size="12" />
                 </button>
               </div>
-              <div
-                v-if="getChildTemplateList(item).length === 0"
-                class="flex gap-1"
-              >
+              <div v-if="getChildTemplateList(item).length === 0" class="flex gap-1">
                 <input
                   value=""
                   class="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 outline-none focus:border-indigo-400 font-mono min-w-0"
                   placeholder="image/..."
                   @input="updateChildTemplate(idx, 0, getInputValue($event))"
-                >
+                />
               </div>
               <div class="flex gap-1">
                 <button
@@ -456,7 +506,7 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
               :checked="getChildValue(item, 'green_mask', false) as boolean"
               class="w-3.5 h-3.5 rounded text-indigo-600"
               @change="setChildValue(idx, 'green_mask', getChecked($event))"
-            >
+            />
             <span class="text-[11px] text-slate-600">绿色掩码 (忽略绿色部分)</span>
           </label>
         </template>
@@ -470,19 +520,23 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
                 placeholder="0.7 或 [0.7, 0.8]"
                 @input="setChildJsonValue(idx, 'threshold', getInputValue($event))"
-              >
+              />
             </div>
             <div class="space-y-1">
               <label class="text-[10px] font-semibold text-slate-500 uppercase">算法 (1/3/5)</label>
-              <input
-                type="number"
-                min="1"
-                max="5"
-                step="2"
+              <select
                 :value="getChildValue(item, 'method', 5) as number"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
-                @input="setChildValue(idx, 'method', parseInt(getInputValue($event)) || 5)"
+                @change="setChildValue(idx, 'method', Number(getInputValue($event)))"
               >
+                <option
+                  v-for="option in templateMatchMethodOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
             </div>
           </div>
         </template>
@@ -497,7 +551,7 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
                 :value="getChildValue(item, 'count', 4) as number"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
                 @input="setChildValue(idx, 'count', parseInt(getInputValue($event)) || 4)"
-              >
+              />
             </div>
             <div class="space-y-1">
               <label class="text-[10px] font-semibold text-slate-500 uppercase">检测器</label>
@@ -506,10 +560,7 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
                 :value="getChildValue(item, 'detector', 'SIFT') as string"
                 @change="setChildValue(idx, 'detector', ($event.target as HTMLSelectElement).value)"
               >
-                <option
-                  v-for="opt in detectorOptions"
-                  :key="opt"
-                >
+                <option v-for="opt in detectorOptions" :key="opt">
                   {{ opt }}
                 </option>
               </select>
@@ -524,7 +575,7 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
                 :value="getChildValue(item, 'ratio', 0.6) as number"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
                 @input="setChildValue(idx, 'ratio', parseFloat(getInputValue($event)) || 0.6)"
-              >
+              />
             </div>
           </div>
         </template>
@@ -538,7 +589,7 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono"
                 placeholder="[R,G,B]"
                 @input="setChildJsonValue(idx, 'lower', getInputValue($event))"
-              >
+              />
             </div>
             <div class="space-y-1">
               <label class="text-[10px] font-semibold text-slate-500 uppercase">颜色上限</label>
@@ -547,13 +598,17 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono"
                 placeholder="[R,G,B]"
                 @input="setChildJsonValue(idx, 'upper', getInputValue($event))"
-              >
+              />
             </div>
             <div class="col-span-2 space-y-1">
               <button
                 class="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-pink-200 bg-pink-50 text-pink-600 text-xs font-medium hover:bg-pink-100 disabled:cursor-not-allowed disabled:opacity-50"
                 :disabled="!isSupportedColorMethod(Number(getChildValue(item, 'method', 4)))"
-                :title="isSupportedColorMethod(Number(getChildValue(item, 'method', 4))) ? '从设备截图或本地图片统计颜色范围' : '仅支持 method 4（RGB）、40（HSV）和 6（灰度）'"
+                :title="
+                  isSupportedColorMethod(Number(getChildValue(item, 'method', 4)))
+                    ? '从设备截图或本地图片统计颜色范围'
+                    : '仅支持 method 4（RGB）、40（HSV）和 6（灰度）'
+                "
                 @click="openChildColorRangePicker(idx, item)"
               >
                 <Pipette :size="12" />
@@ -568,12 +623,19 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
             </div>
             <div class="space-y-1">
               <label class="text-[10px] font-semibold text-slate-500 uppercase">算法 (4=RGB)</label>
-              <input
-                type="number"
+              <select
                 :value="getChildValue(item, 'method', 4) as number"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
-                @input="setChildValue(idx, 'method', parseInt(getInputValue($event)) || 4)"
+                @change="setChildValue(idx, 'method', Number(getInputValue($event)))"
               >
+                <option
+                  v-for="option in colorMatchMethodOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
             </div>
             <div class="space-y-1">
               <label class="text-[10px] font-semibold text-slate-500 uppercase">特征点数</label>
@@ -583,7 +645,7 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
                 :value="getChildValue(item, 'count', 1) as number"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
                 @input="setChildValue(idx, 'count', parseInt(getInputValue($event)) || 1)"
-              >
+              />
             </div>
           </div>
           <label class="inline-flex items-center gap-1.5 cursor-pointer">
@@ -592,7 +654,7 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
               :checked="getChildValue(item, 'connected', false) as boolean"
               class="w-3.5 h-3.5 rounded text-indigo-600"
               @change="setChildValue(idx, 'connected', getChecked($event))"
-            >
+            />
             <span class="text-[11px] text-slate-600">要求像素相连</span>
           </label>
         </template>
@@ -605,7 +667,7 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
               placeholder="期望文本或正则"
               @input="setChildJsonValue(idx, 'expected', getInputValue($event), true)"
-            >
+            />
           </div>
           <div class="grid grid-cols-2 gap-2">
             <div class="space-y-1">
@@ -618,7 +680,7 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
                 :value="getChildValue(item, 'threshold', 0.3) as number"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
                 @input="setChildValue(idx, 'threshold', parseFloat(getInputValue($event)) || 0.3)"
-              >
+              />
             </div>
             <div class="space-y-1">
               <label class="text-[10px] font-semibold text-slate-500 uppercase">模型路径</label>
@@ -627,7 +689,7 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono"
                 placeholder="model/ocr/"
                 @input="setChildValue(idx, 'model', getInputValue($event))"
-              >
+              />
             </div>
           </div>
           <div class="space-y-1">
@@ -635,9 +697,9 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
             <input
               :value="getChildJsonValue(item, 'replace')"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono"
-              placeholder="[[&quot;原&quot;,&quot;替&quot;]]"
+              placeholder='[["原","替"]]'
               @input="setChildJsonValue(idx, 'replace', getInputValue($event))"
-            >
+            />
           </div>
           <label class="inline-flex items-center gap-1.5 cursor-pointer">
             <input
@@ -645,20 +707,26 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
               :checked="getChildValue(item, 'only_rec', false) as boolean"
               class="w-3.5 h-3.5 rounded text-indigo-600"
               @change="setChildValue(idx, 'only_rec', getChecked($event))"
-            >
+            />
             <span class="text-[11px] text-slate-600">仅识别</span>
           </label>
         </template>
 
-        <template v-if="['NeuralNetworkClassify', 'NeuralNetworkDetect'].includes(item.recognition as string)">
+        <template
+          v-if="
+            ['NeuralNetworkClassify', 'NeuralNetworkDetect'].includes(item.recognition as string)
+          "
+        >
           <div class="space-y-1">
             <label class="text-[10px] font-semibold text-slate-500 uppercase">模型路径</label>
             <input
               :value="getChildValue(item, 'model', '') as string"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono"
-              :placeholder="item.recognition === 'NeuralNetworkClassify' ? 'model/classify/' : 'model/detect/'"
+              :placeholder="
+                item.recognition === 'NeuralNetworkClassify' ? 'model/classify/' : 'model/detect/'
+              "
               @input="setChildValue(idx, 'model', getInputValue($event))"
-            >
+            />
           </div>
           <div class="grid grid-cols-2 gap-2">
             <div class="space-y-1">
@@ -668,50 +736,39 @@ const openChildColorRangePicker = (idx: number, item: CompositeItem) => {
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono"
                 placeholder="0 或 [0,1,2]"
                 @input="setChildJsonValue(idx, 'expected', getInputValue($event), true)"
-              >
+              />
             </div>
-            <div
-              v-if="item.recognition === 'NeuralNetworkDetect'"
-              class="space-y-1"
-            >
+            <div v-if="item.recognition === 'NeuralNetworkDetect'" class="space-y-1">
               <label class="text-[10px] font-semibold text-slate-500 uppercase">匹配阈值</label>
               <input
                 :value="getChildJsonValue(item, 'threshold')"
                 class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
                 placeholder="0.3 或 [0.5, 0.6]"
                 @input="setChildJsonValue(idx, 'threshold', getInputValue($event))"
-              >
+              />
             </div>
           </div>
           <div class="space-y-1">
-            <label class="text-[10px] font-semibold text-slate-500 uppercase">标签列表 (Labels)</label>
+            <label class="text-[10px] font-semibold text-slate-500 uppercase"
+              >标签列表 (Labels)</label
+            >
             <input
               :value="getChildJsonValue(item, 'labels')"
               class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono"
-              placeholder="[&quot;Cat&quot;,&quot;Dog&quot;]"
+              placeholder='["Cat","Dog"]'
               @input="setChildJsonValue(idx, 'labels', getInputValue($event))"
-            >
+            />
           </div>
         </template>
 
         <template v-if="item.recognition === 'Custom'">
-          <div class="space-y-1">
-            <label class="text-[10px] font-semibold text-slate-500 uppercase">自定义识别名</label>
-            <input
-              :value="getChildValue(item, 'custom_recognition', '') as string"
-              class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400"
-              @input="setChildValue(idx, 'custom_recognition', getInputValue($event))"
-            >
-          </div>
-          <div class="space-y-1">
-            <label class="text-[10px] font-semibold text-slate-500 uppercase">自定义参数</label>
-            <textarea
-              :value="getChildJsonValue(item, 'custom_recognition_param')"
-              class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-mono h-14 resize-none"
-              placeholder="JSON"
-              @input="setChildJsonValue(idx, 'custom_recognition_param', getInputValue($event))"
-            />
-          </div>
+          <CustomCompletionEditor
+            kind="recognition"
+            :model-value="getChildValue(item, 'custom_recognition', '') as string"
+            :param-value="getChildValue(item, 'custom_recognition_param', undefined)"
+            @update:model-value="setChildValue(idx, 'custom_recognition', $event)"
+            @update:param-value="setChildValue(idx, 'custom_recognition_param', $event)"
+          />
         </template>
       </div>
     </div>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
-import { Check, ChevronDown, FileJson, Loader2, Move, Plus, X } from 'lucide-vue-next'
+import { Check, ChevronDown, FileJson, FolderOpen, Loader2, Move, Plus, X } from 'lucide-vue-next'
 import FlowEditor from './FlowEditor.vue'
 import InfoPanel from './Flow/InfoPanel.vue'
 import ToolbarIconDropdown from './Flow/Common/ToolbarIconDropdown.vue'
@@ -46,6 +46,7 @@ const {
   infoPanelRef,
   debugPanel,
   activeTab,
+  resourceLoaded,
   activeEditorRef,
   activeEditorStatus,
   isRestoringWorkspace,
@@ -335,6 +336,55 @@ const isFileOpenedElsewhere = (tabId: string, file: ResourceFileInfo) => {
           </div>
           <div class="mt-1 text-xs">
             请从右上角“资源”按钮加载资源后选择文件
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="activeTab && !activeTab.resourceFile && resourceLoaded"
+        class="absolute inset-0 z-20 flex items-center justify-center bg-slate-100/95 p-6"
+      >
+        <div class="flex max-h-[min(36rem,calc(100%-3rem))] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+          <div class="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
+            <div class="rounded-xl bg-indigo-50 p-2.5 text-indigo-500">
+              <FolderOpen :size="22" />
+            </div>
+            <div class="min-w-0">
+              <h3 class="text-sm font-bold text-slate-800">为当前标签选择资源文件</h3>
+              <p class="mt-0.5 text-xs text-slate-500">选择后会直接在此标签中加载</p>
+            </div>
+          </div>
+
+          <div v-if="resourceFiles.length" class="overflow-y-auto p-2.5">
+            <button
+              v-for="file in resourceFiles"
+              :key="makeFileId(file.source, file.value)"
+              type="button"
+              class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors"
+              :class="isFileOpenedElsewhere(activeTab.id, file)
+                ? 'cursor-not-allowed text-slate-300'
+                : 'text-slate-600 hover:bg-indigo-50 hover:text-indigo-700'"
+              :disabled="isFileOpenedElsewhere(activeTab.id, file)"
+              @click="handleTabResourceSelect(activeTab.id, file)"
+            >
+              <FileJson :size="17" class="shrink-0" />
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-sm font-semibold">{{ file.label || file.value }}</span>
+                <span class="block truncate text-[11px] text-slate-400">{{ file.source }}</span>
+              </span>
+              <span
+                v-if="isFileOpenedElsewhere(activeTab.id, file)"
+                class="shrink-0 text-[10px] text-slate-400"
+              >
+                已打开
+              </span>
+            </button>
+          </div>
+
+          <div v-else class="px-6 py-10 text-center">
+            <FileJson :size="32" class="mx-auto mb-3 text-slate-300" />
+            <div class="text-sm font-semibold text-slate-600">当前资源中没有可用文件</div>
+            <div class="mt-1 text-xs text-slate-400">可从右上角“资源”菜单新建或重新加载文件</div>
           </div>
         </div>
       </div>

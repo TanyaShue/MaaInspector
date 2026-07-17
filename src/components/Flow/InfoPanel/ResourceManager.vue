@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, watchEffect } from 'vue'
 import { ElMessage } from 'element-plus'
-import {
-  Database, HardDrive, Settings, RefreshCw, FilePlus,
-} from 'lucide-vue-next'
+import { Database, HardDrive, Settings, RefreshCw, FilePlus } from 'lucide-vue-next'
 import { resourceApi } from '@/services/api'
 import { useAppConfigStore } from '@/stores/appConfig'
 import { makeFileId, parseFileId, getFileObjById } from '@/utils/fileId'
@@ -42,7 +40,9 @@ const emit = defineEmits([
 ])
 
 // 内部状态 (当 props 未提供时使用)
-const internalStatus = ref<'disconnected' | 'connecting' | 'connected' | 'failed'>(props.initialStatus ?? 'disconnected')
+const internalStatus = ref<'disconnected' | 'connecting' | 'connected' | 'failed'>(
+  props.initialStatus ?? 'disconnected'
+)
 const internalMessage = ref(props.initialMessage ?? '资源未连接')
 const internalProfiles = ref<EditableProfile[]>([])
 const internalProfileIndex = ref(0)
@@ -61,11 +61,18 @@ const localProfileIndex = ref(0)
 const localSelectedFile = ref('')
 const availableFiles = ref<ResourceFileInfo[]>([...(props.initialFiles ?? [])])
 
-const currentProfile = computed<EditableProfile>(() =>
-  resourceProfiles.value[selectedProfileIndex.value] || { name: 'None', paths: [] } as EditableProfile
+const currentProfile = computed<EditableProfile>(
+  () =>
+    resourceProfiles.value[selectedProfileIndex.value] ||
+    ({ name: 'None', paths: [] } as EditableProfile)
 )
 
 const findFileById = (id: string) => getFileObjById(id, availableFiles.value)
+
+const handleProfileIndexUpdate = (index: PropertyKey) => {
+  emit('update:profileIndex', index)
+  emit('config-changed')
+}
 
 const loadFileById = (fileId: string): boolean => {
   if (!fileId) return false
@@ -96,7 +103,7 @@ const fileOptions = computed<DropdownOption[]>(() => {
     return [{ label: '配置路径下无文件', value: '', disabled: true }]
   }
   const openedIds = new Set(props.openedFileIds || [])
-  return availableFiles.value.map((file) => {
+  return availableFiles.value.map(file => {
     const fileId = makeFileId(file.source, file.value)
     return {
       label: file.label,
@@ -119,7 +126,8 @@ watchEffect(() => {
 const normalizeProfiles = (profiles?: ResourceProfile[]): EditableProfile[] =>
   (profiles || []).map(p => ({
     ...p,
-    paths: Array.isArray((p as any).paths) ? [...(p as any).paths] : []
+    paths: Array.isArray((p as any).paths) ? [...(p as any).paths] : [],
+    schema_path: typeof p.schema_path === 'string' ? p.schema_path : ''
   }))
 
 // 加载资源
@@ -129,6 +137,7 @@ const handleResourceLoad = async (): Promise<boolean> => {
     internalMessage.value = '加载中...'
 
     const res = await resourceApi.load(currentProfile.value)
+    appConfig.setCustomCompletions(res.custom_completions)
 
     const ok = (res as any)?.r ?? (res as any)?.success ?? true
     if (!ok) {
@@ -142,7 +151,7 @@ const handleResourceLoad = async (): Promise<boolean> => {
 
     if ((res as any).list) {
       availableFiles.value = (res.list || []) as ResourceFileInfo[]
-      
+
       appConfig.markResourceLoaded()
 
       if (!props.openedFileIds || props.openedFileIds.length === 0) {
@@ -153,7 +162,8 @@ const handleResourceLoad = async (): Promise<boolean> => {
         )
         const restoredTabs = appConfig.restoreLastWorkspace(validFileIds)
         if (restoredTabs.length > 0) {
-          const activeRestoredFile = appConfig.resource.selectedFileId || restoredTabs[0].resourceFile
+          const activeRestoredFile =
+            appConfig.resource.selectedFileId || restoredTabs[0].resourceFile
           if (activeRestoredFile) {
             localSelectedFile.value = activeRestoredFile
             emit('update:selectedFile', activeRestoredFile)
@@ -170,7 +180,7 @@ const handleResourceLoad = async (): Promise<boolean> => {
     }
     return true
   } catch (e: unknown) {
-    console.error("资源加载流程异常", e)
+    console.error('资源加载流程异常', e)
     internalStatus.value = 'failed'
     internalMessage.value = '加载失败'
     return false
@@ -179,7 +189,8 @@ const handleResourceLoad = async (): Promise<boolean> => {
 
 const handleResourceLoadWithRetry = async (maxAttempts = 5): Promise<boolean> => {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    internalMessage.value = attempt === 1 ? '正在自动恢复资源...' : `正在重试加载资源 (${attempt}/${maxAttempts})...`
+    internalMessage.value =
+      attempt === 1 ? '正在自动恢复资源...' : `正在重试加载资源 (${attempt}/${maxAttempts})...`
     if (await handleResourceLoad()) return true
     if (attempt < maxAttempts) await new Promise(resolve => setTimeout(resolve, 600))
   }
@@ -263,20 +274,20 @@ watch(selectedProfileIndex, (nv, ov) => {
   void handleResourceLoad()
 })
 
-watch(() => props.initialFiles, (files) => {
-  if (availableFiles.value.length > 0 || !files?.length) return
-  availableFiles.value = [...files]
-})
+watch(
+  () => props.initialFiles,
+  files => {
+    if (availableFiles.value.length > 0 || !files?.length) return
+    availableFiles.value = [...files]
+  }
+)
 </script>
 
 <template>
   <section class="space-y-2">
     <div class="flex items-center justify-between text-xs mb-1">
       <div class="flex items-center gap-1.5 font-bold text-slate-700">
-        <Database
-          :size="14"
-          class="text-emerald-500"
-        />
+        <Database :size="14" class="text-emerald-500" />
         资源配置
       </div>
       <StatusIndicator :status="status" />
@@ -288,12 +299,9 @@ watch(() => props.initialFiles, (files) => {
           :options="profileOptions"
           placeholder="选择资源配置"
           class="flex-1"
-          @update:model-value="emit('update:profileIndex', $event); emit('config-changed')"
+          @update:model-value="handleProfileIndexUpdate"
         />
-        <button
-          class="btn-icon"
-          @click="$emit('open-settings')"
-        >
+        <button class="btn-icon" @click="$emit('open-settings')">
           <Settings :size="16" />
         </button>
       </div>
@@ -306,7 +314,7 @@ watch(() => props.initialFiles, (files) => {
           <component
             :is="status === 'connecting' ? RefreshCw : HardDrive"
             :size="12"
-            :class="{'animate-spin': status === 'connecting'}"
+            :class="{ 'animate-spin': status === 'connecting' }"
           />
           <span>{{ status === 'connected' ? '重新加载' : '加载资源' }}</span>
         </button>
@@ -318,10 +326,7 @@ watch(() => props.initialFiles, (files) => {
           <FilePlus :size="16" />
         </button>
       </div>
-      <div
-        v-if="status === 'connected'"
-        class="animate-in fade-in slide-in-from-top-2"
-      >
+      <div v-if="status === 'connected'" class="animate-in fade-in slide-in-from-top-2">
         <Dropdown
           :model-value="selectedResourceFile"
           :options="fileOptions"

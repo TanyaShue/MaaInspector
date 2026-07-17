@@ -127,6 +127,18 @@ export const orderByOptions: Array<{ value: string; label: string }> = [
 
 export const detectorOptions: string[] = ['SIFT', 'KAZE', 'AKAZE', 'BRISK', 'ORB']
 
+export const templateMatchMethodOptions = [
+  { value: 1, label: 'TM_SQDIFF_NORMED (1)' },
+  { value: 3, label: 'TM_CCORR_NORMED (3)' },
+  { value: 5, label: 'TM_CCOEFF_NORMED (5)' }
+]
+
+export const colorMatchMethodOptions = [
+  { value: 4, label: 'RGB (4)' },
+  { value: 40, label: 'HSV (40)' },
+  { value: 6, label: '灰度 (6)' }
+]
+
 export const focusEventTypes: string[] = [
   'Node.Recognition.Starting', 'Node.Recognition.Succeeded', 'Node.Recognition.Failed',
   'Node.Action.Starting', 'Node.Action.Succeeded', 'Node.Action.Failed'

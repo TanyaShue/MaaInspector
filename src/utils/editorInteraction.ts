@@ -8,6 +8,9 @@ interface PositionedItem {
 export const isEditorActive = (state: EditorActiveState | undefined): boolean =>
   typeof state === 'function' ? state() : state !== false
 
+export const normalizeKeyboardKey = (event: { key?: unknown }): string =>
+  typeof event.key === 'string' ? event.key.toLowerCase() : ''
+
 export const onlyWhenEditorActive = <T extends Event>(
   state: EditorActiveState | undefined,
   handler: (event: T) => void

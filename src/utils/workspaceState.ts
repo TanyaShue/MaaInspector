@@ -15,7 +15,8 @@ const getResourceFile = (tab: AnyTabResourceInfo): string => {
 export const buildResourceSignature = (profile?: ResourceProfile | null): string => {
   const name = (profile?.name || '').trim()
   const paths = Array.isArray(profile?.paths) ? profile.paths.map(normalizePath) : []
-  return JSON.stringify({ name, paths })
+  const schemaPath = normalizePath(profile?.schema_path || '')
+  return JSON.stringify({ name, paths, schemaPath })
 }
 
 export const toPersistedTabs = (tabs?: AnyTabResourceInfo[] | null): PersistedTabResourceInfo[] =>
@@ -46,4 +47,3 @@ export const legacyTabsToWorkspaceState = (
     restore_workspace_on_start: restoreWorkspaceOnStart
   }
 }
-

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { Plus, Info, X } from 'lucide-vue-next'
+import FloatingDropdownMenu from '@/components/Flow/Common/FloatingDropdownMenu.vue'
 
 const props = defineProps<{
   focusData?: Record<string, string>
@@ -18,6 +19,7 @@ const emit = defineEmits<{
 const focusData = computed(() => props.focusData ?? {})
 const availableFocusEvents = computed(() => props.availableFocusEvents ?? [])
 const isDropdownOpen = computed(() => props.isDropdownOpen ?? false)
+const focusAnchor = ref<HTMLElement | null>(null)
 
 const getInputValue = (event: Event) => (event.target as HTMLInputElement | null)?.value ?? ''
 </script>
@@ -53,25 +55,29 @@ const getInputValue = (event: Event) => (event.target as HTMLInputElement | null
       class="relative"
     >
       <button
+        ref="focusAnchor"
         class="w-full flex items-center justify-center gap-1 px-2.5 py-1.5 bg-white border border-dashed border-slate-300 rounded-lg text-xs text-slate-500 hover:border-pink-300 hover:text-pink-500 outline-none cursor-pointer transition-colors"
         @click="emit('toggle-dropdown')"
       >
         <Plus :size="12" />
         添加回调事件
       </button>
-      <div
-        v-if="isDropdownOpen"
-        class="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-[220px] overflow-y-auto custom-scrollbar-dark flex flex-col py-1 z-[60]"
+      <FloatingDropdownMenu
+        :open="isDropdownOpen"
+        :anchor="focusAnchor"
+        :max-height="220"
       >
-        <button
-          v-for="t in availableFocusEvents"
-          :key="t"
-          class="px-3 py-2 text-xs text-left text-slate-700 hover:bg-slate-50 transition-colors"
-          @click="emit('add-focus', t)"
-        >
-          {{ t }}
-        </button>
-      </div>
+        <div class="flex flex-col py-1">
+          <button
+            v-for="t in availableFocusEvents"
+            :key="t"
+            class="px-3 py-2 text-xs text-left text-slate-700 hover:bg-slate-50 transition-colors"
+            @click="emit('add-focus', t)"
+          >
+            {{ t }}
+          </button>
+        </div>
+      </FloatingDropdownMenu>
     </div>
     <div
       v-else

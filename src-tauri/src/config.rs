@@ -232,6 +232,8 @@ pub struct DeviceInfo {
 pub struct ResourceProfile {
     pub name: Option<String>,
     pub paths: Option<Vec<String>>,
+    #[serde(default)]
+    pub schema_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

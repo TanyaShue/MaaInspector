@@ -6,12 +6,18 @@ import type {
   SystemInitResponse,
   DeviceConfigPayload,
   ApiDeviceInfo,
-  WorkspaceState
+  WorkspaceState,
+  CustomCompletionRules
 } from '@/services/api'
 import type { EdgeType } from '@/utils/flowOptions'
 import type { LayoutAlgorithm, LayoutDirection, SpacingKey } from '@/utils/flowTypes'
 import type { TabResourceInfo } from '@/utils/flowWorkspaceTypes'
-import { buildResourceSignature, legacyTabsToWorkspaceState, toPersistedTabs, toRuntimeTabs } from '@/utils/workspaceState'
+import {
+  buildResourceSignature,
+  legacyTabsToWorkspaceState,
+  toPersistedTabs,
+  toRuntimeTabs
+} from '@/utils/workspaceState'
 
 interface CanvasSettings {
   edgeType: EdgeType
@@ -30,6 +36,7 @@ interface ResourceState {
   loaded: boolean
   signature: string
   lastWorkspace: WorkspaceState | null
+  customCompletions: CustomCompletionRules
 }
 
 interface DeviceState {
@@ -91,7 +98,8 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     selectedFileId: '',
     loaded: false,
     signature: '',
-    lastWorkspace: null
+    lastWorkspace: null,
+    customCompletions: { action: [], recognition: [] }
   })
   const device = ref<DeviceState>({
     status: 'disconnected',
@@ -111,8 +119,8 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     isSaving: false
   })
 
-  const currentProfile = computed(() =>
-    resource.value.profiles[resource.value.profileIndex] || { name: 'None', paths: [] }
+  const currentProfile = computed(
+    () => resource.value.profiles[resource.value.profileIndex] || { name: 'None', paths: [] }
   )
 
   const currentWorkspace = computed<WorkspaceState | null>(() => {
@@ -145,7 +153,10 @@ export const useAppConfigStore = defineStore('appConfig', () => {
   function normalizeProfiles(profiles?: ResourceProfile[]): ResourceProfile[] {
     return (profiles || []).map(p => ({
       ...p,
-      paths: Array.isArray((p as Record<string, unknown>).paths) ? [...(p as Record<string, unknown>).paths as string[]] : []
+      paths: Array.isArray((p as Record<string, unknown>).paths)
+        ? [...((p as Record<string, unknown>).paths as string[])]
+        : [],
+      schema_path: typeof p.schema_path === 'string' ? p.schema_path : ''
     }))
   }
 
@@ -191,7 +202,9 @@ export const useAppConfigStore = defineStore('appConfig', () => {
         canvas.value.restoreWorkspaceOnStart = data.restore_workspace_on_start
       }
 
-      resource.value.signature = buildResourceSignature(resource.value.profiles[resource.value.profileIndex])
+      resource.value.signature = buildResourceSignature(
+        resource.value.profiles[resource.value.profileIndex]
+      )
 
       if (data.workspace_state) {
         resource.value.lastWorkspace = data.workspace_state
@@ -261,11 +274,15 @@ export const useAppConfigStore = defineStore('appConfig', () => {
   function updateCanvasSettings(partial: Partial<CanvasSettings>) {
     if (partial.edgeType !== undefined) canvas.value.edgeType = partial.edgeType
     if (partial.spacing !== undefined) canvas.value.spacing = partial.spacing
-    if (partial.layoutAlgorithm !== undefined) canvas.value.layoutAlgorithm = partial.layoutAlgorithm
-    if (partial.layoutDirection !== undefined) canvas.value.layoutDirection = partial.layoutDirection
-    if (partial.pipelineVersion !== undefined) canvas.value.pipelineVersion = partial.pipelineVersion
+    if (partial.layoutAlgorithm !== undefined)
+      canvas.value.layoutAlgorithm = partial.layoutAlgorithm
+    if (partial.layoutDirection !== undefined)
+      canvas.value.layoutDirection = partial.layoutDirection
+    if (partial.pipelineVersion !== undefined)
+      canvas.value.pipelineVersion = partial.pipelineVersion
     if (partial.lowMemoryMode !== undefined) canvas.value.lowMemoryMode = partial.lowMemoryMode
-    if (partial.restoreWorkspaceOnStart !== undefined) canvas.value.restoreWorkspaceOnStart = partial.restoreWorkspaceOnStart
+    if (partial.restoreWorkspaceOnStart !== undefined)
+      canvas.value.restoreWorkspaceOnStart = partial.restoreWorkspaceOnStart
     void saveToBackend()
   }
 
@@ -273,6 +290,7 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     resource.value.profileIndex = index
     resource.value.loaded = false
     resource.value.selectedFileId = ''
+    resource.value.customCompletions = { action: [], recognition: [] }
     resource.value.signature = buildResourceSignature(resource.value.profiles[index])
     tabs.value = createEmptyWorkspace()
     await saveToBackend()
@@ -286,7 +304,9 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     if (resource.value.profileIndex >= resource.value.profiles.length) {
       resource.value.profileIndex = 0
     }
-    resource.value.signature = buildResourceSignature(resource.value.profiles[resource.value.profileIndex])
+    resource.value.signature = buildResourceSignature(
+      resource.value.profiles[resource.value.profileIndex]
+    )
     await saveToBackend()
   }
 
@@ -304,11 +324,19 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     void saveToBackend()
   }
 
+  function setCustomCompletions(rules?: CustomCompletionRules) {
+    resource.value.customCompletions = {
+      action: [...(rules?.action || [])],
+      recognition: [...(rules?.recognition || [])]
+    }
+  }
+
   async function loadResource() {
     const profile = currentProfile.value
     if (!profile.paths || profile.paths.length === 0) return
     resource.value.signature = buildResourceSignature(profile)
-    await resourceApi.load(profile)
+    const response = await resourceApi.load(profile)
+    setCustomCompletions(response.custom_completions)
   }
 
   function setDeviceStatus(status: DeviceState['status'], deviceInfo?: ApiDeviceInfo | null) {
@@ -325,7 +353,12 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     device.value.lastSearched = devices
   }
 
-  async function connectAdb(deviceData: { adb_path: string; address: string; config?: Record<string, unknown>; name?: string }) {
+  async function connectAdb(deviceData: {
+    adb_path: string
+    address: string
+    config?: Record<string, unknown>
+    name?: string
+  }) {
     device.value.status = 'loading'
     try {
       await deviceApi.connectAdb(deviceData)
@@ -337,7 +370,15 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     }
   }
 
-  async function connectWin32(deviceData: { hwnd: number | string; name?: string; window_name?: string; class_name?: string; screencap_method?: number; mouse_method?: number; keyboard_method?: number }) {
+  async function connectWin32(deviceData: {
+    hwnd: number | string
+    name?: string
+    window_name?: string
+    class_name?: string
+    screencap_method?: number
+    mouse_method?: number
+    keyboard_method?: number
+  }) {
     device.value.status = 'loading'
     try {
       await deviceApi.connectWin32(deviceData)
@@ -396,7 +437,8 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     if (idx < 0) return
     tabs.value.items.splice(idx, 1)
     if (tabs.value.activeTabId === tabId) {
-      tabs.value.activeTabId = tabs.value.items[Math.max(0, idx - 1)]?.id || tabs.value.items[0]?.id || ''
+      tabs.value.activeTabId =
+        tabs.value.items[Math.max(0, idx - 1)]?.id || tabs.value.items[0]?.id || ''
     }
     void saveToBackend()
   }
@@ -446,14 +488,17 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     const lastWorkspace = resource.value.lastWorkspace
     if (!lastWorkspace) return false
     const currentSignature = buildResourceSignature(currentProfile.value)
-    return Boolean(lastWorkspace.resource_signature && lastWorkspace.resource_signature === currentSignature)
+    return Boolean(
+      lastWorkspace.resource_signature && lastWorkspace.resource_signature === currentSignature
+    )
   }
 
   function restoreLastWorkspace(validResourceFiles?: Set<string>) {
     if (!canRestoreLastWorkspace()) return []
     const lastWorkspace = resource.value.lastWorkspace
-    const restoredTabs = toRuntimeTabs(lastWorkspace?.tabs || [])
-      .filter(tab => !validResourceFiles || validResourceFiles.has(tab.resourceFile))
+    const restoredTabs = toRuntimeTabs(lastWorkspace?.tabs || []).filter(
+      tab => !validResourceFiles || validResourceFiles.has(tab.resourceFile)
+    )
 
     if (restoredTabs.length === 0) {
       tabs.value = createEmptyWorkspace()
@@ -464,7 +509,10 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     tabs.value.activeTabId = restoredTabs.some(tab => tab.id === lastWorkspace?.active_tab_id)
       ? lastWorkspace?.active_tab_id || restoredTabs[0].id
       : restoredTabs[0].id
-    resource.value.selectedFileId = restoredTabs.find(tab => tab.id === tabs.value.activeTabId)?.resourceFile || restoredTabs[0].resourceFile || ''
+    resource.value.selectedFileId =
+      restoredTabs.find(tab => tab.id === tabs.value.activeTabId)?.resourceFile ||
+      restoredTabs[0].resourceFile ||
+      ''
     void saveToBackend()
     return restoredTabs
   }
@@ -487,6 +535,7 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     selectResourceFile,
     setResourceLoaded,
     markResourceLoaded,
+    setCustomCompletions,
     loadResource,
     setDeviceStatus,
     rememberDevice,

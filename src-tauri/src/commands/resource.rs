@@ -1,7 +1,13 @@
 use super::{MaaFrameworkState, maafw_mut};
 use crate::resources::{ResourcesManager, ResourcesManagerState};
-use crate::response::{ApiResponse, FileNodesResponse, ResourceLoadResponse};
-use std::path::PathBuf;
+use crate::response::{
+    ApiResponse, CustomCompletionOption, CustomCompletionRules, FileNodesResponse,
+    ResourceLoadResponse,
+};
+use serde_json::{Map, Value};
+use std::collections::HashSet;
+use std::fs;
+use std::path::{Path, PathBuf};
 use tauri::State;
 
 async fn with_manager<R, F>(state: ResourcesManagerState, operation: F) -> Result<R, String>
@@ -47,6 +53,7 @@ pub async fn resource_load(
     resources_manager: State<'_, ResourcesManagerState>,
     backup_dir: State<'_, PathBuf>,
     paths: Vec<String>,
+    schema_path: Option<String>,
 ) -> Result<ResourceLoadResponse, String> {
     // Manage file resources (always succeeds, returns file list)
     let state = resources_manager.inner().clone();
@@ -71,6 +78,8 @@ pub async fn resource_load(
         fw.load_resource_async(&paths).await
     };
 
+    let custom_completions = load_custom_completion_rules(schema_path.as_deref());
+
     Ok(ResourceLoadResponse {
         r: true,
         success: true,
@@ -78,7 +87,172 @@ pub async fn resource_load(
         list: Some(results),
         maafw_loaded: maafw_ok,
         maafw_message: maafw_msg,
+        custom_completions,
     })
+}
+
+fn load_custom_completion_rules(schema_path: Option<&str>) -> CustomCompletionRules {
+    let Some(schema_path) = schema_path.filter(|path| !path.trim().is_empty()) else {
+        return CustomCompletionRules::default();
+    };
+    let directory = Path::new(schema_path);
+    CustomCompletionRules {
+        action: parse_custom_schema(
+            &directory.join("custom.action.schema.json"),
+            "custom_action",
+            "custom_action_param",
+        ),
+        recognition: parse_custom_schema(
+            &directory.join("custom.recognition.schema.json"),
+            "custom_recognition",
+            "custom_recognition_param",
+        ),
+    }
+}
+
+fn parse_custom_schema(
+    path: &Path,
+    name_key: &str,
+    param_key: &str,
+) -> Vec<CustomCompletionOption> {
+    let Ok(content) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let Ok(root) = serde_json::from_str::<Value>(&content) else {
+        crate::backend_log_error!("resource", "Invalid custom schema: {}", path.display());
+        return Vec::new();
+    };
+
+    let definitions = root.get("$defs").and_then(Value::as_object);
+    let names = root
+        .pointer(&format!("/properties/{name_key}/enum"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    names
+        .iter()
+        .filter_map(Value::as_str)
+        .map(|name| {
+            let definition = definitions.and_then(|defs| defs.get(name));
+            let param_schema = definition
+                .and_then(|item| item.get("properties"))
+                .and_then(Value::as_object)
+                .and_then(|properties| properties.get(param_key))
+                .map(|schema| resolve_local_refs(schema, &root, &mut HashSet::new()));
+            CustomCompletionOption {
+                value: name.to_string(),
+                title: definition
+                    .and_then(|item| item.get("title"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                description: definition
+                    .and_then(|item| item.get("description"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                param_schema,
+            }
+        })
+        .collect()
+}
+
+fn resolve_local_refs(value: &Value, root: &Value, visiting: &mut HashSet<String>) -> Value {
+    match value {
+        Value::Object(object) => {
+            if let Some(reference) = object.get("$ref").and_then(Value::as_str)
+                && reference.starts_with("#/")
+                && visiting.insert(reference.to_string())
+            {
+                let pointer = reference
+                    .trim_start_matches('#')
+                    .replace("~1", "/")
+                    .replace("~0", "~");
+                if let Some(target) = root.pointer(&pointer) {
+                    let mut resolved = resolve_local_refs(target, root, visiting);
+                    visiting.remove(reference);
+                    if let Some(resolved_object) = resolved.as_object_mut() {
+                        for (key, item) in object.iter().filter(|(key, _)| key.as_str() != "$ref") {
+                            resolved_object
+                                .insert(key.clone(), resolve_local_refs(item, root, visiting));
+                        }
+                    }
+                    return resolved;
+                }
+                visiting.remove(reference);
+            }
+            Value::Object(
+                object
+                    .iter()
+                    .map(|(key, item)| (key.clone(), resolve_local_refs(item, root, visiting)))
+                    .collect::<Map<_, _>>(),
+            )
+        }
+        Value::Array(items) => Value::Array(
+            items
+                .iter()
+                .map(|item| resolve_local_refs(item, root, visiting))
+                .collect(),
+        ),
+        _ => value.clone(),
+    }
+}
+
+#[cfg(test)]
+mod custom_schema_tests {
+    use super::*;
+
+    #[test]
+    fn parses_options_and_resolves_parameter_refs() {
+        let directory = tempfile::tempdir().unwrap();
+        fs::write(
+            directory.path().join("custom.action.schema.json"),
+            r##"{
+                "properties": { "custom_action": { "enum": ["Demo"] } },
+                "$defs": {
+                    "Text": { "type": "string", "minLength": 1 },
+                    "Demo": {
+                        "title": "Demo title",
+                        "description": "Demo description",
+                        "properties": {
+                            "custom_action_param": {
+                                "type": "object",
+                                "properties": { "name": { "$ref": "#/$defs/Text", "description": "Name" } },
+                                "required": ["name"]
+                            }
+                        }
+                    }
+                }
+            }"##,
+        )
+        .unwrap();
+
+        let rules = load_custom_completion_rules(directory.path().to_str());
+
+        assert_eq!(rules.action.len(), 1);
+        assert_eq!(rules.action[0].value, "Demo");
+        assert_eq!(rules.action[0].title.as_deref(), Some("Demo title"));
+        let name_schema = rules.action[0]
+            .param_schema
+            .as_ref()
+            .unwrap()
+            .pointer("/properties/name")
+            .unwrap();
+        assert_eq!(
+            name_schema.get("type").and_then(Value::as_str),
+            Some("string")
+        );
+        assert_eq!(
+            name_schema.get("description").and_then(Value::as_str),
+            Some("Name")
+        );
+    }
+
+    #[test]
+    fn missing_schema_directory_returns_empty_rules() {
+        let rules = load_custom_completion_rules(Some("Z:/missing/schema/directory"));
+        assert!(rules.action.is_empty());
+        assert!(rules.recognition.is_empty());
+    }
 }
 
 /// Get nodes from a file
