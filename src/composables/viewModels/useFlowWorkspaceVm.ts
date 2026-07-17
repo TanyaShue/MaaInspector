@@ -39,6 +39,14 @@ export function useFlowWorkspaceVm() {
     nodeCount: 0,
     edgeCount: 0
   })
+  const dirtyTabIds = computed(() => {
+    const dirtyIds = new Set<string>()
+    for (const [tabId, editor] of editorRefs.value) {
+      if (editor.getEditorStatus().isDirty) dirtyIds.add(tabId)
+    }
+    return dirtyIds
+  })
+  const hasDirtyTabs = computed(() => dirtyTabIds.value.size > 0)
   const restoringWorkspaceCount = computed(() => loadingRestoredTabs.value.size)
   const isRestoringWorkspace = computed(() => restoringWorkspaceCount.value > 0)
 
@@ -195,6 +203,22 @@ export function useFlowWorkspaceVm() {
     activeEditorRef.value?.handleUpdatePipelineVersion(val)
   }
 
+  const handleSaveAllNodes = async () => {
+    const dirtyEntries = tabs.value.items
+      .map(tab => ({ tab, editor: editorRefs.value.get(tab.id) }))
+      .filter(({ tab, editor }) => Boolean(tab.resourceFile && editor?.getEditorStatus().isDirty))
+
+    for (const { tab, editor } of dirtyEntries) {
+      if (!editor) continue
+      const separatorIndex = tab.resourceFile.indexOf('|')
+      if (separatorIndex < 0) continue
+      await editor.handleSaveNodes({
+        source: tab.resourceFile.slice(0, separatorIndex),
+        filename: tab.resourceFile.slice(separatorIndex + 1)
+      })
+    }
+  }
+
   const handleRestoreTabs = async (lastTabs: TabResourceInfo[]) => {
     restoreTabsFromResource(lastTabs)
     lastTabs
@@ -255,6 +279,8 @@ export function useFlowWorkspaceVm() {
     resourceLoaded,
     activeEditorRef,
     activeEditorStatus,
+    dirtyTabIds,
+    hasDirtyTabs,
     isRestoringWorkspace,
     restoringWorkspaceCount,
     makeTabTitle,
@@ -271,6 +297,7 @@ export function useFlowWorkspaceVm() {
     handleLoadImages,
     handleUpdateCanvasConfig,
     handleUpdatePipelineVersion,
+    handleSaveAllNodes,
     handleRestoreTabs,
     handleClearTabs,
     handleDeviceConnected

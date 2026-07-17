@@ -22,6 +22,8 @@ const props = defineProps<{
   nodeCount?: number
   edgeCount?: number
   isDirty?: boolean
+  hasDirtyTabs?: boolean
+  dirtyTabCount?: number
   currentFilename?: string
   selectedResourceFile?: string
   zoom?: number
@@ -45,6 +47,7 @@ const emit = defineEmits<{
   'load-nodes': [payload: { filename: string; source: string; nodes: Record<string, FlowBusinessData>; fileVersion?: 'V1' | 'V2' }]
   'load-images': [payload: Record<string, TemplateImage[]>, basePath?: string]
   'save-nodes': [payload: { source: string; filename: string }]
+  'save-all-nodes': []
   'device-connected': [status: boolean]
   'update:selected-resource-file': [value: string]
   'update-canvas-config': [payload: { edgeType?: EdgeType; spacing?: SpacingKey; layoutAlgorithm?: LayoutAlgorithm; layoutDirection?: LayoutDirection }]
@@ -62,6 +65,7 @@ const {
   systemState,
   showResourceSettings,
   showCreateFileModal,
+  createFileInitialPath,
   showAppSettings,
   showAnnouncement,
   hasUnreadAnnouncement,
@@ -83,6 +87,7 @@ const {
   handleDeviceConnected,
   handleConfigChanged,
   handleCreateFile,
+  openCreateResourceFile,
   saveResourceSettings,
   handleAppSettingsSave,
   handleAnnouncementClose
@@ -115,7 +120,12 @@ const statusLabel = (status: string, connectedLabel: string) => {
   return '未连接'
 }
 
-defineExpose({ executeFileSwitch, handleSaveNodes, triggerLoadFromCache: triggerLoadFromCacheWrapper })
+defineExpose({
+  executeFileSwitch,
+  handleSaveNodes,
+  triggerLoadFromCache: triggerLoadFromCacheWrapper,
+  openCreateResourceFile
+})
 </script>
 
 <template>
@@ -191,7 +201,6 @@ defineExpose({ executeFileSwitch, handleSaveNodes, triggerLoadFromCache: trigger
               @update:profile-index="(v) => appConfig.switchResourceProfile(v)"
               @update:selected-file="(v) => appConfig.selectResourceFile(v)"
               @open-settings="showResourceSettings = true"
-              @open-create-file="showCreateFileModal = true"
               @restore-tabs="(tabs) => emit('restore-tabs', tabs)"
               @clear-tabs="emit('clear-tabs')"
               @status-change="handleResourceStatusWithFiles"
@@ -221,18 +230,34 @@ defineExpose({ executeFileSwitch, handleSaveNodes, triggerLoadFromCache: trigger
         </div>
       </div>
 
-        <button
-          :disabled="systemState.isSaving.value || !props.isDirty"
-          class="flex h-7 w-8 items-center justify-center rounded-lg border shadow-sm transition-colors disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-white disabled:text-slate-300 enabled:border-amber-200 enabled:bg-amber-50 enabled:text-amber-600 enabled:hover:border-amber-300 enabled:hover:bg-amber-100"
-          :title="props.isDirty ? '保存更改' : '当前资源没有可保存的更改'"
-          @click="handleSaveNodes"
-        >
-          <component
-            :is="systemState.isSaving.value ? Loader2 : Save"
-            :size="12"
-            :class="{'animate-spin': systemState.isSaving.value}"
-          />
-        </button>
+        <div class="group/save relative">
+          <button
+            :disabled="systemState.isSaving.value || !props.isDirty"
+            class="flex h-7 w-8 items-center justify-center rounded-lg border shadow-sm transition-colors disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-white disabled:text-slate-300 enabled:border-amber-200 enabled:bg-amber-50 enabled:text-amber-600 enabled:hover:border-amber-300 enabled:hover:bg-amber-100"
+            :title="props.isDirty ? '保存当前标签的修改' : '当前标签没有可保存的修改'"
+            @click="handleSaveNodes"
+          >
+            <component
+              :is="systemState.isSaving.value ? Loader2 : Save"
+              :size="12"
+              :class="{'animate-spin': systemState.isSaving.value}"
+            />
+          </button>
+          <div
+            v-if="props.hasDirtyTabs"
+            class="invisible absolute right-0 top-full z-[90] pt-1 opacity-0 transition-all group-hover/save:visible group-hover/save:opacity-100"
+          >
+            <button
+              type="button"
+              class="flex w-36 items-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs font-semibold text-slate-600 shadow-xl hover:bg-amber-50 hover:text-amber-700"
+              @click="emit('save-all-nodes')"
+            >
+              <Save :size="13" />
+              保存全部修改
+              <span class="ml-auto text-[10px] text-slate-400">{{ props.dirtyTabCount || 0 }}</span>
+            </button>
+          </div>
+        </div>
 
         <button
           type="button"
@@ -279,6 +304,7 @@ defineExpose({ executeFileSwitch, handleSaveNodes, triggerLoadFromCache: trigger
     <CreateResourceModal
       :visible="showCreateFileModal"
       :paths="appConfig.currentProfile.paths ?? []"
+      :initial-path="createFileInitialPath"
       @close="showCreateFileModal = false"
       @create="handleCreateFile"
     />

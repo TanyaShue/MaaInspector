@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, watchEffect } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Database, HardDrive, Settings, RefreshCw, FilePlus } from 'lucide-vue-next'
+import { Database, HardDrive, Settings, RefreshCw } from 'lucide-vue-next'
 import { resourceApi } from '@/services/api'
 import { useAppConfigStore } from '@/stores/appConfig'
 import { makeFileId, parseFileId, getFileObjById } from '@/utils/fileId'
@@ -218,18 +218,6 @@ const executeFileSwitch = async (filename: string, source?: string) => {
   }
 }
 
-// 处理文件选择变化
-const handleFileSelectChange = (newFileId: PropertyKey) => {
-  const fileId = String(newFileId)
-  const curFile = props.selectedFile ?? localSelectedFile.value
-  if (fileId === curFile) return
-  const fileObj = findFileById(fileId)
-  if (!fileObj || !fileObj.value) return
-
-  appConfig.hydrateWorkspaceFromResource(fileId)
-  loadFileById(fileId)
-}
-
 // 设置 profiles
 const setProfiles = (profiles: EditableProfile[]) => {
   localProfiles.value = profiles
@@ -318,21 +306,6 @@ watch(
           />
           <span>{{ status === 'connected' ? '重新加载' : '加载资源' }}</span>
         </button>
-        <button
-          :disabled="resourceProfiles.length === 0"
-          class="btn-icon px-3"
-          @click="$emit('open-create-file')"
-        >
-          <FilePlus :size="16" />
-        </button>
-      </div>
-      <div v-if="status === 'connected'" class="animate-in fade-in slide-in-from-top-2">
-        <Dropdown
-          :model-value="selectedResourceFile"
-          :options="fileOptions"
-          placeholder="选择文件"
-          @update:model-value="handleFileSelectChange"
-        />
       </div>
     </div>
   </section>

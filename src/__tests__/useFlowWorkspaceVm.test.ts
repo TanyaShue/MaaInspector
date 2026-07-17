@@ -334,4 +334,42 @@ describe('useFlowWorkspaceVm', () => {
     expect(vm.isRestoringWorkspace.value).toBe(false)
     expect(vm.restoringWorkspaceCount.value).toBe(0)
   })
+
+  it('tracks dirty tabs and saves every modified resource file', async () => {
+    const store = useAppConfigStore()
+    store.setTabs([
+      { id: 'tab-1', title: 'a.json', resourceFile: 'D:/resource-a|folder/a.json' },
+      { id: 'tab-2', title: 'b.json', resourceFile: 'D:/resource-b|b.json' }
+    ], 'tab-1')
+    const vm = useFlowWorkspaceVm()
+    const firstEditor = createEditorPort()
+    const secondEditor = createEditorPort()
+    vi.mocked(firstEditor.getEditorStatus).mockReturnValue({
+      isDirty: true,
+      nodeCount: 1,
+      edgeCount: 0
+    })
+    vi.mocked(secondEditor.getEditorStatus).mockReturnValue({
+      isDirty: true,
+      nodeCount: 1,
+      edgeCount: 0
+    })
+
+    vm.registerEditor('tab-1', firstEditor)
+    vm.registerEditor('tab-2', secondEditor)
+
+    expect(vm.hasDirtyTabs.value).toBe(true)
+    expect([...vm.dirtyTabIds.value]).toEqual(['tab-1', 'tab-2'])
+
+    await vm.handleSaveAllNodes()
+
+    expect(firstEditor.handleSaveNodes).toHaveBeenCalledWith({
+      source: 'D:/resource-a',
+      filename: 'folder/a.json'
+    })
+    expect(secondEditor.handleSaveNodes).toHaveBeenCalledWith({
+      source: 'D:/resource-b',
+      filename: 'b.json'
+    })
+  })
 })

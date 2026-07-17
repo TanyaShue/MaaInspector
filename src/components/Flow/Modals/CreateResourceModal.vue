@@ -5,11 +5,13 @@ import { FilePlus, Folder, Save, X, AlertCircle } from 'lucide-vue-next'
 interface CreateResourceModalProps {
   visible?: boolean
   paths?: string[]
+  initialPath?: string
 }
 
 const props = withDefaults(defineProps<CreateResourceModalProps>(), {
   visible: false,
-  paths: () => []
+  paths: () => [],
+  initialPath: ''
 })
 
 const emit = defineEmits<{
@@ -25,7 +27,8 @@ const errorMsg = ref<string>('')
 watch(() => props.visible, (val: boolean) => {
   if (val) {
     filename.value = ''
-    selectedPathIndex.value = 0
+    const initialIndex = props.paths.findIndex(path => path === props.initialPath)
+    selectedPathIndex.value = initialIndex >= 0 ? initialIndex : 0
     errorMsg.value = ''
   }
 })

@@ -39,6 +39,7 @@ export interface InfoPanelPort {
   executeFileSwitch: (filename: string, source?: string) => Promise<void>
   handleSaveNodes: () => Promise<void>
   triggerLoadFromCache: (config: { filename: string; source: string; tabId: string }) => void
+  openCreateResourceFile: (path: string) => void
 }
 
 export type PanelConnectionStatus =

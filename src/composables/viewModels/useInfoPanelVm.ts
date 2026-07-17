@@ -65,6 +65,7 @@ export function useInfoPanelVm(props: UseInfoPanelVmProps, emit: InfoPanelEmit) 
   const isCollapsed = ref(false)
   const showResourceSettings = ref(false)
   const showCreateFileModal = ref(false)
+  const createFileInitialPath = ref('')
   const showAppSettings = ref(false)
   const showAnnouncement = ref(false)
   const hasUnreadAnnouncement = ref(true)
@@ -192,6 +193,11 @@ export function useInfoPanelVm(props: UseInfoPanelVmProps, emit: InfoPanelEmit) 
     }
   }
 
+  const openCreateResourceFile = (path: string) => {
+    createFileInitialPath.value = path
+    showCreateFileModal.value = true
+  }
+
   const reloadResourceAfterCreate = async (rm: ResourceManagerPort, path: string, filename: string) => {
     const simpleName = filename.endsWith('.json') ? filename : `${filename}.json`
     const normalizedPath = path.replace(/\\/g, '/').toLowerCase()
@@ -290,6 +296,7 @@ export function useInfoPanelVm(props: UseInfoPanelVmProps, emit: InfoPanelEmit) 
     isCollapsed,
     showResourceSettings,
     showCreateFileModal,
+    createFileInitialPath,
     showAppSettings,
     showAnnouncement,
     hasUnreadAnnouncement,
@@ -313,6 +320,7 @@ export function useInfoPanelVm(props: UseInfoPanelVmProps, emit: InfoPanelEmit) 
     handleDeviceConnected,
     handleConfigChanged,
     handleCreateFile,
+    openCreateResourceFile,
     handleFetchSystemState,
     saveResourceSettings,
     handleAppSettingsSave,

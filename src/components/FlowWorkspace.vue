@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
-import { Check, ChevronDown, FileJson, FolderOpen, Loader2, Move, Plus, X } from 'lucide-vue-next'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { Check, ChevronDown, FileJson, Folder, FolderOpen, Loader2, Move, Plus, X } from 'lucide-vue-next'
 import FlowEditor from './FlowEditor.vue'
 import InfoPanel from './Flow/InfoPanel.vue'
 import ToolbarIconDropdown from './Flow/Common/ToolbarIconDropdown.vue'
@@ -16,6 +16,7 @@ import type { LayoutAlgorithm, LayoutDirection, SpacingKey } from '@/utils/flowT
 import type { FlowEditorPort } from '@/composables/viewModels/types'
 import type { ResourceFileInfo } from '@/services/api'
 import { makeFileId } from '@/utils/fileId'
+import { getResourceFileName, groupResourceFilesByFolder } from '@/utils/resourceFileGroups'
 
 const loadNodeDebugPanel = () => import('./Flow/NodeDebugPanel.vue')
 const NodeDebugPanel = defineAsyncComponent(loadNodeDebugPanel)
@@ -25,6 +26,19 @@ const openFileMenuTabId = ref('')
 const tabStripRef = ref<HTMLElement | null>(null)
 const fileMenuPosition = ref({ left: 8, top: 48 })
 const fileMenuTab = computed(() => tabs.value.items.find(tab => tab.id === openFileMenuTabId.value) || null)
+const selectedResourceSource = ref('')
+const resourceSources = computed(() =>
+  Array.from(new Set(resourceFiles.value.map(file => file.source).filter(Boolean)))
+)
+const selectedSourceGroups = computed(() =>
+  groupResourceFilesByFolder(resourceFiles.value, selectedResourceSource.value)
+)
+
+watch(resourceSources, sources => {
+  if (!sources.includes(selectedResourceSource.value)) {
+    selectedResourceSource.value = sources[0] || ''
+  }
+}, { immediate: true })
 
 onMounted(() => {
   const preload = () => { void loadNodeDebugPanel() }
@@ -49,6 +63,8 @@ const {
   resourceLoaded,
   activeEditorRef,
   activeEditorStatus,
+  dirtyTabIds,
+  hasDirtyTabs,
   isRestoringWorkspace,
   registerEditor,
   registerActiveEditor,
@@ -63,6 +79,7 @@ const {
   handleLoadImages,
   handleUpdateCanvasConfig,
   handleUpdatePipelineVersion,
+  handleSaveAllNodes,
   handleRestoreTabs,
   handleClearTabs,
   handleDeviceConnected
@@ -125,6 +142,14 @@ const isFileOpenedElsewhere = (tabId: string, file: ResourceFileInfo) => {
   const fileId = makeFileId(file.source, file.value)
   return tabs.value.items.some(tab => tab.id !== tabId && tab.resourceFile === fileId)
 }
+
+const selectResourceSource = (source: string) => {
+  selectedResourceSource.value = source
+}
+
+const openCreateResourceFile = (source: string) => {
+  infoPanelRef.value?.openCreateResourceFile(source)
+}
 </script>
 
 <template>
@@ -148,6 +173,11 @@ const isFileOpenedElsewhere = (tabId: string, file: ResourceFileInfo) => {
             >
               <FileJson :size="14" class="shrink-0" />
               <span class="truncate">{{ makeTabTitle(tab, index) }}</span>
+              <span
+                v-if="dirtyTabIds.has(tab.id)"
+                class="h-2 w-2 shrink-0 rounded-full bg-amber-500"
+                title="此文件有未保存的修改"
+              />
               <ChevronDown
                 v-if="activeTab?.id === tab.id"
                 :size="13"
@@ -229,6 +259,8 @@ const isFileOpenedElsewhere = (tabId: string, file: ResourceFileInfo) => {
             :node-count="activeEditorStatus.nodeCount"
             :edge-count="activeEditorStatus.edgeCount"
             :is-dirty="activeEditorStatus.isDirty"
+            :has-dirty-tabs="hasDirtyTabs"
+            :dirty-tab-count="dirtyTabIds.size"
             :edge-type="appSettings.edgeType"
             :spacing="appSettings.spacing"
             :layout-algorithm="appSettings.layoutAlgorithm"
@@ -238,6 +270,7 @@ const isFileOpenedElsewhere = (tabId: string, file: ResourceFileInfo) => {
             @load-nodes="handleLoadNodes"
             @load-images="handleLoadImages"
             @save-nodes="(payload) => activeEditorRef?.handleSaveNodes(payload)"
+            @save-all-nodes="handleSaveAllNodes"
             @device-connected="handleDeviceConnected"
             @update-canvas-config="handleUpdateCanvasConfig"
             @update-pipeline-version="handleUpdatePipelineVersion"
@@ -344,7 +377,7 @@ const isFileOpenedElsewhere = (tabId: string, file: ResourceFileInfo) => {
         v-if="activeTab && !activeTab.resourceFile && resourceLoaded"
         class="absolute inset-0 z-20 flex items-center justify-center bg-slate-100/95 p-6"
       >
-        <div class="flex max-h-[min(36rem,calc(100%-3rem))] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+        <div class="flex h-[min(38rem,calc(100%-3rem))] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
           <div class="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
             <div class="rounded-xl bg-indigo-50 p-2.5 text-indigo-500">
               <FolderOpen :size="22" />
@@ -355,36 +388,87 @@ const isFileOpenedElsewhere = (tabId: string, file: ResourceFileInfo) => {
             </div>
           </div>
 
-          <div v-if="resourceFiles.length" class="overflow-y-auto p-2.5">
-            <button
-              v-for="file in resourceFiles"
-              :key="makeFileId(file.source, file.value)"
-              type="button"
-              class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors"
-              :class="isFileOpenedElsewhere(activeTab.id, file)
-                ? 'cursor-not-allowed text-slate-300'
-                : 'text-slate-600 hover:bg-indigo-50 hover:text-indigo-700'"
-              :disabled="isFileOpenedElsewhere(activeTab.id, file)"
-              @click="handleTabResourceSelect(activeTab.id, file)"
-            >
-              <FileJson :size="17" class="shrink-0" />
-              <span class="min-w-0 flex-1">
-                <span class="block truncate text-sm font-semibold">{{ file.label || file.value }}</span>
-                <span class="block truncate text-[11px] text-slate-400">{{ file.source }}</span>
-              </span>
-              <span
-                v-if="isFileOpenedElsewhere(activeTab.id, file)"
-                class="shrink-0 text-[10px] text-slate-400"
+          <div v-if="resourceSources.length" class="flex min-h-0 flex-1">
+            <aside class="w-64 shrink-0 overflow-y-auto border-r border-slate-100 bg-slate-50/70 p-2.5">
+              <div class="mb-2 px-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                Resource Path
+              </div>
+              <button
+                v-for="source in resourceSources"
+                :key="source"
+                type="button"
+                class="mb-1 flex w-full items-start gap-2 rounded-xl px-3 py-2.5 text-left transition-colors"
+                :class="selectedResourceSource === source
+                  ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200'
+                  : 'text-slate-500 hover:bg-white hover:text-slate-800'"
+                :title="source"
+                @click="selectResourceSource(source)"
               >
-                已打开
-              </span>
-            </button>
+                <Folder :size="15" class="mt-0.5 shrink-0" />
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate text-xs font-semibold">
+                    {{ source.replace(/\\/g, '/').split('/').filter(Boolean).pop() || source }}
+                  </span>
+                  <span class="mt-0.5 block break-all text-[10px] leading-4 text-slate-400">{{ source }}</span>
+                </span>
+              </button>
+            </aside>
+
+            <section class="flex min-w-0 flex-1 flex-col">
+              <div class="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
+                <div class="min-w-0">
+                  <div class="text-xs font-bold text-slate-700">资源文件</div>
+                  <div class="mt-0.5 truncate text-[10px] text-slate-400">{{ selectedResourceSource }}</div>
+                </div>
+                <button
+                  type="button"
+                  class="ml-3 flex shrink-0 items-center gap-1.5 rounded-lg bg-indigo-500 px-3 py-2 text-xs font-bold text-white shadow-sm transition-colors hover:bg-indigo-600"
+                  @click="openCreateResourceFile(selectedResourceSource)"
+                >
+                  <Plus :size="14" />
+                  新建
+                </button>
+              </div>
+
+              <div v-if="selectedSourceGroups.length" class="min-h-0 flex-1 overflow-y-auto p-3">
+                <section v-for="group in selectedSourceGroups" :key="group.folder" class="mb-4 last:mb-0">
+                  <div class="mb-1.5 flex items-center gap-1.5 px-1 text-[11px] font-bold text-slate-400">
+                    <Folder :size="13" />
+                    {{ group.folder }}
+                  </div>
+                  <div class="grid grid-cols-1 gap-1 xl:grid-cols-2">
+                    <button
+                      v-for="file in group.files"
+                      :key="makeFileId(file.source, file.value)"
+                      type="button"
+                      class="flex min-w-0 items-center gap-2.5 rounded-xl px-3 py-2.5 text-left transition-colors"
+                      :class="isFileOpenedElsewhere(activeTab.id, file)
+                        ? 'cursor-not-allowed bg-slate-50 text-slate-300'
+                        : 'text-slate-600 hover:bg-indigo-50 hover:text-indigo-700'"
+                      :disabled="isFileOpenedElsewhere(activeTab.id, file)"
+                      @click="handleTabResourceSelect(activeTab.id, file)"
+                    >
+                      <FileJson :size="16" class="shrink-0" />
+                      <span class="min-w-0 flex-1 truncate text-xs font-semibold">{{ getResourceFileName(file) }}</span>
+                      <span v-if="isFileOpenedElsewhere(activeTab.id, file)" class="shrink-0 text-[10px] text-slate-400">
+                        已打开
+                      </span>
+                    </button>
+                  </div>
+                </section>
+              </div>
+              <div v-else class="flex min-h-0 flex-1 flex-col items-center justify-center px-6 text-center">
+                <FileJson :size="32" class="mb-3 text-slate-300" />
+                <div class="text-sm font-semibold text-slate-600">此路径下还没有资源文件</div>
+                <div class="mt-1 text-xs text-slate-400">点击右上角“新建”创建空白资源文件</div>
+              </div>
+            </section>
           </div>
 
-          <div v-else class="px-6 py-10 text-center">
+          <div v-else class="flex min-h-0 flex-1 flex-col items-center justify-center px-6 text-center">
             <FileJson :size="32" class="mx-auto mb-3 text-slate-300" />
-            <div class="text-sm font-semibold text-slate-600">当前资源中没有可用文件</div>
-            <div class="mt-1 text-xs text-slate-400">可从右上角“资源”菜单新建或重新加载文件</div>
+            <div class="text-sm font-semibold text-slate-600">当前资源配置没有可用路径</div>
+            <div class="mt-1 text-xs text-slate-400">请先在右上角“资源”设置中添加 Resource Path</div>
           </div>
         </div>
       </div>
