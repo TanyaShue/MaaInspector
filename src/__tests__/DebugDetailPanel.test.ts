@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils'
 import DebugDetailPanel from '@/components/Flow/DebugPanel/DebugDetailPanel.vue'
 
 describe('DebugDetailPanel', () => {
-  it('renders recognition and action as separate type-aware sections', async () => {
+  it('switches between recognition and action details', async () => {
     const wrapper = mount(DebugDetailPanel, {
       props: {
         detail: {
@@ -70,7 +70,7 @@ describe('DebugDetailPanel', () => {
     })
 
     expect(wrapper.text()).toContain('识别 · 模板匹配')
-    expect(wrapper.text()).toContain('动作 · 点击')
+    expect(wrapper.text()).not.toContain('动作 · 点击')
     expect(wrapper.text()).toContain('算法输出')
     expect(wrapper.text()).toContain('全部结果')
     expect(wrapper.text()).toContain('命中结果')
@@ -79,19 +79,13 @@ describe('DebugDetailPanel', () => {
     expect(wrapper.text()).toContain('原图')
     expect(wrapper.text()).toContain('识别图')
     expect(wrapper.text()).not.toContain('动作快照')
-    expect(wrapper.text()).toContain('动作执行结果')
-    expect(wrapper.text()).toContain('实际执行结果')
     expect(wrapper.text()).toContain('识别原始字段')
-    expect(wrapper.text()).toContain('动作原始字段')
-    expect(wrapper.text()).toContain('动作目标')
 
     const details = wrapper.findAll('details')
     const recognitionSnapshot = details.find((item) => item.text().includes('调试快照'))
     const recognitionRaw = details.find((item) => item.text().includes('识别原始字段'))
-    const actionRaw = details.find((item) => item.text().includes('动作原始字段'))
     expect(recognitionSnapshot?.attributes('open')).toBeDefined()
     expect(recognitionRaw?.attributes('open')).toBeUndefined()
-    expect(actionRaw?.attributes('open')).toBeUndefined()
 
     const snapshotImages = wrapper.findAll('.snapshot-card img')
     expect(snapshotImages).toHaveLength(2)
@@ -106,5 +100,15 @@ describe('DebugDetailPanel', () => {
     expect(scoreCopyButtons.length).toBeGreaterThan(0)
     await scoreCopyButtons[0].trigger('click')
     expect(wrapper.emitted('copy')?.[0]).toEqual(['0.75'])
+
+    await wrapper.findAll('nav button')[1].trigger('click')
+    expect(wrapper.text()).not.toContain('识别 · 模板匹配')
+    expect(wrapper.text()).toContain('动作 · 点击')
+    expect(wrapper.text()).toContain('动作执行结果')
+    expect(wrapper.text()).toContain('实际执行结果')
+    expect(wrapper.text()).toContain('动作原始字段')
+    expect(wrapper.text()).toContain('动作目标')
+    const actionRaw = wrapper.findAll('details').find((item) => item.text().includes('动作原始字段'))
+    expect(actionRaw?.attributes('open')).toBeUndefined()
   })
 })
