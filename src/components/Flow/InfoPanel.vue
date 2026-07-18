@@ -165,11 +165,10 @@ defineExpose({
           type="button"
           class="status-trigger"
           :class="{
-            'border-amber-300 text-amber-600': props.isDirty,
-            'status-trigger-connected': resourceStatus.status === 'connected' && !props.isDirty,
+            'status-trigger-connected': resourceStatus.status === 'connected',
             'ring-2 ring-emerald-100 !border-emerald-300': openPanel === 'resource'
           }"
-          :title="props.isDirty ? '文件已修改' : resourceStatus.message"
+          :title="resourceStatus.message"
           @click="togglePanel('resource')"
         >
           <Database :size="14" />
@@ -178,10 +177,6 @@ defineExpose({
             {{ statusLabel(resourceStatus.status, '已加载') }}
           </span>
           <ChevronDown :size="12" :class="openPanel === 'resource' ? 'rotate-180' : ''" />
-          <span
-            v-if="props.isDirty"
-            class="absolute -left-0.5 -top-0.5 h-2 w-2 rounded-full bg-amber-500 ring-2 ring-white"
-          />
         </button>
 
         <div v-show="openPanel === 'resource'" class="quick-panel right-0">
