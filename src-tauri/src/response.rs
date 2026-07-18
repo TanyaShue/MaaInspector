@@ -167,6 +167,14 @@ pub struct RecoDetailResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActionDetailResponse {
+    pub success: bool,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<ActionDetail>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecognitionDetail {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reco_id: Option<i32>,
@@ -189,6 +197,22 @@ pub struct RecognitionDetail {
     pub raw_image: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub draw_images: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sub_details: Option<Vec<RecognitionDetail>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActionDetail {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action_id: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
+    #[serde(rename = "box")]
+    pub bbox: Vec<i32>,
+    pub success: bool,
+    pub raw_detail: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -5,7 +5,9 @@ mod tasker;
 
 use crate::config::DeviceInfo;
 use crate::events::DebugEventBroker;
-use crate::response::{OcrRecognitionCandidate, OcrRecognitionResponse, RecognitionDetail};
+use crate::response::{
+    ActionDetail, OcrRecognitionCandidate, OcrRecognitionResponse, RecognitionDetail,
+};
 use controller::wait_with_timeout;
 use maa_framework::controller::Controller;
 use maa_framework::resource::Resource;
@@ -41,6 +43,48 @@ fn ocr_result_to_response(
         best: Some(candidate.clone()),
         all: vec![candidate.clone()],
         filtered: vec![candidate],
+    }
+}
+
+fn convert_recognition_detail(
+    reco_id: Option<i32>,
+    detail: &maa_framework::common::RecognitionDetail,
+    include_images: bool,
+) -> RecognitionDetail {
+    RecognitionDetail {
+        reco_id,
+        name: Some(detail.node_name.clone()),
+        algorithm: Some(detail.algorithm.as_str().to_string()),
+        hit: detail.hit,
+        bbox: Some(vec![
+            detail.box_rect.x,
+            detail.box_rect.y,
+            detail.box_rect.width,
+            detail.box_rect.height,
+        ]),
+        // MaaFramework's algorithm-specific candidates live in `detail`.
+        // Keep these legacy summary fields for API compatibility only.
+        all_results: None,
+        filtered_results: None,
+        best_result: None,
+        raw_detail: Some(detail.detail.clone()),
+        raw_image: include_images
+            .then(|| detail.raw_image.as_ref().and_then(|value| image::encode_raw_image(value)))
+            .flatten(),
+        draw_images: include_images.then(|| {
+            detail
+                .draw_images
+                .iter()
+                .filter_map(|value| image::encode_raw_image(value))
+                .collect()
+        }),
+        sub_details: (!detail.sub_details.is_empty()).then(|| {
+            detail
+                .sub_details
+                .iter()
+                .map(|sub| convert_recognition_detail(None, sub, false))
+                .collect()
+        }),
     }
 }
 
@@ -179,63 +223,31 @@ impl MaaFrameworkWrapper {
 
     /// Get recognition detail by reco_id
     pub fn get_reco_detail(&self, reco_id: i32) -> Option<RecognitionDetail> {
-        use crate::response::BoxScore;
-
         let tasker = self.tasker.as_ref()?;
 
         match tasker.get_recognition_detail(reco_id as sys::MaaId) {
-            Ok(Some(detail)) => Some(RecognitionDetail {
-                reco_id: Some(reco_id),
-                name: Some(detail.node_name.clone()),
-                algorithm: Some(format!("{:?}", detail.algorithm)),
-                hit: detail.hit,
-                bbox: Some(vec![
+            Ok(Some(detail)) => Some(convert_recognition_detail(Some(reco_id), &detail, true)),
+            _ => None,
+        }
+    }
+
+    /// Get action detail by action_id.
+    pub fn get_action_detail(&self, action_id: i32) -> Option<ActionDetail> {
+        let tasker = self.tasker.as_ref()?;
+
+        match tasker.get_action_detail(action_id as sys::MaaId) {
+            Ok(Some(detail)) => Some(ActionDetail {
+                action_id: Some(action_id),
+                name: Some(detail.node_name),
+                action: Some(detail.action.as_str().to_string()),
+                bbox: vec![
                     detail.box_rect.x,
                     detail.box_rect.y,
                     detail.box_rect.width,
                     detail.box_rect.height,
-                ]),
-                all_results: Some(
-                    detail
-                        .sub_details
-                        .iter()
-                        .map(|sub| BoxScore {
-                            bbox: Some(vec![
-                                sub.box_rect.x,
-                                sub.box_rect.y,
-                                sub.box_rect.width,
-                                sub.box_rect.height,
-                            ]),
-                            score: None,
-                        })
-                        .collect(),
-                ),
-                filtered_results: None,
-                best_result: if detail.hit {
-                    Some(BoxScore {
-                        bbox: Some(vec![
-                            detail.box_rect.x,
-                            detail.box_rect.y,
-                            detail.box_rect.width,
-                            detail.box_rect.height,
-                        ]),
-                        score: None,
-                    })
-                } else {
-                    None
-                },
-                raw_detail: Some(detail.detail.clone()),
-                raw_image: detail
-                    .raw_image
-                    .as_ref()
-                    .and_then(|v| image::encode_raw_image(v)),
-                draw_images: Some(
-                    detail
-                        .draw_images
-                        .iter()
-                        .filter_map(|img| image::encode_raw_image(img))
-                        .collect(),
-                ),
+                ],
+                success: detail.success,
+                raw_detail: detail.detail,
             }),
             _ => None,
         }

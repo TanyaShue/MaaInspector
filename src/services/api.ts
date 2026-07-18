@@ -184,6 +184,10 @@ export interface RecoDetailResponse extends ApiResponse {
   detail?: unknown
 }
 
+export interface ActionDetailResponse extends ApiResponse {
+  detail?: unknown
+}
+
 export interface DebugStreamPayload {
   type?: string
   attempt_id?: string
@@ -471,6 +475,10 @@ export const debugApi = {
 
   getRecoDetails: async (recoId: string | number): Promise<RecoDetailResponse> => {
     return invokeCommand('debug_get_reco_details', { recoId })
+  },
+
+  getActionDetails: async (actionId: string | number): Promise<ActionDetailResponse> => {
+    return invokeCommand('debug_get_action_details', { actionId })
   },
 
   subscribeNodeStream: (onData: (data: DebugStreamPayload) => void): (() => void) => {

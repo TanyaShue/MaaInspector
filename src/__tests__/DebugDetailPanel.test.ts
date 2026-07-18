@@ -24,7 +24,10 @@ describe('DebugDetailPanel', () => {
             type: 'TemplateMatch',
             status: 'succeeded',
             id: 1001,
-            snapshot: { mainImage: 'data:image/png;base64,reco', drawImages: [] },
+            snapshot: {
+              originalImage: 'data:image/png;base64,original',
+              recognitionImage: 'data:image/png;base64,recognition'
+            },
             rawFields: { algorithm: 'TemplateMatch', hit: true },
             results: {
               all: [{ score: 0.75, box: [1, 2, 3, 4] }],
@@ -45,8 +48,13 @@ describe('DebugDetailPanel', () => {
             type: 'Click',
             status: 'succeeded',
             id: 2001,
-            snapshot: { mainImage: 'data:image/png;base64,action', drawImages: [] },
-            rawFields: { action_id: 2001, status: 'succeeded' },
+            box: [30, 40, 1, 1],
+            result: { point: [30, 40], contact: 0, pressure: 100 },
+            rawFields: {
+              action_id: 2001,
+              status: 'succeeded',
+              detail: { action: 'Click', raw_detail: { point: [30, 40], contact: 0 } }
+            },
             parameters: [
               {
                 key: 'target',
@@ -67,21 +75,32 @@ describe('DebugDetailPanel', () => {
     expect(wrapper.text()).toContain('全部结果')
     expect(wrapper.text()).toContain('命中结果')
     expect(wrapper.text()).toContain('最佳结果')
-    expect(wrapper.text()).toContain('识别快照')
-    expect(wrapper.text()).toContain('动作快照')
+    expect(wrapper.text()).toContain('调试快照')
+    expect(wrapper.text()).toContain('原图')
+    expect(wrapper.text()).toContain('识别图')
+    expect(wrapper.text()).not.toContain('动作快照')
+    expect(wrapper.text()).toContain('动作执行结果')
+    expect(wrapper.text()).toContain('实际执行结果')
     expect(wrapper.text()).toContain('识别原始字段')
     expect(wrapper.text()).toContain('动作原始字段')
     expect(wrapper.text()).toContain('动作目标')
 
     const details = wrapper.findAll('details')
-    const recognitionSnapshot = details.find((item) => item.text().includes('识别快照'))
-    const actionSnapshot = details.find((item) => item.text().includes('动作快照'))
+    const recognitionSnapshot = details.find((item) => item.text().includes('调试快照'))
     const recognitionRaw = details.find((item) => item.text().includes('识别原始字段'))
     const actionRaw = details.find((item) => item.text().includes('动作原始字段'))
     expect(recognitionSnapshot?.attributes('open')).toBeDefined()
-    expect(actionSnapshot?.attributes('open')).toBeDefined()
     expect(recognitionRaw?.attributes('open')).toBeUndefined()
     expect(actionRaw?.attributes('open')).toBeUndefined()
+
+    const snapshotImages = wrapper.findAll('.snapshot-card img')
+    expect(snapshotImages).toHaveLength(2)
+    expect(snapshotImages[0].attributes('src')).toContain('original')
+    expect(snapshotImages[1].attributes('src')).toContain('recognition')
+    await snapshotImages[0].trigger('click')
+    expect(wrapper.emitted('image-preview')?.[0]).toEqual([
+      'data:image/png;base64,original'
+    ])
 
     const scoreCopyButtons = wrapper.findAll('[title="复制 score"]')
     expect(scoreCopyButtons.length).toBeGreaterThan(0)

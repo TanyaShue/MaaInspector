@@ -1,5 +1,5 @@
 use super::{MaaFrameworkState, maafw_mut, maafw_ref};
-use crate::response::{ApiResponse, RecoDetailResponse};
+use crate::response::{ActionDetailResponse, ApiResponse, RecoDetailResponse};
 use tauri::Manager;
 use tauri::State;
 
@@ -117,6 +117,29 @@ pub async fn debug_get_reco_details(
             detail: Some(detail),
         }),
         None => Ok(RecoDetailResponse {
+            success: false,
+            message: "No detail".to_string(),
+            detail: None,
+        }),
+    }
+}
+
+/// Get action details
+#[tauri::command]
+pub async fn debug_get_action_details(
+    maafw: State<'_, MaaFrameworkState>,
+    action_id: i32,
+) -> Result<ActionDetailResponse, String> {
+    let fw = maafw.lock().await;
+    let fw = maafw_ref(&fw)?;
+
+    match fw.get_action_detail(action_id) {
+        Some(detail) => Ok(ActionDetailResponse {
+            success: true,
+            message: "detail".to_string(),
+            detail: Some(detail),
+        }),
+        None => Ok(ActionDetailResponse {
             success: false,
             message: "No detail".to_string(),
             detail: None,

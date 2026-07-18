@@ -17,11 +17,11 @@
   import { ACTION_CONFIG_MAP, NODE_CONFIG_MAP } from '@/utils/node-config'
   import { formatDebugRect } from '@/utils/debugDetailPresentation'
   import type { DebugDetailField } from '@/utils/debugDetailPresentation'
-  import DebugStructuredValue from './DebugStructuredValue.vue'
+  import DebugTypedResult from './DebugTypedResult.vue'
 
   export interface DetailSnapshot {
-    mainImage: string
-    drawImages: string[]
+    originalImage: string
+    recognitionImage: string
   }
 
   export interface DetailResultGroups {
@@ -37,9 +37,11 @@
     nodeId?: string | number | null
     focus?: unknown
     parameters: DebugDetailField[]
-    snapshot: DetailSnapshot
+    snapshot?: DetailSnapshot
     rawFields: unknown
     results?: DetailResultGroups
+    result?: unknown
+    box?: unknown
   }
 
   export interface DetailMeta {
@@ -104,6 +106,13 @@
       return String(value ?? '')
     }
   }
+  const resultType = (value: unknown) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const algorithm = (value as Record<string, unknown>).algorithm
+      if (typeof algorithm === 'string' && algorithm) return algorithm
+    }
+    return props.detail.recognition?.type || 'Unknown'
+  }
   const resultGroups = computed(() => {
     const results = props.detail.recognition?.results
     if (!results) return []
@@ -122,7 +131,7 @@
         description: '经过阈值与规则过滤后命中的结果',
         values: results.filtered,
         accent: 'border-emerald-200 bg-emerald-50/60',
-        defaultOpen: true,
+        defaultOpen: false,
       },
       {
         key: 'best',
@@ -138,7 +147,7 @@
 
 <template>
   <aside
-    class="flex min-h-0 w-[420px] shrink-0 flex-col border-l border-slate-200 bg-slate-50/70"
+    class="flex min-h-0 w-[420px] shrink-0 flex-col bg-slate-50/70"
   >
     <header class="shrink-0 border-b border-slate-200 bg-white px-4 py-3">
       <div class="flex items-start justify-between gap-3">
@@ -275,12 +284,13 @@
                   </button>
                 </summary>
                 <div class="space-y-1.5 border-t border-white/80 p-2">
-                  <DebugStructuredValue
+                  <DebugTypedResult
                     v-for="(value, index) in group.values"
                     :key="index"
+                    mode="recognition"
+                    :type="resultType(value)"
                     :label="group.values.length > 1 ? `结果 #${index + 1}` : group.label"
                     :value="value"
-                    :default-open="true"
                     @copy="emit('copy', $event)"
                   />
                   <div v-if="group.values.length === 0" class="empty-result">暂无结果</div>
@@ -293,44 +303,45 @@
             <summary class="fold-summary">
               <ChevronRight :size="12" class="fold-chevron" />
               <ImageIcon :size="12" />
-              <span>识别快照</span>
+              <span>调试快照</span>
               <span class="ml-auto text-[9px] font-normal text-slate-400">默认展开</span>
             </summary>
             <div class="border-t border-slate-100 p-2">
               <button
                 class="snapshot-main"
-                :class="detail.recognition.snapshot.mainImage ? 'cursor-zoom-in' : ''"
+                :class="detail.recognition.snapshot?.originalImage ? 'cursor-zoom-in' : ''"
                 @click="
-                  detail.recognition.snapshot.mainImage &&
-                  emit('image-preview', detail.recognition.snapshot.mainImage)
+                  detail.recognition.snapshot?.originalImage &&
+                  emit('image-preview', detail.recognition.snapshot.originalImage)
                 "
               >
                 <img
-                  v-if="detail.recognition.snapshot.mainImage"
-                  :src="detail.recognition.snapshot.mainImage"
-                  alt="recognition snapshot"
+                  v-if="detail.recognition.snapshot?.originalImage"
+                  :src="detail.recognition.snapshot.originalImage"
+                  alt="original snapshot"
                   class="h-full w-full object-contain"
                 />
-                <span v-else class="text-xs text-slate-400">暂无识别快照</span>
+                <span v-else class="text-xs text-slate-400">暂无原图</span>
+                <span class="snapshot-label">原图</span>
                 <Maximize2
-                  v-if="detail.recognition.snapshot.mainImage"
+                  v-if="detail.recognition.snapshot?.originalImage"
                   :size="13"
                   class="absolute right-2 top-2 text-white drop-shadow"
                 />
               </button>
-              <div
-                v-if="detail.recognition.snapshot.drawImages.length"
-                class="mt-2 grid grid-cols-4 gap-1.5"
+              <button
+                v-if="detail.recognition.snapshot?.recognitionImage"
+                class="recognition-snapshot"
+                title="点击查看识别图"
+                @click="emit('image-preview', detail.recognition.snapshot.recognitionImage)"
               >
-                <button
-                  v-for="(image, index) in detail.recognition.snapshot.drawImages"
-                  :key="index"
-                  class="h-14 overflow-hidden rounded-md border border-slate-200 bg-slate-50 hover:border-blue-300"
-                  @click="emit('image-preview', image)"
-                >
-                  <img :src="image" :alt="`recognition-draw-${index}`" class="h-full w-full object-contain" />
-                </button>
-              </div>
+                <img
+                  :src="detail.recognition.snapshot.recognitionImage"
+                  alt="recognition result snapshot"
+                  class="h-full w-full object-contain"
+                />
+                <span>识别图</span>
+              </button>
             </div>
           </details>
 
@@ -387,6 +398,10 @@
             <div v-if="detail.action.nodeId != null" class="detail-stat">
               <Hash :size="11" /><span>节点 ID</span><b>{{ detail.action.nodeId }}</b>
             </div>
+            <div v-if="detail.action.box" class="detail-stat col-span-2">
+              <Crosshair :size="11" /><span>执行区域</span>
+              <b>{{ formatDebugRect(detail.action.box) }}</b>
+            </div>
           </div>
 
           <details v-if="detail.action.parameters.length" class="fold-card" open>
@@ -417,48 +432,26 @@
             </div>
           </details>
 
-          <details class="fold-card snapshot-card" open>
-            <summary class="fold-summary">
+          <details
+            v-if="detail.action.result !== undefined"
+            class="fold-card action-output"
+            open
+          >
+            <summary class="fold-summary bg-gradient-to-r from-violet-50 to-fuchsia-50">
               <ChevronRight :size="12" class="fold-chevron" />
-              <ImageIcon :size="12" />
-              <span>动作快照</span>
-              <span class="ml-auto text-[9px] font-normal text-slate-400">默认展开</span>
+              <span>动作执行结果</span>
+              <span class="ml-auto text-[9px] font-normal text-slate-400">
+                {{ detail.action.type }}
+              </span>
             </summary>
-            <div class="border-t border-slate-100 p-2">
-              <button
-                class="snapshot-main"
-                :class="detail.action.snapshot.mainImage ? 'cursor-zoom-in' : ''"
-                @click="
-                  detail.action.snapshot.mainImage &&
-                  emit('image-preview', detail.action.snapshot.mainImage)
-                "
-              >
-                <img
-                  v-if="detail.action.snapshot.mainImage"
-                  :src="detail.action.snapshot.mainImage"
-                  alt="action snapshot"
-                  class="h-full w-full object-contain"
-                />
-                <span v-else class="text-xs text-slate-400">暂无动作快照</span>
-                <Maximize2
-                  v-if="detail.action.snapshot.mainImage"
-                  :size="13"
-                  class="absolute right-2 top-2 text-white drop-shadow"
-                />
-              </button>
-              <div
-                v-if="detail.action.snapshot.drawImages.length"
-                class="mt-2 grid grid-cols-4 gap-1.5"
-              >
-                <button
-                  v-for="(image, index) in detail.action.snapshot.drawImages"
-                  :key="index"
-                  class="h-14 overflow-hidden rounded-md border border-slate-200 bg-slate-50 hover:border-violet-300"
-                  @click="emit('image-preview', image)"
-                >
-                  <img :src="image" :alt="`action-draw-${index}`" class="h-full w-full object-contain" />
-                </button>
-              </div>
+            <div class="border-t border-violet-100 p-2">
+              <DebugTypedResult
+                mode="action"
+                :type="detail.action.type"
+                label="实际执行结果"
+                :value="detail.action.result"
+                @copy="emit('copy', $event)"
+              />
             </div>
           </details>
 
@@ -552,6 +545,18 @@
 
   .snapshot-main {
     @apply relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-950/5;
+  }
+
+  .snapshot-label {
+    @apply absolute bottom-2 left-2 rounded bg-slate-900/70 px-1.5 py-0.5 text-[9px] font-medium text-white;
+  }
+
+  .recognition-snapshot {
+    @apply relative mt-2 flex h-20 w-32 cursor-zoom-in items-center justify-center overflow-hidden rounded-lg border border-blue-200 bg-slate-50 transition hover:border-blue-400 hover:shadow-sm;
+  }
+
+  .recognition-snapshot span {
+    @apply absolute bottom-1 left-1 rounded bg-blue-600/85 px-1.5 py-0.5 text-[8px] font-medium text-white;
   }
 
   .raw-json-card pre {

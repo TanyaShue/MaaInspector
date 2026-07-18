@@ -14,8 +14,13 @@
     NodeStatusPayload,
   } from '@/composables/useDebugPanelState'
   import { useFloatingPanel } from '@/composables/useFloatingPanel'
+  import { useDebugPanelColumns } from '@/composables/useDebugPanelColumns'
   import { buildDebugConfigFields } from '@/utils/debugDetailPresentation'
   import type { DebugDetailField } from '@/utils/debugDetailPresentation'
+  import {
+    normalizeActionResult,
+    normalizeRecognitionResults,
+  } from '@/utils/debugResultAdapter'
 
   const props = defineProps<{
     visible?: boolean
@@ -49,7 +54,7 @@
     clearEvents,
   } = useDebugPanelState()
 
-  const { panelStyle, loadLayout, ensureInViewport, startMove, startResize, stopInteraction } =
+  const { rect, panelStyle, loadLayout, ensureInViewport, startMove, startResize, stopInteraction } =
     useFloatingPanel({
       storageKey: 'maainspector.debugPanel.floatingLayout.v1',
       defaultWidth: 1120,
@@ -58,6 +63,20 @@
       minHeight: 440,
       edgeGap: 24,
     })
+
+  const {
+    previewStyle,
+    detailStyle,
+    load: loadColumnLayout,
+    startPreviewResize,
+    startDetailResize,
+    stopResize: stopColumnResize,
+  } = useDebugPanelColumns(
+    computed(() => rect.value.width),
+    {
+      storageKey: 'maainspector.debugPanel.columnLayout.v1',
+    }
+  )
 
   const searchValue = ref('')
   const selectedNodeId = ref('')
@@ -71,7 +90,7 @@
       id?: string | number | null
       focus?: unknown
       parameters: DebugDetailField[]
-      snapshot: { mainImage: string; drawImages: string[] }
+      snapshot: { originalImage: string; recognitionImage: string }
       rawFields: unknown
       results: { all: unknown[]; filtered: unknown[]; best?: unknown }
     }
@@ -82,8 +101,9 @@
       nodeId?: string | number | null
       focus?: unknown
       parameters: DebugDetailField[]
-      snapshot: { mainImage: string; drawImages: string[] }
       rawFields: unknown
+      result?: unknown
+      box?: unknown
     }
     meta?: {
       algorithm?: string | null
@@ -143,6 +163,18 @@
     all_results?: unknown[]
     filtered_results?: unknown[]
     best_result?: unknown
+    raw_detail?: unknown
+    sub_details?: unknown[]
+    [key: string]: unknown
+  }
+
+  interface ActionDetail {
+    action_id?: string | number
+    name?: string
+    action?: string
+    box?: unknown
+    success?: boolean
+    raw_detail?: unknown
     [key: string]: unknown
   }
 
@@ -156,14 +188,6 @@
       recognitionStatus === STATUS.SUCCEEDED || recognitionStatus === STATUS.FAILED
     const hasActionResult = actionStatus === STATUS.SUCCEEDED || actionStatus === STATUS.FAILED
     if (!hasRecognitionResult && !hasActionResult) return
-    const actionMainImage =
-      (typeof child.debug_image === 'string' && child.debug_image) ||
-      (typeof child.image === 'string' && child.image) ||
-      (typeof child.screenshot === 'string' && child.screenshot) ||
-      ''
-    const childDrawImages = Array.isArray(child.draw_images)
-      ? child.draw_images.filter((value): value is string => typeof value === 'string')
-      : []
     let meta:
       | { algorithm?: string; hit?: boolean; box?: unknown }
       | undefined
@@ -180,14 +204,18 @@
           id: child.reco_id,
           focus: child.recognitionFocus,
           parameters: buildDebugConfigFields(nodeData, 'recognition', recognitionType),
-          snapshot: { mainImage: '', drawImages: [] as string[] },
+          snapshot: { originalImage: '', recognitionImage: '' },
           rawFields: {
             name: child.name,
             status: recognitionStatus,
             reco_id: child.reco_id,
             focus: child.recognitionFocus,
           } as unknown,
-          results: { all: [] as unknown[], filtered: [] as unknown[], best: undefined as unknown },
+          results: {
+            all: [] as unknown[],
+            filtered: [] as unknown[],
+            best: undefined,
+          } as { all: unknown[]; filtered: unknown[]; best?: unknown },
         }
       : undefined
     const action = hasActionResult
@@ -198,7 +226,6 @@
           nodeId: child.node_id,
           focus: child.actionFocus,
           parameters: buildDebugConfigFields(nodeData, 'action', actionType),
-          snapshot: { mainImage: actionMainImage, drawImages: childDrawImages },
           rawFields: omitFields(child as Record<string, unknown>, [
             'debug_image',
             'image',
@@ -208,6 +235,8 @@
             'reco_id',
             'recognitionFocus',
           ]),
+          result: undefined as unknown,
+          box: undefined as unknown,
         }
       : undefined
 
@@ -219,7 +248,6 @@
           const rawImage = typeof detail.raw_image === 'string' ? detail.raw_image : ''
           const debugImage = typeof detail.debug_image === 'string' ? detail.debug_image : ''
           const imageField = typeof detail.image === 'string' ? detail.image : ''
-          const recognitionMainImage = rawImage || debugImage || imageField || ''
           let recognitionDrawImages: string[] = []
           if (Array.isArray(detail.draw_images)) {
             recognitionDrawImages = detail.draw_images.filter(
@@ -227,14 +255,10 @@
             )
           }
           if (recognition) {
-            const allResults = Array.isArray(detail.all_results) ? detail.all_results : []
-            const filteredResults = Array.isArray(detail.filtered_results)
-              ? detail.filtered_results
-              : []
-            const bestResult = detail.best_result
+            const normalizedResults = normalizeRecognitionResults(detail)
             recognition.snapshot = {
-              mainImage: recognitionMainImage || recognitionDrawImages[0] || '',
-              drawImages: recognitionDrawImages,
+              originalImage: rawImage || imageField,
+              recognitionImage: debugImage || recognitionDrawImages[0] || '',
             }
             recognition.rawFields = {
               ...omitFields(detail as Record<string, unknown>, [
@@ -245,15 +269,9 @@
               ]),
               recognition_focus: child.recognitionFocus,
             }
-            recognition.results = {
-              all: allResults,
-              filtered:
-                filteredResults.length > 0
-                  ? filteredResults
-                  : detail.hit && bestResult !== undefined && bestResult !== null
-                    ? [bestResult]
-                    : [],
-              best: bestResult,
+            recognition.results = normalizedResults
+            if (typeof detail.algorithm === 'string' && detail.algorithm) {
+              recognition.type = detail.algorithm
             }
           }
           meta = {
@@ -267,6 +285,33 @@
       }
     }
 
+    if (action && child.action_id !== undefined && child.action_id !== null) {
+      try {
+        const res = await debugApi.getActionDetails(child.action_id)
+        const detail = (res as Record<string, unknown>)?.detail as ActionDetail | undefined
+        if (detail) {
+          action.type =
+            typeof detail.action === 'string' && detail.action ? detail.action : action.type
+          action.box = detail.box
+          action.result = normalizeActionResult(detail)
+          action.rawFields = {
+            ...omitFields(child as Record<string, unknown>, [
+              'debug_image',
+              'image',
+              'screenshot',
+              'draw_images',
+              'recognitionStatus',
+              'reco_id',
+              'recognitionFocus',
+            ]),
+            detail,
+          }
+        }
+      } catch (err) {
+        console.warn('[DebugPanel] 获取动作详情失败', err)
+      }
+    }
+
     selectedDetail.value = {
       record: item,
       child,
@@ -277,6 +322,7 @@
   }
 
   const handleDetailClose = () => {
+    stopColumnResize()
     selectedDetail.value = null
     closeImagePreview()
   }
@@ -295,6 +341,7 @@
     (val) => {
       if (val) {
         loadLayout()
+        loadColumnLayout()
         selectedNodeId.value = props.initialNodeId || ''
         searchValue.value = props.initialNodeId || ''
         startPreviewAutoRefresh()
@@ -303,6 +350,7 @@
           props.nodes
         )
       } else {
+        stopColumnResize()
         stopPreviewAutoRefresh()
         stopRealtimeStream()
       }
@@ -325,6 +373,7 @@
 
   onUnmounted(() => {
     stopInteraction()
+    stopColumnResize()
     stopRealtimeStream()
     stopPreviewAutoRefresh()
     if (typeof window !== 'undefined') {
@@ -373,7 +422,8 @@
       <div class="flex flex-1 min-h-0">
         <div
           v-if="showPreviewPanel"
-          class="w-[220px] bg-slate-50 border-r border-slate-200 flex flex-col shrink-0"
+          class="bg-slate-50 flex flex-col shrink-0"
+          :style="previewStyle"
         >
           <div class="p-2 border-b border-slate-200">
             <div
@@ -394,6 +444,16 @@
             </div>
           </div>
         </div>
+        <button
+          v-if="showPreviewPanel"
+          data-testid="debug-preview-resizer"
+          aria-label="调整设备预览宽度"
+          class="split-resizer"
+          title="拖动调整设备预览与任务列表的宽度比例"
+          @mousedown.stop="startPreviewResize"
+        >
+          <span />
+        </button>
 
         <div class="flex-1 flex flex-col min-h-0 w-0">
           <div class="p-2 border-b border-slate-200 bg-white flex items-center gap-2 shrink-0">
@@ -434,10 +494,21 @@
           />
         </div>
 
+        <button
+          v-if="selectedDetail"
+          data-testid="debug-detail-resizer"
+          aria-label="调整任务详情宽度"
+          class="split-resizer"
+          title="拖动调整任务列表与详情预览的宽度比例"
+          @mousedown.stop="startDetailResize"
+        >
+          <span />
+        </button>
         <transition name="detail-slide">
           <DebugDetailPanel
             v-if="selectedDetail"
             :detail="selectedDetail"
+            :style="detailStyle"
             @close="handleDetailClose"
             @image-preview="openImagePreview"
             @copy="copyText"
@@ -470,5 +541,17 @@
   .detail-slide-leave-to {
     opacity: 0;
     transform: translateX(12px);
+  }
+
+  .split-resizer {
+    @apply relative z-20 flex w-2 shrink-0 cursor-ew-resize items-center justify-center bg-white transition-colors hover:bg-indigo-50;
+  }
+
+  .split-resizer span {
+    @apply h-10 w-0.5 rounded-full bg-slate-200 transition-colors;
+  }
+
+  .split-resizer:hover span {
+    @apply bg-indigo-400;
   }
 </style>
