@@ -19,6 +19,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'refresh'): void
   (e: 'selection-change', payload: Selection): void
+  (e: 'selection-complete', payload: Selection): void
   (e: 'preview-generated', payload: string): void
   (e: 'image-uploaded', payload: string): void
 }>()
@@ -132,31 +133,21 @@ const generatePreviewSnapshot = async (): Promise<string> => {
   }
 }
 
-const calculateSelectionColorRange = async (
-  method: number,
-  previewImageUrl?: string
-): Promise<ColorRangeResult | null> => {
-  if (!previewImageUrl && (!props.imageUrl || selection.w <= 0 || selection.h <= 0)) return null
+const calculateSelectionColorRange = async (method: number): Promise<ColorRangeResult | null> => {
+  if (!props.imageUrl || selection.w <= 0 || selection.h <= 0) return null
 
-  const img = previewImageUrl ? await loadImage(previewImageUrl) : await getCurrentImage()
+  const img = await getCurrentImage()
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
   if (!ctx) return null
-
-  if (previewImageUrl) {
-    canvas.width = img.naturalWidth
-    canvas.height = img.naturalHeight
-    ctx.drawImage(img, 0, 0)
-  } else {
-    const source = calculateSelectionPixelBounds(selection, logicalImageSize.value, {
-      width: img.naturalWidth,
-      height: img.naturalHeight
-    })
-    if (!source) return null
-    canvas.width = source.w
-    canvas.height = source.h
-    ctx.drawImage(img, source.x, source.y, source.w, source.h, 0, 0, source.w, source.h)
-  }
+  const source = calculateSelectionPixelBounds(selection, logicalImageSize.value, {
+    width: img.naturalWidth,
+    height: img.naturalHeight
+  })
+  if (!source) return null
+  canvas.width = source.w
+  canvas.height = source.h
+  ctx.drawImage(img, source.x, source.y, source.w, source.h, 0, 0, source.w, source.h)
   return calculateColorRange(ctx.getImageData(0, 0, canvas.width, canvas.height).data, method)
 }
 
@@ -271,6 +262,7 @@ const handleGlobalMouseMove = (e: MouseEvent) => {
 const handleGlobalMouseUp = () => {
   if (isDragging.value && selection.w > 0 && selection.h > 0) {
     void generatePreviewSnapshot()
+    emit('selection-complete', { ...selection })
   }
   isDragging.value = false
   isPanning.value = false

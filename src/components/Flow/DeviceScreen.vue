@@ -198,8 +198,9 @@ watch(() => props.visible, async (val: boolean) => {
       selection.y = props.initialRect[1]
       selection.w = props.initialRect[2]
       selection.h = props.initialRect[3]
-      await nextTick(() => {
-        void canvasRef.value?.generatePreviewSnapshot()
+      await nextTick(async () => {
+        await canvasRef.value?.generatePreviewSnapshot()
+        await updateColorRange()
       })
     } else {
       selection.x = 0; selection.y = 0; selection.w = 0; selection.h = 0;
@@ -253,16 +254,13 @@ const handleSelectionChange = (newSelection: Selection) => {
   }
 }
 
-const updateColorRange = async (previewImageUrl: string) => {
+const updateColorRange = async () => {
   if (props.mode !== 'color_range' || selection.w <= 0 || selection.h <= 0) return
   const requestId = ++colorRangeRequestId
   isColorRangeLoading.value = true
   colorRangeError.value = ''
   try {
-    const result = await canvasRef.value?.calculateSelectionColorRange(
-      props.colorMethod ?? 4,
-      previewImageUrl
-    ) ?? null
+    const result = await canvasRef.value?.calculateSelectionColorRange(props.colorMethod ?? 4) ?? null
     if (requestId !== colorRangeRequestId) return
     colorRange.value = result
     if (!result) colorRangeError.value = '选区中没有可用像素'
@@ -278,8 +276,17 @@ const updateColorRange = async (previewImageUrl: string) => {
 
 const handlePreviewGenerated = (base64: string) => {
   previewUrl.value = base64
-  if (base64 && props.mode === 'color_range') void updateColorRange(base64)
 }
+
+const handleSelectionComplete = () => {
+  if (props.mode === 'color_range') void updateColorRange()
+}
+
+watch(() => props.colorMethod, () => {
+  if (props.visible && props.mode === 'color_range' && selection.w > 0 && selection.h > 0) {
+    void updateColorRange()
+  }
+})
 
 // 处理本地上传的图片
 const handleLocalImageUpload = (base64: string) => {
@@ -478,13 +485,11 @@ saveImagePath.value = generateDefaultSavePath()
         :reference-rect="referenceRect"
         :reference-label="referenceLabel"
         :mode="mode"
-        :color-range="colorRange"
-        :color-range-error="colorRangeError"
-        :is-color-range-loading="isColorRangeLoading"
         :initial-selection="selection"
         :image-size="imageSize"
         @refresh="fetchScreenshot"
         @selection-change="handleSelectionChange"
+        @selection-complete="handleSelectionComplete"
         @preview-generated="handlePreviewGenerated"
         @image-uploaded="handleLocalImageUpload"
       />
@@ -507,6 +512,9 @@ saveImagePath.value = generateDefaultSavePath()
         :local-images="localImages"
         :local-temp-images="localTempImages"
         :local-deleted-images="localDeletedImages"
+        :color-range="colorRange"
+        :color-range-error="colorRangeError"
+        :is-color-range-loading="isColorRangeLoading"
         @close="$emit('close')"
         @confirm="handleConfirm"
         @ocr-start="handleOcr"
