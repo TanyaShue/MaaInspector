@@ -196,6 +196,21 @@ describe('useFlowWorkspaceVm', () => {
     }, { applyLayout: false })
   })
 
+  it('keeps repeated function-ref registration and identical status reports idempotent', () => {
+    const store = useAppConfigStore()
+    const vm = useFlowWorkspaceVm()
+    const tab = store.ensureWorkspaceTab()
+    const editor = createEditorPort()
+
+    vm.registerEditor(tab.id, editor)
+    const statusesAfterRegistration = vm.editorStatuses.value
+    vm.registerEditor(tab.id, editor)
+    vm.handleEditorStatusChange(tab.id, editor.getEditorStatus())
+
+    expect(vm.editorStatuses.value).toBe(statusesAfterRegistration)
+    expect(editor.handleUpdateCanvasConfig).toHaveBeenCalledTimes(1)
+  })
+
   it('updates every editor config but only lays out the active canvas', async () => {
     const vm = useFlowWorkspaceVm()
     vm.addTab()

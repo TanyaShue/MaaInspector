@@ -68,7 +68,6 @@ const {
   hasDirtyTabs,
   isRestoringWorkspace,
   registerEditor,
-  registerActiveEditor,
   selectTab,
   addTab,
   closeTab,
@@ -327,7 +326,7 @@ const openCreateResourceFile = (source: string) => {
       <FlowEditor
         v-if="appSettings.lowMemoryMode && activeTab"
         :key="activeTab.id"
-        :ref="(el: any) => registerActiveEditor(el as FlowEditorPort | null)"
+        :ref="(el: any) => registerEditor(activeTab.id, el as FlowEditorPort | null)"
         :tab-id="activeTab.id"
         :is-active="true"
         :low-memory-mode="appSettings.lowMemoryMode"

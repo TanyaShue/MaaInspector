@@ -1,4 +1,4 @@
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, toRaw } from 'vue'
 import { useTabManager } from '@/composables/useTabManager'
 import { useMainAppState } from '@/composables/useMainAppState'
 import { useAppConfigStore } from '@/stores/appConfig'
@@ -51,12 +51,28 @@ export function useFlowWorkspaceVm() {
   const restoringWorkspaceCount = computed(() => loadingRestoredTabs.value.size)
   const isRestoringWorkspace = computed(() => restoringWorkspaceCount.value > 0)
 
+  const isSameEditorStatus = (
+    current: FlowEditorStatus | undefined,
+    next: FlowEditorStatus
+  ) => Boolean(
+    current &&
+    current.isDirty === next.isDirty &&
+    current.nodeCount === next.nodeCount &&
+    current.edgeCount === next.edgeCount
+  )
+
+  const setEditorStatus = (tabId: string, status: FlowEditorStatus) => {
+    if (isSameEditorStatus(editorStatuses.value.get(tabId), status)) return
+    const nextStatuses = new Map(editorStatuses.value)
+    nextStatuses.set(tabId, status)
+    editorStatuses.value = nextStatuses
+  }
+
   const registerEditor = (tabId: string, editor: FlowEditorPort | null) => {
     if (editor) {
+      if (toRaw(editorRefs.value.get(tabId)) === toRaw(editor)) return
       editorRefs.value.set(tabId, editor)
-      const nextStatuses = new Map(editorStatuses.value)
-      nextStatuses.set(tabId, editor.getEditorStatus())
-      editorStatuses.value = nextStatuses
+      setEditorStatus(tabId, editor.getEditorStatus())
       void editor.handleUpdateCanvasConfig({
         edgeType: appSettings.value.edgeType,
         spacing: appSettings.value.spacing,
@@ -69,14 +85,7 @@ export function useFlowWorkspaceVm() {
   }
 
   const handleEditorStatusChange = (tabId: string, status: FlowEditorStatus) => {
-    const nextStatuses = new Map(editorStatuses.value)
-    nextStatuses.set(tabId, status)
-    editorStatuses.value = nextStatuses
-  }
-
-  const registerActiveEditor = (editor: FlowEditorPort | null) => {
-    if (!activeTabId.value) return
-    registerEditor(activeTabId.value, editor)
+    setEditorStatus(tabId, status)
   }
 
   const waitForEditor = async (tabId: string, maxTicks = 5): Promise<FlowEditorPort | null> => {
@@ -302,7 +311,6 @@ export function useFlowWorkspaceVm() {
     restoringWorkspaceCount,
     makeTabTitle,
     registerEditor,
-    registerActiveEditor,
     handleEditorStatusChange,
     selectTab,
     addTab,
