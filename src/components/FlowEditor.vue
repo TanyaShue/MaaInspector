@@ -1,16 +1,17 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { SelectionMode, VueFlow, type NodeDragEvent } from '@vue-flow/core'
+import { computed, defineAsyncComponent, markRaw, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { SelectionMode, VueFlow, type NodeDragEvent, type NodeTypesObject } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { Eye, FolderSearch, X } from 'lucide-vue-next'
 import ContextMenu from './Flow/ContextMenu.vue'
 import SubCanvasPanel from './Flow/SubCanvasPanel.vue'
 import NodeDetailsHost from './Flow/NodeDetailsHost.vue'
+import TaskChainPlaceholderNode from './Flow/TaskChainPlaceholderNode.vue'
 import { useFlowEditorVm } from '@/composables/viewModels/useFlowEditorVm'
 import { useEdgeRenderWindow } from '@/composables/flowGraph/useEdgeRenderWindow'
 import { syncNodePositions } from '@/utils/editorInteraction'
-import { collectReachableNodeIds } from '@/utils/flowSubgraph'
+import { collectReachableNodeIds, filterSubgraphEdges } from '@/utils/flowSubgraph'
 import type { FlowNode } from '@/utils/flowTypes'
 import type { FlowEditorStatus } from '@/composables/viewModels/types'
 
@@ -105,6 +106,22 @@ const replaceSubCanvasNodes = (nextNodes: FlowNode[]) => {
 }
 
 const editorRootRef = ref<HTMLElement | null>(null)
+const focusedTaskChainNodeIds = computed(() => {
+  if (!taskChainFocusId.value) return new Set<string>()
+  return collectReachableNodeIds(taskChainFocusId.value, nodes.value, edges.value)
+})
+const taskChainFocusActive = computed(() =>
+  Boolean(taskChainFocusId.value && focusedTaskChainNodeIds.value.size > 0)
+)
+const edgeRenderSource = computed(() => taskChainFocusActive.value
+  ? filterSubgraphEdges(edges.value, focusedTaskChainNodeIds.value)
+  : edges.value
+)
+const editorNodeTypesObject = {
+  ...nodeTypesObject,
+  taskChainPlaceholder: markRaw(TaskChainPlaceholderNode),
+} as unknown as NodeTypesObject
+
 const {
   renderedEdges,
   setCanvasSize,
@@ -115,21 +132,18 @@ const {
   handleNodeDragStop: handleEdgeNodeDragStop,
 } = useEdgeRenderWindow({
   nodes,
-  edges,
+  edges: edgeRenderSource,
   nodeStructureVersion,
   lowMemoryMode: () => props.lowMemoryMode === true,
   pauseAnimations: () => subCanvas.value.visible,
 })
 
-const focusedTaskChainNodeIds = computed(() => {
-  if (!taskChainFocusId.value) return new Set<string>()
-  return collectReachableNodeIds(taskChainFocusId.value, nodes.value, edges.value)
-})
-
 const nodeInteractionDefaults = new Map<string, {
+  type?: string
   draggable: boolean
   selectable: boolean
   focusable: boolean
+  connectable: FlowNode['connectable']
   zIndex?: number
 }>()
 
@@ -149,33 +163,43 @@ const stripTaskChainClasses = <T,>(value: T): T => {
 
 watch(taskChainFocusId, (focusId, previousFocusId) => {
   if (!focusId || previousFocusId) return
-  nodeInteractionDefaults.clear()
   nodes.value.forEach(node => {
+    if (nodeInteractionDefaults.has(node.id)) return
     nodeInteractionDefaults.set(node.id, {
+      type: node.type,
       draggable: node.draggable ?? true,
       selectable: node.selectable ?? true,
       focusable: node.focusable ?? true,
+      connectable: node.connectable ?? true,
       zIndex: node.zIndex,
     })
   })
 }, { flush: 'sync' })
+
+watch([currentSource, currentFilename], () => {
+  if (!taskChainFocusId.value) nodeInteractionDefaults.clear()
+})
 
 const displayedNodes = computed(() => {
   const focusedIds = focusedTaskChainNodeIds.value
   const focusActive = Boolean(taskChainFocusId.value && focusedIds.size > 0)
   return nodes.value.map(node => {
     const defaults = nodeInteractionDefaults.get(node.id) ?? {
+      type: node.type,
       draggable: node.draggable ?? true,
       selectable: node.selectable ?? true,
       focusable: node.focusable ?? true,
+      connectable: node.connectable ?? true,
       zIndex: node.zIndex,
     }
     if (!focusActive) {
       return {
         ...node,
+        type: defaults.type,
         draggable: defaults.draggable,
         selectable: defaults.selectable,
         focusable: defaults.focusable,
+        connectable: defaults.connectable,
         zIndex: defaults.zIndex,
       }
     }
@@ -183,6 +207,7 @@ const displayedNodes = computed(() => {
     const isTaskChainMember = focusedIds.has(node.id)
     return {
       ...node,
+      type: isTaskChainMember ? defaults.type : 'taskChainPlaceholder',
       class: [
         stripTaskChainClasses(node.class),
         isTaskChainMember ? 'task-chain-member' : 'task-chain-nonmember',
@@ -190,23 +215,8 @@ const displayedNodes = computed(() => {
       draggable: isTaskChainMember ? defaults.draggable : false,
       selectable: isTaskChainMember ? defaults.selectable : false,
       focusable: isTaskChainMember ? defaults.focusable : false,
+      connectable: isTaskChainMember ? defaults.connectable : false,
       zIndex: isTaskChainMember ? Math.max(defaults.zIndex ?? 0, 10) : -1,
-    }
-  })
-})
-
-const displayedEdges = computed(() => {
-  const focusedIds = focusedTaskChainNodeIds.value
-  if (!taskChainFocusId.value || focusedIds.size === 0) return renderedEdges.value
-  return renderedEdges.value.map(edge => {
-    const isTaskChainMember = focusedIds.has(edge.source) && focusedIds.has(edge.target)
-    return {
-      ...edge,
-      animated: isTaskChainMember ? edge.animated : false,
-      class: [
-        stripTaskChainClasses(edge.class),
-        isTaskChainMember ? 'task-chain-member' : 'task-chain-nonmember',
-      ],
     }
   })
 })
@@ -244,13 +254,13 @@ onBeforeUnmount(() => {
   <div
     ref="editorRootRef"
     class="w-full h-full min-h-[500px] bg-slate-50 relative"
-    :class="{ 'task-chain-focus-active': taskChainFocusId && focusedTaskChainNodeIds.size > 0 }"
+    :class="{ 'task-chain-focus-active': taskChainFocusActive }"
   >
     <VueFlow
       class="flow-canvas-layer"
       :nodes="displayedNodes"
-      :edges="displayedEdges"
-      :node-types="nodeTypesObject"
+      :edges="renderedEdges"
+      :node-types="editorNodeTypesObject"
       :default-zoom="1"
       :min-zoom="0.1"
       :max-zoom="4"
@@ -437,20 +447,11 @@ onBeforeUnmount(() => {
 }
 .task-chain-focus-active .vue-flow__node.task-chain-nonmember {
   pointer-events: none !important;
-  opacity: 0.12;
-  filter: blur(2px) grayscale(0.85) saturate(0.1);
-  transition: opacity 160ms ease, filter 160ms ease;
+  opacity: 0.3;
+  transition: opacity 160ms ease;
 }
-.task-chain-focus-active .vue-flow__edge.task-chain-nonmember {
-  pointer-events: none !important;
-  opacity: 0.08;
-  filter: blur(1.5px) grayscale(0.85) saturate(0.1);
-  transition: opacity 160ms ease, filter 160ms ease;
-}
-.task-chain-focus-active .vue-flow__node.task-chain-member,
-.task-chain-focus-active .vue-flow__edge.task-chain-member {
+.task-chain-focus-active .vue-flow__node.task-chain-member {
   pointer-events: auto !important;
   opacity: 1;
-  filter: none;
 }
 </style>
