@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { computed } from 'vue'
+  import { computed, ref, watch } from 'vue'
   import {
     ArrowLeft,
     CheckCircle2,
@@ -79,6 +79,17 @@
     (e: 'image-preview', src: string): void
     (e: 'copy', text: string): void
   }>()
+
+  type DetailStageTab = 'recognition' | 'action'
+  const getDefaultStage = (): DetailStageTab => props.detail.recognition ? 'recognition' : 'action'
+  const activeStage = ref<DetailStageTab>(getDefaultStage())
+
+  watch(
+    () => props.detail.record.recordId,
+    () => {
+      activeStage.value = getDefaultStage()
+    }
+  )
 
   const recognitionLabel = computed(
     () =>
@@ -174,9 +185,30 @@
       </div>
     </header>
 
+    <nav
+      v-if="detail.recognition && detail.action"
+      class="grid shrink-0 grid-cols-2 gap-1 border-b border-slate-200 bg-white px-3 py-2"
+      aria-label="任务详情类型"
+    >
+      <button
+        class="stage-tab"
+        :class="activeStage === 'recognition' ? 'stage-tab-active-blue' : 'stage-tab-idle'"
+        @click="activeStage = 'recognition'"
+      >
+        <ScanEye :size="13" />识别详情
+      </button>
+      <button
+        class="stage-tab"
+        :class="activeStage === 'action' ? 'stage-tab-active-violet' : 'stage-tab-idle'"
+        @click="activeStage = 'action'"
+      >
+        <MousePointerClick :size="13" />动作详情
+      </button>
+    </nav>
+
     <div class="custom-scrollbar flex-1 space-y-3 overflow-y-auto p-3">
       <section
-        v-if="detail.recognition"
+        v-if="detail.recognition && activeStage === 'recognition'"
         class="overflow-hidden rounded-xl border border-blue-200 bg-white shadow-sm"
       >
         <div class="stage-header border-blue-100 bg-blue-50/70">
@@ -364,7 +396,7 @@
       </section>
 
       <section
-        v-if="detail.action"
+        v-if="detail.action && activeStage === 'action'"
         class="overflow-hidden rounded-xl border border-violet-200 bg-white shadow-sm"
       >
         <div class="stage-header border-violet-100 bg-violet-50/70">
@@ -477,6 +509,22 @@
 </template>
 
 <style scoped>
+  .stage-tab {
+    @apply flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors;
+  }
+
+  .stage-tab-idle {
+    @apply border-transparent bg-slate-50 text-slate-500 hover:border-slate-200 hover:bg-slate-100;
+  }
+
+  .stage-tab-active-blue {
+    @apply border-blue-200 bg-blue-50 text-blue-700;
+  }
+
+  .stage-tab-active-violet {
+    @apply border-violet-200 bg-violet-50 text-violet-700;
+  }
+
   .stage-header {
     @apply flex items-center justify-between border-b px-3 py-2;
   }
