@@ -14,6 +14,7 @@ import type { EdgeType } from '@/utils/flowOptions'
 import { isEdgeType, isSpacingKey, isLayoutAlgorithm, isLayoutDirection } from '@/utils/typeGuards'
 import { waitForFrame, deepClone } from '@/utils/nodeHelpers'
 import { useNodeClipboard } from '@/composables/useNodeClipboard'
+import type { NodeNamePrefixMode } from '@/stores/appConfig'
 
 type MenuData = FlowNode | FlowEdge | null
 
@@ -37,6 +38,8 @@ export interface EditorActionsDeps {
   isFileLoaded: { value: boolean }
   currentFilename?: { value: string }
   nodeNamePrefixEnabled?: { value: boolean }
+  nodeNamePrefixMode?: { value: NodeNamePrefixMode }
+  nodeNameCustomPrefix?: { value: string }
   createNodeObject: (
     id: string,
     rawContent: FlowBusinessData,
@@ -94,6 +97,8 @@ export function useEditorActions(deps: EditorActionsDeps) {
     isFileLoaded,
     currentFilename,
     nodeNamePrefixEnabled,
+    nodeNamePrefixMode,
+    nodeNameCustomPrefix,
     createNodeObject,
     applyLayout,
     removeEdges,
@@ -195,17 +200,22 @@ export function useEditorActions(deps: EditorActionsDeps) {
     await deps.setViewport(previousViewport, { duration: 0 })
   }
 
-  const getFilenamePrefix = () => {
-    if (nodeNamePrefixEnabled?.value === false || !currentFilename?.value) return ''
+  const sanitizePrefix = (value: string) =>
+    value.trim().replace(/[^\p{L}\p{N}_-]+/gu, '_').replace(/^[-_]+|[-_]+$/g, '')
+
+  const getNodePrefix = () => {
+    const mode = nodeNamePrefixMode?.value
+      ?? (nodeNamePrefixEnabled?.value === false ? 'random' : 'filename')
+    if (mode === 'random') return 'N'
+    if (mode === 'custom') return sanitizePrefix(nodeNameCustomPrefix?.value || '') || 'N'
+    if (!currentFilename?.value) return 'N'
     const basename = currentFilename.value.split(/[\\/]/).pop() || ''
-    return basename.replace(/\.json$/i, '').replace(/[^\p{L}\p{N}_-]+/gu, '_')
+    return sanitizePrefix(basename.replace(/\.json$/i, '')) || 'N'
   }
 
   const createUniqueNodeId = () => {
-    const prefix = getFilenamePrefix()
-    const generateId = () => prefix
-      ? `${prefix}_${Math.floor(100000 + Math.random() * 900000)}`
-      : `N-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+    const prefix = getNodePrefix()
+    const generateId = () => `${prefix}-${Math.floor(100000 + Math.random() * 900000)}`
     let id = generateId()
     while (nodes.value.some((node) => node.id === id)) {
       id = generateId()

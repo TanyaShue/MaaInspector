@@ -27,6 +27,7 @@ import {
   stageSubgraphPositionChanges
 } from '@/utils/flowSubgraph'
 import type { EdgeType } from '@/utils/flowOptions'
+import type { NodeNamePrefixMode } from '@/stores/appConfig'
 import { useNodeDetailsController } from '@/composables/useNodeDetailsController'
 import type {
   FlowBusinessData,
@@ -55,6 +56,8 @@ const props = defineProps<{
   lowMemoryMode?: boolean
   currentFilename: string
   nodeNamePrefixEnabled: boolean
+  nodeNamePrefixMode: NodeNamePrefixMode
+  nodeNameCustomPrefix: string
   isFileLoaded: boolean
   onValidateConnection: (connection: FlowConnection) => boolean
   handleConnect: (connection: FlowConnection) => void
@@ -485,6 +488,8 @@ const editorActions = useEditorActions({
   isFileLoaded: computed(() => props.isFileLoaded),
   currentFilename: computed(() => props.currentFilename),
   nodeNamePrefixEnabled: computed(() => props.nodeNamePrefixEnabled),
+  nodeNamePrefixMode: computed(() => props.nodeNamePrefixMode),
+  nodeNameCustomPrefix: computed(() => props.nodeNameCustomPrefix),
   createNodeObject: props.createNodeObject,
   applyLayout: async (options) => {
     await layoutVisibleChain(options?.algorithm || activeAlgorithm.value)

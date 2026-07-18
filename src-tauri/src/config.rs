@@ -268,6 +268,8 @@ pub struct CanvasSettings {
     pub layout_direction: Option<String>,
     pub pipeline_version: Option<String>,
     pub node_name_prefix_enabled: Option<bool>,
+    pub node_name_prefix_mode: Option<String>,
+    pub node_name_custom_prefix: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

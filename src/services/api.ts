@@ -106,6 +106,8 @@ export interface SystemState {
   layout_direction?: string
   pipeline_version?: string
   node_name_prefix_enabled?: boolean
+  node_name_prefix_mode?: 'random' | 'filename' | 'custom'
+  node_name_custom_prefix?: string
   restore_workspace_on_start?: boolean
 }
 
@@ -116,6 +118,8 @@ export interface CanvasSettings {
   layout_direction?: string
   pipeline_version?: string
   node_name_prefix_enabled?: boolean
+  node_name_prefix_mode?: 'random' | 'filename' | 'custom'
+  node_name_custom_prefix?: string
 }
 
 export interface TabResourceInfo {

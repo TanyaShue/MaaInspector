@@ -3,6 +3,7 @@ import { nextTick, ref } from 'vue'
 import { useEditorActions } from '@/composables/useEditorActions'
 import { resetNodeClipboardForTests } from '@/composables/useNodeClipboard'
 import type { FlowBusinessData, FlowEdge, FlowNode } from '@/utils/flowTypes'
+import type { NodeNamePrefixMode } from '@/stores/appConfig'
 
 const createNode = (id: string, data: FlowBusinessData = { id, recognition: 'DirectHit' }): FlowNode => ({
   id,
@@ -15,7 +16,11 @@ const createNode = (id: string, data: FlowBusinessData = { id, recognition: 'Dir
   }
 })
 
-const createActions = (filename = 'demo.json') => {
+const createActions = (
+  filename = 'demo.json',
+  prefixMode: NodeNamePrefixMode = 'filename',
+  customPrefix = ''
+) => {
   const nodes = ref<FlowNode[]>([createNode('Start')])
   const edges = ref<FlowEdge[]>([
     { id: 'e-Start-End-next', source: 'Start', target: 'End' }
@@ -39,6 +44,8 @@ const createActions = (filename = 'demo.json') => {
     isFileLoaded: ref(true),
     currentFilename: ref(filename),
     nodeNamePrefixEnabled: ref(true),
+    nodeNamePrefixMode: ref(prefixMode),
+    nodeNameCustomPrefix: ref(customPrefix),
     createNodeObject: createNode,
     applyLayout: vi.fn().mockResolvedValue(undefined),
     removeEdges: vi.fn(),
@@ -97,7 +104,7 @@ describe('useEditorActions', () => {
     const addedNode = nodes.value[nodes.value.length - 1]
     expect(addedNode?.position).toEqual({ x: 40, y: 60 })
     expect(addedNode?.data?.data?.recognition).toBe('OCR')
-    expect(addedNode?.id).toMatch(/^demo_\d{6}$/)
+    expect(addedNode?.id).toMatch(/^demo-\d{6}$/)
     expect(markNodeStructureChanged).toHaveBeenCalledTimes(1)
   })
 
@@ -111,8 +118,20 @@ describe('useEditorActions', () => {
 
     const pasted = target.actions.pasteNodesFromClipboard({ x: 25, y: 35 })
     expect(pasted).toHaveLength(1)
-    expect(pasted[0]?.id).toMatch(/^target_\d{6}$/)
+    expect(pasted[0]?.id).toMatch(/^target-\d{6}$/)
     expect(pasted[0]?.position).toEqual({ x: 25, y: 35 })
+  })
+
+  it.each([
+    ['random', '', /^N-\d{6}$/],
+    ['custom', 'Daily Task', /^Daily_Task-\d{6}$/],
+  ] as const)('creates nodes with the %s prefix mode', (mode, customPrefix, expected) => {
+    const { actions, nodes } = createActions('demo.json', mode, customPrefix)
+
+    actions.onPaneContextMenu(new MouseEvent('contextmenu', { clientX: 1, clientY: 2 }))
+    actions.handleMenuAction({ action: 'add', type: 'pane', data: null })
+
+    expect(nodes.value[nodes.value.length - 1]?.id).toMatch(expected)
   })
 
   it('preserves the viewport when adding a node', async () => {

@@ -12,6 +12,7 @@ import { systemApi } from '@/services/api'
 import { LAYOUT_ALGORITHM_OPTIONS, LAYOUT_DIRECTION_OPTIONS } from '@/utils/flowOptions'
 import type { EdgeType } from '@/utils/flowOptions'
 import type { LayoutAlgorithm, LayoutDirection, SpacingKey } from '@/utils/flowTypes'
+import type { NodeNamePrefixMode } from '@/stores/appConfig'
 
 export type PipelineVersion = 'V1' | 'V2'
 type SectionId = 'canvas' | 'workspace' | 'storage' | 'developer' | 'about'
@@ -27,6 +28,8 @@ interface AppSettingsProps {
   defaultRestoreWorkspaceOnStart?: boolean
   defaultLowMemoryMode?: boolean
   defaultNodeNamePrefixEnabled?: boolean
+  defaultNodeNamePrefixMode?: NodeNamePrefixMode
+  defaultNodeNameCustomPrefix?: string
 }
 
 const props = withDefaults(defineProps<AppSettingsProps>(), {
@@ -38,7 +41,9 @@ const props = withDefaults(defineProps<AppSettingsProps>(), {
   defaultPipelineVersion: 'V1',
   defaultRestoreWorkspaceOnStart: true,
   defaultLowMemoryMode: false,
-  defaultNodeNamePrefixEnabled: true
+  defaultNodeNamePrefixEnabled: true,
+  defaultNodeNamePrefixMode: 'filename',
+  defaultNodeNameCustomPrefix: ''
 })
 
 const emit = defineEmits<{
@@ -52,6 +57,8 @@ const emit = defineEmits<{
     restoreWorkspaceOnStart: boolean
     lowMemoryMode: boolean
     nodeNamePrefixEnabled: boolean
+    nodeNamePrefixMode: NodeNamePrefixMode
+    nodeNameCustomPrefix: string
   }): void
 }>()
 
@@ -70,7 +77,8 @@ const layoutDirection = ref<LayoutDirection>(props.defaultLayoutDirection)
 const pipelineVersion = ref<PipelineVersion>(props.defaultPipelineVersion)
 const restoreWorkspaceOnStart = ref(props.defaultRestoreWorkspaceOnStart)
 const lowMemoryMode = ref(props.defaultLowMemoryMode)
-const nodeNamePrefixEnabled = ref(props.defaultNodeNamePrefixEnabled)
+const nodeNamePrefixMode = ref<NodeNamePrefixMode>(props.defaultNodeNamePrefixMode)
+const nodeNameCustomPrefix = ref(props.defaultNodeNameCustomPrefix)
 const activeSection = ref<SectionId>('canvas')
 const scrollContainer = ref<HTMLElement | null>(null)
 const sectionRefs = new Map<SectionId, HTMLElement>()
@@ -112,7 +120,8 @@ const resetForm = () => {
   pipelineVersion.value = props.defaultPipelineVersion
   restoreWorkspaceOnStart.value = props.defaultRestoreWorkspaceOnStart
   lowMemoryMode.value = props.defaultLowMemoryMode
-  nodeNamePrefixEnabled.value = props.defaultNodeNamePrefixEnabled
+  nodeNamePrefixMode.value = props.defaultNodeNamePrefixMode
+  nodeNameCustomPrefix.value = props.defaultNodeNameCustomPrefix
 }
 
 watch(() => props.visible, async visible => {
@@ -137,7 +146,9 @@ const handleSave = () => emit('save', {
   pipelineVersion: pipelineVersion.value,
   restoreWorkspaceOnStart: restoreWorkspaceOnStart.value,
   lowMemoryMode: lowMemoryMode.value,
-  nodeNamePrefixEnabled: nodeNamePrefixEnabled.value
+  nodeNamePrefixEnabled: nodeNamePrefixMode.value !== 'random',
+  nodeNamePrefixMode: nodeNamePrefixMode.value,
+  nodeNameCustomPrefix: nodeNameCustomPrefix.value.trim()
 })
 
 const handleReset = () => {
@@ -148,7 +159,8 @@ const handleReset = () => {
   pipelineVersion.value = 'V1'
   restoreWorkspaceOnStart.value = true
   lowMemoryMode.value = false
-  nodeNamePrefixEnabled.value = true
+  nodeNamePrefixMode.value = 'filename'
+  nodeNameCustomPrefix.value = ''
 }
 
 const handleCheckUpdate = async () => {
@@ -238,7 +250,26 @@ const handleOpenBackupDir = async () => {
               <div class="setting-row"><div><h5>Pipeline 版本</h5><p>保存 Pipeline 文件时使用的格式版本</p></div><div class="option-grid grid-cols-2"><button :class="{ active: pipelineVersion === 'V1' }" @click="pipelineVersion = 'V1'">V1</button><button :class="{ active: pipelineVersion === 'V2' }" @click="pipelineVersion = 'V2'">V2</button></div></div>
               <div class="setting-row"><div><h5>启动时恢复工作区</h5><p>自动加载上次资源，并重连设备与 Agent</p></div><button class="toggle" :class="{ enabled: restoreWorkspaceOnStart }" @click="restoreWorkspaceOnStart = !restoreWorkspaceOnStart"><span /></button></div>
               <div class="setting-row"><div><h5>低消耗模式</h5><p>{{ lowMemoryMode ? '切换标签页时重建编辑器，减少内存占用' : '保留编辑器实例，标签页切换更快速' }}</p></div><button class="toggle" :class="{ enabled: lowMemoryMode }" @click="lowMemoryMode = !lowMemoryMode"><span /></button></div>
-              <div class="setting-row"><div><h5>文件级节点名称前缀</h5><p>新建节点使用“当前文件名_随机数”作为名称</p></div><button class="toggle" :class="{ enabled: nodeNamePrefixEnabled }" @click="nodeNamePrefixEnabled = !nodeNamePrefixEnabled"><span /></button></div>
+              <div class="setting-row items-start">
+                <div><h5>节点名称前缀</h5><p>选择新建节点的名称格式，随机数固定为 6 位</p></div>
+                <div class="w-80 space-y-2">
+                  <div class="option-grid grid-cols-3">
+                    <button :class="{ active: nodeNamePrefixMode === 'random' }" @click="nodeNamePrefixMode = 'random'">N-随机数</button>
+                    <button :class="{ active: nodeNamePrefixMode === 'filename' }" @click="nodeNamePrefixMode = 'filename'">文件名-随机数</button>
+                    <button :class="{ active: nodeNamePrefixMode === 'custom' }" @click="nodeNamePrefixMode = 'custom'">自定义</button>
+                  </div>
+                  <input
+                    v-if="nodeNamePrefixMode === 'custom'"
+                    v-model="nodeNameCustomPrefix"
+                    class="input-base"
+                    maxlength="48"
+                    placeholder="输入自定义前缀，例如 Task"
+                  />
+                  <p class="!mt-1 text-[10px] text-slate-400">
+                    示例：{{ nodeNamePrefixMode === 'filename' ? 'pipeline-123456' : nodeNamePrefixMode === 'custom' ? `${nodeNameCustomPrefix.trim() || 'N'}-123456` : 'N-123456' }}
+                  </p>
+                </div>
+              </div>
             </div>
           </section>
 

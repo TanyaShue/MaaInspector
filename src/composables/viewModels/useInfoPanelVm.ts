@@ -10,6 +10,7 @@ import type { EdgeType } from '@/utils/flowOptions'
 import type { FlowBusinessData, LayoutAlgorithm, LayoutDirection, SpacingKey, TemplateImage } from '@/utils/flowTypes'
 import type { TabResourceInfo } from '@/utils/flowWorkspaceTypes'
 import type { DevicePanelSnapshot, InfoPanelStatusSnapshot, PanelConnectionStatus, ResourcePanelSnapshot } from './types'
+import type { NodeNamePrefixMode } from '@/stores/appConfig'
 
 interface FlowTab {
   id: string
@@ -271,6 +272,8 @@ export function useInfoPanelVm(props: UseInfoPanelVmProps, emit: InfoPanelEmit) 
     restoreWorkspaceOnStart: boolean
     lowMemoryMode: boolean
     nodeNamePrefixEnabled: boolean
+    nodeNamePrefixMode: NodeNamePrefixMode
+    nodeNameCustomPrefix: string
   }) => {
     appConfig.updateCanvasSettings({
       edgeType: payload.edgeType,
@@ -280,7 +283,9 @@ export function useInfoPanelVm(props: UseInfoPanelVmProps, emit: InfoPanelEmit) 
       pipelineVersion: payload.pipelineVersion,
       restoreWorkspaceOnStart: payload.restoreWorkspaceOnStart,
       lowMemoryMode: payload.lowMemoryMode,
-      nodeNamePrefixEnabled: payload.nodeNamePrefixEnabled
+      nodeNamePrefixEnabled: payload.nodeNamePrefixEnabled,
+      nodeNamePrefixMode: payload.nodeNamePrefixMode,
+      nodeNameCustomPrefix: payload.nodeNameCustomPrefix
     })
     showAppSettings.value = false
   }

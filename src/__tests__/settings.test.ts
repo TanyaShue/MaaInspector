@@ -46,6 +46,7 @@ describe('useAppConfigStore canvas settings', () => {
     it('should enable file-level node name prefixes by default', () => {
       const store = useAppConfigStore()
       expect(store.canvas.nodeNamePrefixEnabled).toBe(true)
+      expect(store.canvas.nodeNamePrefixMode).toBe('filename')
     })
   })
 
@@ -96,6 +97,18 @@ describe('useAppConfigStore canvas settings', () => {
       const store = useAppConfigStore()
       store.updateCanvasSettings({ nodeNamePrefixEnabled: false })
       expect(store.canvas.nodeNamePrefixEnabled).toBe(false)
+      expect(store.canvas.nodeNamePrefixMode).toBe('random')
+    })
+
+    it('should switch node name prefix modes and custom prefix', () => {
+      const store = useAppConfigStore()
+      store.updateCanvasSettings({
+        nodeNamePrefixMode: 'custom',
+        nodeNameCustomPrefix: 'Task'
+      })
+      expect(store.canvas.nodeNamePrefixMode).toBe('custom')
+      expect(store.canvas.nodeNameCustomPrefix).toBe('Task')
+      expect(store.canvas.nodeNamePrefixEnabled).toBe(true)
     })
 
     it('should update multiple settings at once', () => {

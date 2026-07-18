@@ -43,6 +43,8 @@ const {
   currentAlgorithm,
   currentDirection,
   nodeNamePrefixEnabled,
+  nodeNamePrefixMode,
+  nodeNameCustomPrefix,
   currentFilename,
   currentSource,
   isFileLoaded,
@@ -385,6 +387,8 @@ onBeforeUnmount(() => {
       :low-memory-mode="props.lowMemoryMode"
       :current-filename="currentFilename"
       :node-name-prefix-enabled="nodeNamePrefixEnabled"
+      :node-name-prefix-mode="nodeNamePrefixMode"
+      :node-name-custom-prefix="nodeNameCustomPrefix"
       :is-file-loaded="isFileLoaded"
       :on-validate-connection="onValidateConnection"
       :handle-connect="handleConnect"

@@ -20,6 +20,8 @@ import {
   toRuntimeTabs,
 } from '@/utils/workspaceState'
 
+export type NodeNamePrefixMode = 'random' | 'filename' | 'custom'
+
 interface CanvasSettings {
   edgeType: EdgeType
   spacing: SpacingKey
@@ -29,6 +31,8 @@ interface CanvasSettings {
   lowMemoryMode: boolean
   restoreWorkspaceOnStart: boolean
   nodeNamePrefixEnabled: boolean
+  nodeNamePrefixMode: NodeNamePrefixMode
+  nodeNameCustomPrefix: string
 }
 
 interface ResourceState {
@@ -74,6 +78,8 @@ const DEFAULT_CANVAS: CanvasSettings = {
   lowMemoryMode: false,
   restoreWorkspaceOnStart: true,
   nodeNamePrefixEnabled: true,
+  nodeNamePrefixMode: 'filename',
+  nodeNameCustomPrefix: '',
 }
 
 const createEmptyWorkspace = (): TabState => ({
@@ -217,6 +223,16 @@ export const useAppConfigStore = defineStore('appConfig', () => {
       }
       if (typeof data.canvas_settings?.node_name_prefix_enabled === 'boolean') {
         canvas.value.nodeNamePrefixEnabled = data.canvas_settings.node_name_prefix_enabled
+        canvas.value.nodeNamePrefixMode = data.canvas_settings.node_name_prefix_enabled
+          ? 'filename'
+          : 'random'
+      }
+      if (['random', 'filename', 'custom'].includes(data.canvas_settings?.node_name_prefix_mode || '')) {
+        canvas.value.nodeNamePrefixMode = data.canvas_settings?.node_name_prefix_mode as NodeNamePrefixMode
+        canvas.value.nodeNamePrefixEnabled = canvas.value.nodeNamePrefixMode !== 'random'
+      }
+      if (typeof data.canvas_settings?.node_name_custom_prefix === 'string') {
+        canvas.value.nodeNameCustomPrefix = data.canvas_settings.node_name_custom_prefix
       }
 
       resource.value.signature = buildResourceSignature(
@@ -269,6 +285,8 @@ export const useAppConfigStore = defineStore('appConfig', () => {
           layout_direction: canvas.value.layoutDirection,
           pipeline_version: canvas.value.pipelineVersion,
           node_name_prefix_enabled: canvas.value.nodeNamePrefixEnabled,
+          node_name_prefix_mode: canvas.value.nodeNamePrefixMode,
+          node_name_custom_prefix: canvas.value.nodeNameCustomPrefix,
         },
         restore_workspace_on_start: canvas.value.restoreWorkspaceOnStart,
         workspace_state: workspaceToSave,
@@ -306,6 +324,14 @@ export const useAppConfigStore = defineStore('appConfig', () => {
       canvas.value.restoreWorkspaceOnStart = partial.restoreWorkspaceOnStart
     if (partial.nodeNamePrefixEnabled !== undefined)
       canvas.value.nodeNamePrefixEnabled = partial.nodeNamePrefixEnabled
+    if (partial.nodeNamePrefixEnabled !== undefined && partial.nodeNamePrefixMode === undefined)
+      canvas.value.nodeNamePrefixMode = partial.nodeNamePrefixEnabled ? 'filename' : 'random'
+    if (partial.nodeNamePrefixMode !== undefined) {
+      canvas.value.nodeNamePrefixMode = partial.nodeNamePrefixMode
+      canvas.value.nodeNamePrefixEnabled = partial.nodeNamePrefixMode !== 'random'
+    }
+    if (partial.nodeNameCustomPrefix !== undefined)
+      canvas.value.nodeNameCustomPrefix = partial.nodeNameCustomPrefix
     void saveToBackend()
   }
 

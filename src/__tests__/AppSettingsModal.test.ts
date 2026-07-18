@@ -57,7 +57,8 @@ describe('AppSettingsModal', () => {
     expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({
       pipelineVersion: 'V2',
       restoreWorkspaceOnStart: true,
-      lowMemoryMode: false
+      lowMemoryMode: false,
+      nodeNamePrefixMode: 'filename'
     })
   })
 
