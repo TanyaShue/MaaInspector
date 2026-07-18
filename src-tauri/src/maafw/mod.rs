@@ -1,6 +1,6 @@
-mod controller;
+pub(crate) mod controller;
 mod image;
-mod resource;
+pub(crate) mod resource;
 mod tasker;
 
 use crate::config::DeviceInfo;
@@ -100,6 +100,18 @@ impl MaaFrameworkWrapper {
         }
     }
 
+    pub(crate) fn set_controller(&mut self, controller: Option<Controller>) {
+        self.controller = controller;
+    }
+
+    pub(crate) fn cloned_resource(&self) -> Option<Resource> {
+        self.resource.clone()
+    }
+
+    pub(crate) fn set_resource(&mut self, resource: Option<Resource>) {
+        self.resource = resource;
+    }
+
     /// Find ADB devices using Toolkit
     pub fn find_adb_devices() -> Vec<DeviceInfo> {
         controller::find_adb_devices()
@@ -108,37 +120,6 @@ impl MaaFrameworkWrapper {
     /// Find desktop windows (Win32) using Toolkit
     pub fn find_desktop_windows() -> Vec<DeviceInfo> {
         controller::find_desktop_windows()
-    }
-
-    /// Connect to ADB device (async version)
-    pub async fn connect_adb_async(
-        &mut self,
-        adb_path: &str,
-        address: &str,
-        config: serde_json::Value,
-    ) -> (bool, Option<String>) {
-        let (success, error, ctrl) = controller::connect_adb_async(adb_path, address, config).await;
-        if success {
-            self.controller = ctrl;
-        }
-        (success, error)
-    }
-
-    /// Connect to Win32 window (async version)
-    pub async fn connect_win32_async(
-        &mut self,
-        hwnd: i64,
-        screencap_method: Option<i32>,
-        mouse_method: Option<i32>,
-        keyboard_method: Option<i32>,
-    ) -> (bool, Option<String>) {
-        let (success, error, ctrl) =
-            controller::connect_win32_async(hwnd, screencap_method, mouse_method, keyboard_method)
-                .await;
-        if success {
-            self.controller = ctrl;
-        }
-        (success, error)
     }
 
     /// Run task with pipeline override
@@ -264,15 +245,6 @@ impl MaaFrameworkWrapper {
     #[allow(dead_code)]
     pub fn set_event_broker(&mut self, broker: Arc<DebugEventBroker>) {
         self.event_broker = Some(broker);
-    }
-
-    /// Load resource from paths (async version)
-    pub async fn load_resource_async(&mut self, paths: &[String]) -> (bool, Option<String>) {
-        let (success, message, new_resource) =
-            resource::load_resource_async(self.resource.take(), paths).await;
-
-        self.resource = new_resource;
-        (success, message)
     }
 
     /// OCR text recognition with roi (async)

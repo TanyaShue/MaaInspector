@@ -1,4 +1,5 @@
-use super::{MaaFrameworkState, maafw_mut};
+use super::{MaaFrameworkState, maafw_mut, maafw_ref};
+use crate::maafw::resource as maafw_resource;
 use crate::resources::{ResourcesManager, ResourcesManagerState};
 use crate::response::{
     ApiResponse, CustomCompletionOption, CustomCompletionRules, FileNodesResponse,
@@ -71,11 +72,17 @@ pub async fn resource_load(
     .await
     .map_err(|error| format!("Resource load task failed: {error}"))??;
 
-    // Try loading into MaaFramework
-    let (maafw_ok, maafw_msg) = {
+    // Only lock long enough to clone the current resource from shared state.
+    // The expensive bundle loading then runs concurrently with device restore.
+    let existing_resource = {
+        let fw = maafw.lock().await;
+        maafw_ref(&fw)?.cloned_resource()
+    };
+    let (maafw_ok, maafw_msg, loaded_resource) =
+        maafw_resource::load_resource_async(existing_resource, &paths).await;
+    {
         let mut fw = maafw.lock().await;
-        let fw = maafw_mut(&mut fw)?;
-        fw.load_resource_async(&paths).await
+        maafw_mut(&mut fw)?.set_resource(loaded_resource);
     };
 
     let custom_completions = load_custom_completion_rules(schema_path.as_deref());

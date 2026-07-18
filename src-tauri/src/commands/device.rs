@@ -1,4 +1,5 @@
 use super::{MaaFrameworkState, maafw_mut, maafw_ref};
+use crate::maafw::controller;
 use crate::response::{ApiResponse, ScreenshotResponse};
 use tauri::State;
 
@@ -11,11 +12,15 @@ pub async fn device_connect_adb(
     config: serde_json::Value,
     _name: Option<String>,
 ) -> Result<ApiResponse, String> {
-    let mut fw = maafw.lock().await;
-    let fw = maafw_mut(&mut fw)?;
-    let (success, msg) = fw.connect_adb_async(&adb_path, &address, config).await;
+    // The connection attempt can take up to a minute. Run it without holding
+    // the global MaaFramework state lock so resource restoration can proceed
+    // independently during workspace startup.
+    let (success, msg, connected_controller) =
+        controller::connect_adb_async(&adb_path, &address, config).await;
 
     if success {
+        let mut fw = maafw.lock().await;
+        maafw_mut(&mut fw)?.set_controller(connected_controller);
         Ok(ApiResponse::ok_with_data(
             "ADB Device Connected",
             serde_json::json!({
@@ -45,13 +50,13 @@ pub async fn device_connect_win32(
     mouse_method: Option<i32>,
     keyboard_method: Option<i32>,
 ) -> Result<ApiResponse, String> {
-    let mut fw = maafw.lock().await;
-    let fw = maafw_mut(&mut fw)?;
-    let (success, msg) = fw
-        .connect_win32_async(hwnd, screencap_method, mouse_method, keyboard_method)
-        .await;
+    let (success, msg, connected_controller) =
+        controller::connect_win32_async(hwnd, screencap_method, mouse_method, keyboard_method)
+            .await;
 
     if success {
+        let mut fw = maafw.lock().await;
+        maafw_mut(&mut fw)?.set_controller(connected_controller);
         Ok(ApiResponse::ok_with_data(
             "Win32 Device Connected",
             serde_json::json!({

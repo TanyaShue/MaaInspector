@@ -31,6 +31,14 @@ vi.mock('@/services/api', async () => {
 
 const createEmit = () => vi.fn()
 
+const createDeferred = () => {
+  let resolve!: (value: boolean) => void
+  const promise = new Promise<boolean>(res => {
+    resolve = res
+  })
+  return { promise, resolve }
+}
+
 const createResourceManager = (files: ResourceFileInfo[]) => ({
   availableFiles: files,
   handleResourceLoad: vi.fn().mockResolvedValue(true),
@@ -166,5 +174,37 @@ describe('useInfoPanelVm', () => {
 
     expect(resourceManager.handleResourceLoad).toHaveBeenCalledTimes(1)
     expect(vm.showResourceSettings.value).toBe(false)
+  })
+
+  it('starts resource, device, and Agent workspace restoration in parallel', async () => {
+    const store = useAppConfigStore()
+    store.resource.profiles = [{ name: 'default', paths: ['D:/maa'] }]
+    store.device.lastDevice = { type: 'adb', address: '127.0.0.1:5555' }
+    store.agent.socketId = 'agent-socket'
+    const vm = useInfoPanelVm({ tabs: [] }, createEmit())
+    const resourceDeferred = createDeferred()
+    const deviceDeferred = createDeferred()
+    const agentDeferred = createDeferred()
+    const resourceRestore = vi.fn(() => resourceDeferred.promise)
+    const deviceRestore = vi.fn(() => deviceDeferred.promise)
+    const agentRestore = vi.fn(() => agentDeferred.promise)
+
+    vm.resourceManagerRef.value = {
+      ...createResourceManager([]),
+      handleResourceLoadWithRetry: resourceRestore
+    }
+    vm.deviceManagerRef.value = { autoRestoreDevice: deviceRestore }
+    vm.agentManagerRef.value = { autoRestoreAgent: agentRestore }
+
+    const restoring = vm.restoreWorkspaceConnections()
+
+    expect(resourceRestore).toHaveBeenCalledWith(5)
+    expect(deviceRestore).toHaveBeenCalledWith(store.device.lastDevice, 5)
+    expect(agentRestore).toHaveBeenCalledWith('agent-socket', 5)
+
+    resourceDeferred.resolve(true)
+    deviceDeferred.resolve(true)
+    agentDeferred.resolve(true)
+    await restoring
   })
 })

@@ -215,22 +215,37 @@ export function useInfoPanelVm(props: UseInfoPanelVmProps, emit: InfoPanelEmit) 
     await systemState.fetchSystemState()
   }
 
+  const restoreWorkspaceConnections = async () => {
+    if (!appConfig.canvas.restoreWorkspaceOnStart) return []
+
+    const restoreStarters: Array<() => Promise<boolean>> = []
+    if (appConfig.currentProfile.paths?.length) {
+      restoreStarters.push(() =>
+        resourceManagerRef.value?.handleResourceLoadWithRetry?.(5) ?? Promise.resolve(false)
+      )
+    }
+    if (appConfig.device.lastDevice) {
+      const lastDevice = appConfig.device.lastDevice
+      restoreStarters.push(() =>
+        deviceManagerRef.value?.autoRestoreDevice(lastDevice, 5) ?? Promise.resolve(false)
+      )
+    }
+    if (appConfig.agent.socketId) {
+      const socketId = appConfig.agent.socketId
+      restoreStarters.push(() =>
+        agentManagerRef.value?.autoRestoreAgent(socketId, 5) ?? Promise.resolve(false)
+      )
+    }
+
+    // Start every restoration before waiting for any one of them. A slow or
+    // failed device connection must not delay resources or Agent recovery.
+    return Promise.allSettled(restoreStarters.map(start => start()))
+  }
+
   if (getCurrentInstance()) {
     onMounted(async () => {
       await handleFetchSystemState()
-      if (!appConfig.canvas.restoreWorkspaceOnStart) return
-
-      const restoreTasks: Promise<boolean>[] = []
-      if (appConfig.currentProfile.paths?.length) {
-        restoreTasks.push(resourceManagerRef.value?.handleResourceLoadWithRetry?.(5) ?? Promise.resolve(false))
-      }
-      if (appConfig.device.lastDevice) {
-        restoreTasks.push(deviceManagerRef.value?.autoRestoreDevice(appConfig.device.lastDevice, 5) ?? Promise.resolve(false))
-      }
-      if (appConfig.agent.socketId) {
-        restoreTasks.push(agentManagerRef.value?.autoRestoreAgent(appConfig.agent.socketId, 5) ?? Promise.resolve(false))
-      }
-      await Promise.allSettled(restoreTasks)
+      await restoreWorkspaceConnections()
     })
   }
 
@@ -324,6 +339,7 @@ export function useInfoPanelVm(props: UseInfoPanelVmProps, emit: InfoPanelEmit) 
     handleCreateFile,
     openCreateResourceFile,
     handleFetchSystemState,
+    restoreWorkspaceConnections,
     saveResourceSettings,
     handleAppSettingsSave,
     handleAnnouncementClose,
