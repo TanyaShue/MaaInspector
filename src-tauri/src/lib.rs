@@ -14,7 +14,8 @@ use commands::{
     log_frontend_batch, log_get_dir, resource_check_unused_images, resource_create_file,
     resource_get_file_nodes, resource_get_templates, resource_load, resource_process_images,
     resource_save_file_nodes, resource_search_nodes, system_get_backup_dir, system_init,
-    system_pick_folder, system_save_config, system_search_devices,
+    system_open_backup_dir, system_open_log_dir, system_pick_folder, system_save_config,
+    system_search_devices,
 };
 use events::DebugEventBroker;
 use maafw::MaaFrameworkWrapper;
@@ -153,6 +154,8 @@ pub fn run() {
             system_init,
             system_pick_folder,
             system_get_backup_dir,
+            system_open_log_dir,
+            system_open_backup_dir,
             system_save_config,
             system_search_devices,
             // Device commands

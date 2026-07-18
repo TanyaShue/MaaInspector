@@ -30,7 +30,7 @@ const moveEvent = (x = 0, y = 0, zoom = 1) => ({
 })
 
 describe('edge render window', () => {
-  it('keeps small edge sets animated and disables animations above the budget', () => {
+  it('keeps small edge sets animated and limits animations above the budget', () => {
     const small = [{ ...edge('small', 'a', 'b'), animated: true }]
     expect(applyEdgeAnimationBudget(small)).toBe(small)
 
@@ -41,8 +41,17 @@ describe('edge render window', () => {
     const budgeted = applyEdgeAnimationBudget(large)
 
     expect(budgeted).not.toBe(large)
-    expect(budgeted.every(item => item.animated === false)).toBe(true)
+    expect(budgeted.filter(item => item.animated).length).toBe(MAX_ANIMATED_EDGES)
     expect(large.every(item => item.animated === true)).toBe(true)
+  })
+
+  it('can pause every visible edge animation', () => {
+    const edges = [
+      { ...edge('a', 'a', 'b'), animated: true },
+      { ...edge('b', 'b', 'c'), animated: true },
+    ]
+    expect(applyEdgeAnimationBudget(edges, MAX_ANIMATED_EDGES, true)
+      .every(item => item.animated === false)).toBe(true)
   })
 
   it('keeps viewport and crossing edges while excluding distant edges', () => {
@@ -85,7 +94,7 @@ describe('edge render window', () => {
     expect(result.map(item => item.id)).toEqual(['far'])
   })
 
-  it('hides edges while panning and restores the new viewport window on stop', () => {
+  it('keeps edges on a pane click, hides them while panning, and restores them on stop', () => {
     const nodes = ref([node('a', 0, 0), node('b', 300, 0), node('c', 1_500, 0)])
     const edges = ref([edge('near', 'a', 'b'), edge('far', 'b', 'c')])
     const window = useEdgeRenderWindow({
@@ -98,11 +107,29 @@ describe('edge render window', () => {
 
     expect(window.renderedEdges.value.map(item => item.id)).toEqual(['near', 'far'])
     window.handleMoveStart(moveEvent())
-    expect(window.renderedEdges.value).toEqual([])
+    expect(window.renderedEdges.value.map(item => item.id)).toEqual(['near', 'far'])
     window.handleMove(moveEvent(-1_200, 0, 1))
     expect(window.renderedEdges.value).toEqual([])
     window.handleMoveEnd(moveEvent(-1_200, 0, 1))
     expect(window.renderedEdges.value.map(item => item.id)).toEqual(['far'])
+  })
+
+  it('only renders edges connected to nodes being dragged', () => {
+    const nodes = ref([node('a', 0, 0), node('b', 300, 0), node('c', 600, 0)])
+    const edges = ref([edge('a-b', 'a', 'b'), edge('b-c', 'b', 'c')])
+    const window = useEdgeRenderWindow({
+      nodes,
+      edges,
+      nodeStructureVersion: ref(0),
+      lowMemoryMode: false,
+    })
+    window.setCanvasSize({ width: 800, height: 600 })
+
+    window.handleNodeDragStart({ node: nodes.value[0], nodes: [] })
+    expect(window.renderedEdges.value.map(item => item.id)).toEqual(['a-b'])
+
+    window.handleNodeDragStop()
+    expect(window.renderedEdges.value.map(item => item.id)).toEqual(['a-b', 'b-c'])
   })
 
 })

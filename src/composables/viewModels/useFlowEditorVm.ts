@@ -33,6 +33,7 @@ interface UseFlowEditorVmOptions {
 
 export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
   const appConfig = useAppConfigStore()
+  const nodeNamePrefixEnabled = computed(() => appConfig.canvas.nodeNamePrefixEnabled)
   const {
     nodes,
     edges,
@@ -136,7 +137,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     currentDirection,
     isFileLoaded,
     currentFilename,
-    nodeNamePrefixEnabled: computed(() => appConfig.canvas.nodeNamePrefixEnabled),
+    nodeNamePrefixEnabled,
     createNodeObject,
     applyLayout,
     removeEdges,
@@ -558,6 +559,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     currentSpacing,
     currentAlgorithm,
     currentDirection,
+    nodeNamePrefixEnabled,
     currentFilename,
     currentSource,
     isFileLoaded,

@@ -281,6 +281,14 @@ export const systemApi = {
     return invokeCommand('system_get_backup_dir');
   },
 
+  openLogDir: async (): Promise<void> => {
+    return invokeCommand('system_open_log_dir');
+  },
+
+  openBackupDir: async (): Promise<void> => {
+    return invokeCommand('system_open_backup_dir');
+  },
+
   searchDevices: async (
     deviceType?: string
   ): Promise<ApiResponse<{ devices?: ApiDeviceInfo[] }>> => {

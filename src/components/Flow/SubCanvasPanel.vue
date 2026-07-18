@@ -54,6 +54,7 @@ const props = defineProps<{
   currentDirection: LayoutDirection
   lowMemoryMode?: boolean
   currentFilename: string
+  nodeNamePrefixEnabled: boolean
   isFileLoaded: boolean
   onValidateConnection: (connection: FlowConnection) => boolean
   handleConnect: (connection: FlowConnection) => void
@@ -482,6 +483,8 @@ const editorActions = useEditorActions({
   currentAlgorithm: activeAlgorithm,
   currentDirection: activeDirection,
   isFileLoaded: computed(() => props.isFileLoaded),
+  currentFilename: computed(() => props.currentFilename),
+  nodeNamePrefixEnabled: computed(() => props.nodeNamePrefixEnabled),
   createNodeObject: props.createNodeObject,
   applyLayout: async (options) => {
     await layoutVisibleChain(options?.algorithm || activeAlgorithm.value)
@@ -512,7 +515,8 @@ const {
   onPaneContextMenu,
   onNodeContextMenu,
   onEdgeContextMenu,
-  handleMenuAction
+  handleMenuAction,
+  clipboardHistory
 } = editorActions
 
 const handleConnect = (connection: FlowConnection) => {
@@ -876,6 +880,7 @@ onBeforeUnmount(() => {
             :current-spacing="activeSpacing"
             :current-algorithm="activeAlgorithm"
             :current-direction="activeDirection"
+            :clipboard-history="clipboardHistory"
             @close="closeMenu"
             @action="handleMenuAction"
           />

@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, ref, watch, type ComponentPublicInstance } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import { openPath, openUrl } from '@tauri-apps/plugin-opener'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import {
   ArchiveRestore, Check, ChevronRight, CircleAlert, Download, ExternalLink, FolderOpen,
   Github, Info, LayoutDashboard, LoaderCircle, RefreshCw, RotateCcw, Save, Settings,
   Terminal, X
 } from 'lucide-vue-next'
 import { appUpdater, type AvailableUpdate } from '@/services/appUpdater'
-import { logApi, systemApi } from '@/services/api'
+import { systemApi } from '@/services/api'
 import { LAYOUT_ALGORITHM_OPTIONS, LAYOUT_DIRECTION_OPTIONS } from '@/utils/flowOptions'
 import type { EdgeType } from '@/utils/flowOptions'
 import type { LayoutAlgorithm, LayoutDirection, SpacingKey } from '@/utils/flowTypes'
@@ -190,10 +190,10 @@ const handleOpenDevTools = async () => {
   try { await invoke('devtools_open') } catch (error) { console.error('Failed to open DevTools:', error) }
 }
 const handleOpenLogDir = async () => {
-  try { await openPath(await logApi.getDir()) } catch (error) { console.error('Failed to open log directory:', error) }
+  try { await systemApi.openLogDir() } catch (error) { console.error('Failed to open log directory:', error) }
 }
 const handleOpenBackupDir = async () => {
-  try { await openPath(await systemApi.getBackupDir()) } catch (error) { console.error('Failed to open backup directory:', error) }
+  try { await systemApi.openBackupDir() } catch (error) { console.error('Failed to open backup directory:', error) }
 }
 </script>
 

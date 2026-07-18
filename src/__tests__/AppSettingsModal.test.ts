@@ -4,7 +4,9 @@ import AppSettingsModal from '@/components/Flow/Modals/AppSettingsModal.vue'
 
 const mocks = vi.hoisted(() => ({
   dispose: vi.fn(),
-  getCurrentVersion: vi.fn().mockResolvedValue('1.2.3')
+  getCurrentVersion: vi.fn().mockResolvedValue('1.2.3'),
+  openLogDir: vi.fn(),
+  openBackupDir: vi.fn()
 }))
 
 vi.mock('@/services/appUpdater', () => ({
@@ -17,8 +19,10 @@ vi.mock('@/services/appUpdater', () => ({
   }
 }))
 vi.mock('@/services/api', () => ({
-  logApi: { getDir: vi.fn() },
-  systemApi: { getBackupDir: vi.fn() }
+  systemApi: {
+    openLogDir: mocks.openLogDir,
+    openBackupDir: mocks.openBackupDir
+  }
 }))
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }))
 vi.mock('@tauri-apps/plugin-opener', () => ({ openPath: vi.fn(), openUrl: vi.fn() }))
@@ -55,5 +59,14 @@ describe('AppSettingsModal', () => {
       restoreWorkspaceOnStart: true,
       lowMemoryMode: false
     })
+  })
+
+  it('opens log and backup directories through backend commands', async () => {
+    const wrapper = mount(AppSettingsModal, { props: { visible: true } })
+    await wrapper.findAll('button').find(button => button.text().includes('打开备份目录'))!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text().includes('打开日志目录'))!.trigger('click')
+
+    expect(mocks.openBackupDir).toHaveBeenCalledTimes(1)
+    expect(mocks.openLogDir).toHaveBeenCalledTimes(1)
   })
 })

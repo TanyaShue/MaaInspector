@@ -3,7 +3,8 @@ use crate::maafw::MaaFrameworkWrapper;
 use crate::response::ApiResponse;
 use std::fs;
 use std::path::PathBuf;
-use tauri::State;
+use tauri::{AppHandle, State};
+use tauri_plugin_opener::OpenerExt;
 
 /// Get initial system state
 #[tauri::command]
@@ -31,6 +32,30 @@ pub fn system_get_backup_dir(backup_dir: State<'_, PathBuf>) -> Result<String, S
         )
     })?;
     Ok(backup_dir.to_string_lossy().into_owned())
+}
+
+fn open_folder(app: &AppHandle, path: &PathBuf) -> Result<(), String> {
+    fs::create_dir_all(path)
+        .map_err(|error| format!("Failed to create directory {}: {error}", path.display()))?;
+    app.opener()
+        .open_path(path.to_string_lossy(), None::<&str>)
+        .map_err(|error| format!("Failed to open directory {}: {error}", path.display()))
+}
+
+/// Open the application log directory from the backend so the path is not
+/// rejected by the frontend opener scope.
+#[tauri::command]
+pub fn system_open_log_dir(app: AppHandle, config_dir: State<'_, String>) -> Result<(), String> {
+    open_folder(&app, &PathBuf::from(config_dir.inner()).join("logs"))
+}
+
+/// Open the centralized resource backup directory.
+#[tauri::command]
+pub fn system_open_backup_dir(
+    app: AppHandle,
+    backup_dir: State<'_, PathBuf>,
+) -> Result<(), String> {
+    open_folder(&app, backup_dir.inner())
 }
 
 /// Save configuration

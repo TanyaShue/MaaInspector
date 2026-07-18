@@ -19,6 +19,7 @@ interface EdgeRenderWindowDeps {
   edges: Ref<FlowEdge[]>
   nodeStructureVersion: Ref<number>
   lowMemoryMode: MaybeRefOrGetter<boolean>
+  pauseAnimations?: MaybeRefOrGetter<boolean>
 }
 
 interface FilterViewportEdgesOptions {
@@ -34,7 +35,7 @@ const DEFAULT_NODE_WIDTH = 280
 const DEFAULT_NODE_HEIGHT = 150
 const NORMAL_MARGIN_PX = 480
 const LOW_MEMORY_MARGIN_PX = 160
-export const MAX_ANIMATED_EDGES = 80
+export const MAX_ANIMATED_EDGES = 40
 
 const intersects = (a: FlowRect, b: FlowRect) =>
   a.left <= b.right && a.right >= b.left && a.top <= b.bottom && a.bottom >= b.top
@@ -59,10 +60,18 @@ const getNodeRect = (node: FlowNode): FlowRect => {
 
 export const applyEdgeAnimationBudget = (
   visibleEdges: FlowEdge[],
-  maxAnimatedEdges = MAX_ANIMATED_EDGES
+  maxAnimatedEdges = MAX_ANIMATED_EDGES,
+  pauseAnimations = false
 ): FlowEdge[] => {
-  if (visibleEdges.length <= maxAnimatedEdges) return visibleEdges
-  return visibleEdges.map(edge => edge.animated ? { ...edge, animated: false } : edge)
+  if (!pauseAnimations && visibleEdges.length <= maxAnimatedEdges) return visibleEdges
+  let animatedCount = 0
+  return visibleEdges.map(edge => {
+    if (!edge.animated) return edge
+    animatedCount++
+    return pauseAnimations || animatedCount > maxAnimatedEdges
+      ? { ...edge, animated: false }
+      : edge
+  })
 }
 
 export const filterViewportEdges = ({
@@ -108,15 +117,27 @@ export function useEdgeRenderWindow({
   edges,
   nodeStructureVersion,
   lowMemoryMode,
+  pauseAnimations = false,
 }: EdgeRenderWindowDeps) {
   const renderedEdges = shallowRef<FlowEdge[]>([])
   const viewport = ref<ViewportTransform>({ x: 0, y: 0, zoom: 1 })
   const canvasSize = ref<CanvasSize>({ width: 0, height: 0 })
   const viewportMoving = ref(false)
+  const moveStartViewport = ref<ViewportTransform | null>(null)
+  const draggedNodeIds = ref<Set<string>>(new Set())
 
   const refreshRenderedEdges = () => {
     if (viewportMoving.value) {
       renderedEdges.value = []
+      return
+    }
+
+    if (draggedNodeIds.value.size > 0) {
+      renderedEdges.value = edges.value
+        .filter(edge =>
+          draggedNodeIds.value.has(edge.source) || draggedNodeIds.value.has(edge.target)
+        )
+        .map(edge => edge.animated ? { ...edge, animated: false } : edge)
       return
     }
 
@@ -126,7 +147,7 @@ export function useEdgeRenderWindow({
       viewport: viewport.value,
       canvasSize: canvasSize.value,
       marginPx: toValue(lowMemoryMode) ? LOW_MEMORY_MARGIN_PX : NORMAL_MARGIN_PX,
-    }))
+    }), MAX_ANIMATED_EDGES, toValue(pauseAnimations))
   }
 
   const setCanvasSize = (size: CanvasSize) => {
@@ -137,22 +158,51 @@ export function useEdgeRenderWindow({
 
   const handleMoveStart = ({ flowTransform }: FlowEvents['moveStart']) => {
     viewport.value = flowTransform
-    viewportMoving.value = true
-    refreshRenderedEdges()
+    moveStartViewport.value = { ...flowTransform }
   }
 
   const handleMove = ({ flowTransform }: FlowEvents['move']) => {
+    const start = moveStartViewport.value
+    const didMove = start && (
+      start.x !== flowTransform.x ||
+      start.y !== flowTransform.y ||
+      start.zoom !== flowTransform.zoom
+    )
     viewport.value = flowTransform
+    if (didMove && !viewportMoving.value) {
+      viewportMoving.value = true
+      refreshRenderedEdges()
+    }
   }
 
   const handleMoveEnd = ({ flowTransform }: FlowEvents['moveEnd']) => {
     viewport.value = flowTransform
     viewportMoving.value = false
+    moveStartViewport.value = null
+    refreshRenderedEdges()
+  }
+
+  const handleNodeDragStart = ({ node, nodes: draggedNodes }: {
+    node: FlowNode
+    nodes: FlowNode[]
+  }) => {
+    const activeNodes = draggedNodes.length > 0 ? draggedNodes : [node]
+    draggedNodeIds.value = new Set(activeNodes.map(item => item.id))
+    refreshRenderedEdges()
+  }
+
+  const handleNodeDragStop = () => {
+    draggedNodeIds.value = new Set()
     refreshRenderedEdges()
   }
 
   watch(
-    [() => edges.value, nodeStructureVersion, () => toValue(lowMemoryMode)],
+    [
+      () => edges.value,
+      nodeStructureVersion,
+      () => toValue(lowMemoryMode),
+      () => toValue(pauseAnimations),
+    ],
     refreshRenderedEdges,
     { immediate: true }
   )
@@ -164,5 +214,7 @@ export function useEdgeRenderWindow({
     handleMoveStart,
     handleMove,
     handleMoveEnd,
+    handleNodeDragStart,
+    handleNodeDragStop,
   }
 }

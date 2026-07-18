@@ -39,6 +39,7 @@ const {
   currentSpacing,
   currentAlgorithm,
   currentDirection,
+  nodeNamePrefixEnabled,
   currentFilename,
   currentSource,
   isFileLoaded,
@@ -103,11 +104,14 @@ const {
   handleMoveStart,
   handleMove,
   handleMoveEnd,
+  handleNodeDragStart: handleEdgeNodeDragStart,
+  handleNodeDragStop: handleEdgeNodeDragStop,
 } = useEdgeRenderWindow({
   nodes,
   edges,
   nodeStructureVersion,
   lowMemoryMode: () => props.lowMemoryMode === true,
+  pauseAnimations: () => subCanvas.value.visible,
 })
 
 const handleMainMoveStart = (event: Parameters<typeof handleMoveStart>[0]) => {
@@ -118,6 +122,7 @@ const handleMainMoveStart = (event: Parameters<typeof handleMoveStart>[0]) => {
 const handleMainNodeDragStop = ({ node, nodes: draggedNodes }: NodeDragEvent) => {
   const movedNodes = draggedNodes.length > 0 ? draggedNodes : [node]
   syncNodePositions(nodes.value, movedNodes)
+  handleEdgeNodeDragStop()
 }
 
 let resizeObserver: ResizeObserver | null = null
@@ -174,6 +179,8 @@ onBeforeUnmount(() => {
       @move-end="handleMoveEnd"
       @node-drag-stop="handleMainNodeDragStop"
       @selection-drag-stop="handleMainNodeDragStop"
+      @node-drag-start="handleEdgeNodeDragStart"
+      @selection-drag-start="handleEdgeNodeDragStart"
     >
       <Background
         pattern-color="#cbd5e1"
@@ -266,6 +273,7 @@ onBeforeUnmount(() => {
       :current-direction="currentDirection"
       :low-memory-mode="props.lowMemoryMode"
       :current-filename="currentFilename"
+      :node-name-prefix-enabled="nodeNamePrefixEnabled"
       :is-file-loaded="isFileLoaded"
       :on-validate-connection="onValidateConnection"
       :handle-connect="handleConnect"
