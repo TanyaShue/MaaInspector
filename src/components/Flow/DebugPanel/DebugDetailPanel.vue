@@ -1,233 +1,564 @@
 <script setup lang="ts">
-export interface DetailField {
-  label: string
-  text: string
-  raw: unknown
-}
+  import { computed } from 'vue'
+  import {
+    ArrowLeft,
+    CheckCircle2,
+    ChevronRight,
+    Copy,
+    Crosshair,
+    FileJson,
+    Hash,
+    Image as ImageIcon,
+    Maximize2,
+    MousePointerClick,
+    ScanEye,
+    XCircle,
+  } from 'lucide-vue-next'
+  import { ACTION_CONFIG_MAP, NODE_CONFIG_MAP } from '@/utils/node-config'
+  import { formatDebugRect } from '@/utils/debugDetailPresentation'
+  import type { DebugDetailField } from '@/utils/debugDetailPresentation'
+  import DebugStructuredValue from './DebugStructuredValue.vue'
 
-export interface DetailResult {
-  label: string
-  text: string
-  raw: unknown
-  flags?: string[]
-}
-
-export interface DetailMeta {
-  algorithm?: string | null
-  hit?: boolean
-  box?: Record<string, unknown> | null
-}
-
-export interface NextChild {
-  name?: string
-  status?: string
-  jump_back?: boolean
-  debug_image?: string
-  image?: string
-  screenshot?: string
-  draw_images?: string[]
-  detailList?: DetailField[]
-  details?: DetailField[]
-  [key: string]: unknown
-}
-
-export interface DebugEventRecord {
-  recordId: string
-  taskId: string | number
-  name: string
-  nextList: NextChild[]
-  timestamp: number
-}
-
-export interface DetailData {
-  record: DebugEventRecord
-  child: NextChild
-  mainImage: string
-  drawImages: string[]
-  fields: DetailField[]
-  results: DetailResult[]
-  meta?: DetailMeta
-}
-
-const props = defineProps<{
-  detail: DetailData
-}>()
-
-const emit = defineEmits<{
-  (e: 'close'): void
-  (e: 'thumb-click', img: string, idx: number): void
-  (e: 'image-preview', src: string): void
-  (e: 'copy', text: string): void
-}>()
-
-const activeThumbIdx = defineModel<number | null>('activeThumbIdx', { default: null })
-
-const handleThumbClick = (img: string, idx: number) => {
-  emit('thumb-click', img, idx)
-}
-
-const handleImageClick = () => {
-  if (props.detail.mainImage) {
-    emit('image-preview', props.detail.mainImage)
+  export interface DetailSnapshot {
+    mainImage: string
+    drawImages: string[]
   }
-}
+
+  export interface DetailResultGroups {
+    all: unknown[]
+    filtered: unknown[]
+    best?: unknown
+  }
+
+  export interface DetailStage {
+    type: string
+    status: string
+    id?: string | number | null
+    nodeId?: string | number | null
+    focus?: unknown
+    parameters: DebugDetailField[]
+    snapshot: DetailSnapshot
+    rawFields: unknown
+    results?: DetailResultGroups
+  }
+
+  export interface DetailMeta {
+    algorithm?: string | null
+    hit?: boolean
+    box?: unknown
+  }
+
+  export interface NextChild {
+    name?: string
+    status?: string
+    jump_back?: boolean
+    [key: string]: unknown
+  }
+
+  export interface DebugEventRecord {
+    recordId: string
+    taskId: string | number
+    name: string
+    nextList: NextChild[]
+    timestamp: number
+  }
+
+  export interface DetailData {
+    record: DebugEventRecord
+    child: NextChild
+    meta?: DetailMeta
+    recognition?: DetailStage
+    action?: DetailStage
+  }
+
+  const props = defineProps<{ detail: DetailData }>()
+  const emit = defineEmits<{
+    (e: 'close'): void
+    (e: 'image-preview', src: string): void
+    (e: 'copy', text: string): void
+  }>()
+
+  const recognitionLabel = computed(
+    () =>
+      NODE_CONFIG_MAP[props.detail.recognition?.type || '']?.label ||
+      props.detail.recognition?.type ||
+      '识别'
+  )
+  const actionLabel = computed(
+    () =>
+      ACTION_CONFIG_MAP[props.detail.action?.type || '']?.label ||
+      props.detail.action?.type ||
+      '动作'
+  )
+  const isSuccess = (status?: string) => status === 'succeeded'
+  const statusText = (status?: string) => {
+    if (status === 'succeeded') return '成功'
+    if (status === 'failed') return '失败'
+    if (status === 'starting') return '进行中'
+    return '未知'
+  }
+  const rawJson = (value: unknown) => {
+    try {
+      return JSON.stringify(value ?? {}, null, 2)
+    } catch {
+      return String(value ?? '')
+    }
+  }
+  const resultGroups = computed(() => {
+    const results = props.detail.recognition?.results
+    if (!results) return []
+    return [
+      {
+        key: 'all',
+        label: '全部结果',
+        description: '算法返回的所有候选结果',
+        values: results.all,
+        accent: 'border-slate-200 bg-slate-50',
+        defaultOpen: false,
+      },
+      {
+        key: 'filtered',
+        label: '命中结果',
+        description: '经过阈值与规则过滤后命中的结果',
+        values: results.filtered,
+        accent: 'border-emerald-200 bg-emerald-50/60',
+        defaultOpen: true,
+      },
+      {
+        key: 'best',
+        label: '最佳结果',
+        description: '最终用于后续动作的最佳匹配',
+        values: results.best === undefined || results.best === null ? [] : [results.best],
+        accent: 'border-amber-200 bg-amber-50/60',
+        defaultOpen: true,
+      },
+    ]
+  })
 </script>
 
 <template>
-  <div class="w-[320px] border-l border-slate-200 bg-white flex flex-col min-h-0 shrink-0">
-    <div class="flex items-center justify-between px-3 py-2 border-b border-slate-200 bg-slate-50">
-      <div class="flex flex-col gap-0.5">
-        <span class="text-sm font-medium text-slate-700">{{ detail.child.name }}</span>
-        <div class="flex items-center gap-1.5">
-          <span class="text-xs text-slate-400">#{{ detail.record.taskId }}</span>
-          <span
-            v-if="detail.meta?.algorithm"
-            class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-xs"
-          >
-            {{ detail.meta.algorithm }}
-          </span>
-          <span
-            v-if="detail.meta?.hit !== undefined"
-            class="px-1.5 py-0.5 rounded text-xs"
-            :class="detail.meta.hit ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'"
-          >
-            {{ detail.meta.hit ? '命中' : '未命中' }}
-          </span>
+  <aside
+    class="flex min-h-0 w-[420px] shrink-0 flex-col border-l border-slate-200 bg-slate-50/70"
+  >
+    <header class="shrink-0 border-b border-slate-200 bg-white px-4 py-3">
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <div class="truncate text-sm font-semibold text-slate-800">{{ detail.child.name }}</div>
+          <div class="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-400">
+            <span class="rounded bg-slate-100 px-1.5 py-0.5 font-mono">
+              任务 #{{ detail.record.taskId }}
+            </span>
+            <span
+              v-if="detail.child.jump_back"
+              class="rounded bg-purple-50 px-1.5 py-0.5 text-purple-600"
+            >
+              回跳节点
+            </span>
+          </div>
         </div>
+        <button
+          class="flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-500 hover:bg-slate-50"
+          @click="emit('close')"
+        >
+          <ArrowLeft :size="12" />返回
+        </button>
       </div>
-      <button
-        class="px-2 py-1 rounded border border-slate-200 text-xs text-slate-600 hover:bg-slate-100"
-        @click="emit('close')"
+    </header>
+
+    <div class="custom-scrollbar flex-1 space-y-3 overflow-y-auto p-3">
+      <section
+        v-if="detail.recognition"
+        class="overflow-hidden rounded-xl border border-blue-200 bg-white shadow-sm"
       >
-        返回
-      </button>
-    </div>
-
-    <div class="flex-1 overflow-y-auto custom-scrollbar">
-      <div class="p-3 space-y-3">
-        <div class="text-xs font-medium text-slate-500">调试快照</div>
-
-        <div
-          class="relative w-full aspect-[4/5] bg-slate-50 border border-slate-200 rounded overflow-hidden"
-          :class="detail.mainImage ? 'cursor-zoom-in' : ''"
-          @click="handleImageClick"
-        >
-          <img
-            v-if="detail.mainImage"
-            :src="detail.mainImage"
-            alt="debug detail"
-            class="w-full h-full object-contain"
-          >
-          <div
-            v-else
-            class="w-full h-full flex items-center justify-center text-slate-400 text-xs"
-          >
-            暂无截图
-          </div>
-        </div>
-
-        <div
-          v-if="detail.drawImages && detail.drawImages.length"
-          class="grid grid-cols-3 gap-1.5"
-        >
-          <div
-            v-for="(img, idx) in detail.drawImages"
-            :key="idx"
-            class="relative overflow-hidden rounded border bg-slate-50 h-16 flex items-center justify-center cursor-pointer"
-            :class="activeThumbIdx === idx ? 'border-slate-400' : 'border-slate-200 hover:border-slate-300'"
-            @click="handleThumbClick(img, idx)"
-          >
-            <img
-              :src="img"
-              class="w-full h-full object-contain"
-              :alt="`draw-${idx}`"
-            >
-          </div>
-        </div>
-
-        <div v-if="detail.fields.length" class="space-y-2">
-          <div class="text-xs font-medium text-slate-500">调试结果</div>
-          <div class="grid gap-1.5">
-            <div
-              v-for="(field, idx) in detail.fields"
-              :key="idx"
-              class="p-2 rounded border border-slate-200 bg-white group"
-            >
-              <div class="flex items-center justify-between gap-2 mb-1">
-                <div class="text-xs text-slate-500 truncate">
-                  {{ field.label }}
-                </div>
-                <button
-                  class="text-xs text-slate-400 opacity-0 group-hover:opacity-100 transition"
-                  @click.stop="emit('copy', field.text || '')"
-                >
-                  复制
-                </button>
-              </div>
-              <div
-                v-if="field.raw && typeof field.raw === 'object'"
-                class="space-y-0.5 text-xs text-slate-700"
-              >
-                <div
-                  v-for="(val, key) in field.raw"
-                  :key="String(key)"
-                  class="flex items-start gap-1.5"
-                >
-                  <span class="text-slate-400 shrink-0">{{ key }}:</span>
-                  <span class="font-mono break-all text-slate-700">
-                    {{ typeof val === 'object' ? JSON.stringify(val) : String(val) }}
-                  </span>
-                </div>
-              </div>
-              <div
-                v-else
-                class="text-sm text-slate-700 break-words font-mono"
-              >
-                {{ field.text || '—' }}
-              </div>
+        <div class="stage-header border-blue-100 bg-blue-50/70">
+          <div class="flex items-center gap-2">
+            <span class="stage-icon bg-blue-100 text-blue-600"><ScanEye :size="15" /></span>
+            <div>
+              <div class="text-xs font-semibold text-slate-700">识别 · {{ recognitionLabel }}</div>
+              <div class="font-mono text-[10px] text-slate-400">{{ detail.recognition.type }}</div>
             </div>
           </div>
+          <span
+            class="status-pill"
+            :class="
+              isSuccess(detail.recognition.status)
+                ? 'bg-emerald-100 text-emerald-700'
+                : 'bg-rose-100 text-rose-700'
+            "
+          >
+            <component
+              :is="isSuccess(detail.recognition.status) ? CheckCircle2 : XCircle"
+              :size="11"
+            />
+            {{ statusText(detail.recognition.status) }}
+          </span>
         </div>
 
-        <div
-          v-if="detail.results && detail.results.length"
-          class="space-y-2"
-        >
-          <div class="text-xs font-medium text-slate-500">识别结果</div>
-          <div class="grid gap-1.5">
-            <div
-              v-for="(res, idx) in detail.results"
-              :key="idx"
-              class="p-2 rounded border border-slate-200 bg-white group"
-            >
-              <div class="flex items-center justify-between gap-2 mb-1.5">
-                <div class="flex items-center gap-1.5 overflow-hidden">
-                  <span class="text-xs font-medium text-slate-700 truncate">{{ res.label }}</span>
-                  <span
-                    v-for="flag in res.flags || []"
-                    :key="flag"
-                    class="px-1.5 py-0.5 rounded border text-xs shrink-0"
-                    :class="flag === 'best'
-                      ? 'bg-amber-50 text-amber-600 border-amber-200'
-                      : 'bg-slate-50 text-slate-600 border-slate-200'"
+        <div class="space-y-3 p-3">
+          <div class="grid grid-cols-2 gap-2 text-[10px]">
+            <div v-if="detail.recognition.id != null" class="detail-stat">
+              <Hash :size="11" /><span>识别 ID</span><b>{{ detail.recognition.id }}</b>
+            </div>
+            <div v-if="detail.meta?.algorithm" class="detail-stat">
+              <Crosshair :size="11" /><span>算法</span><b>{{ detail.meta.algorithm }}</b>
+            </div>
+            <div v-if="detail.meta?.hit !== undefined" class="detail-stat">
+              <CheckCircle2 :size="11" /><span>是否命中</span>
+              <b :class="detail.meta.hit ? 'text-emerald-600' : 'text-rose-600'">
+                {{ detail.meta.hit ? '命中' : '未命中' }}
+              </b>
+            </div>
+            <div v-if="detail.meta?.box" class="detail-stat col-span-2">
+              <Crosshair :size="11" /><span>命中区域</span>
+              <b>{{ formatDebugRect(detail.meta.box) }}</b>
+            </div>
+          </div>
+
+          <details v-if="detail.recognition.parameters.length" class="fold-card" open>
+            <summary class="fold-summary">
+              <ChevronRight :size="12" class="fold-chevron" />
+              <span>识别参数</span>
+              <span class="fold-count">{{ detail.recognition.parameters.length }}</span>
+            </summary>
+            <div class="space-y-1.5 border-t border-slate-100 p-2">
+              <div
+                v-for="field in detail.recognition.parameters"
+                :key="field.key"
+                class="parameter-row group"
+              >
+                <span>{{ field.label }}</span>
+                <code v-if="field.kind === 'rect' || field.kind === 'point'">
+                  {{ formatDebugRect(field.value) }}
+                </code>
+                <code v-else>{{ field.kind === 'boolean' ? (field.value ? '启用' : '关闭') : field.text }}</code>
+                <button
+                  class="copy-button"
+                  :title="`复制 ${field.label}`"
+                  @click="emit('copy', field.text)"
+                >
+                  <Copy :size="10" />
+                </button>
+              </div>
+            </div>
+          </details>
+
+          <details v-if="resultGroups.length" class="fold-card algorithm-output" open>
+            <summary class="fold-summary bg-gradient-to-r from-blue-50 to-indigo-50">
+              <ChevronRight :size="12" class="fold-chevron" />
+              <span>算法输出</span>
+              <span class="ml-auto text-[9px] font-normal text-slate-400">可展开每组和每个结构</span>
+            </summary>
+            <div class="space-y-2 border-t border-blue-100 p-2">
+              <details
+                v-for="group in resultGroups"
+                :key="group.key"
+                class="result-group"
+                :class="group.accent"
+                :open="group.defaultOpen"
+              >
+                <summary class="result-group-summary">
+                  <ChevronRight :size="12" class="fold-chevron" />
+                  <div class="min-w-0 flex-1">
+                    <div class="font-semibold text-slate-700">{{ group.label }}</div>
+                    <div class="truncate text-[9px] font-normal text-slate-400">
+                      {{ group.description }}
+                    </div>
+                  </div>
+                  <span class="fold-count">{{ group.values.length }}</span>
+                  <button
+                    v-if="group.values.length"
+                    class="copy-button"
+                    title="复制整组结果"
+                    @click.prevent.stop="emit('copy', rawJson(group.values))"
                   >
-                    {{ flag }}
-                  </span>
+                    <Copy :size="10" />
+                  </button>
+                </summary>
+                <div class="space-y-1.5 border-t border-white/80 p-2">
+                  <DebugStructuredValue
+                    v-for="(value, index) in group.values"
+                    :key="index"
+                    :label="group.values.length > 1 ? `结果 #${index + 1}` : group.label"
+                    :value="value"
+                    :default-open="true"
+                    @copy="emit('copy', $event)"
+                  />
+                  <div v-if="group.values.length === 0" class="empty-result">暂无结果</div>
                 </div>
+              </details>
+            </div>
+          </details>
+
+          <details class="fold-card snapshot-card" open>
+            <summary class="fold-summary">
+              <ChevronRight :size="12" class="fold-chevron" />
+              <ImageIcon :size="12" />
+              <span>识别快照</span>
+              <span class="ml-auto text-[9px] font-normal text-slate-400">默认展开</span>
+            </summary>
+            <div class="border-t border-slate-100 p-2">
+              <button
+                class="snapshot-main"
+                :class="detail.recognition.snapshot.mainImage ? 'cursor-zoom-in' : ''"
+                @click="
+                  detail.recognition.snapshot.mainImage &&
+                  emit('image-preview', detail.recognition.snapshot.mainImage)
+                "
+              >
+                <img
+                  v-if="detail.recognition.snapshot.mainImage"
+                  :src="detail.recognition.snapshot.mainImage"
+                  alt="recognition snapshot"
+                  class="h-full w-full object-contain"
+                />
+                <span v-else class="text-xs text-slate-400">暂无识别快照</span>
+                <Maximize2
+                  v-if="detail.recognition.snapshot.mainImage"
+                  :size="13"
+                  class="absolute right-2 top-2 text-white drop-shadow"
+                />
+              </button>
+              <div
+                v-if="detail.recognition.snapshot.drawImages.length"
+                class="mt-2 grid grid-cols-4 gap-1.5"
+              >
                 <button
-                  class="text-xs text-slate-400 opacity-0 group-hover:opacity-100 transition"
-                  @click.stop="emit('copy', res.text || '')"
+                  v-for="(image, index) in detail.recognition.snapshot.drawImages"
+                  :key="index"
+                  class="h-14 overflow-hidden rounded-md border border-slate-200 bg-slate-50 hover:border-blue-300"
+                  @click="emit('image-preview', image)"
                 >
-                  复制
+                  <img :src="image" :alt="`recognition-draw-${index}`" class="h-full w-full object-contain" />
                 </button>
               </div>
-              <pre
-                class="text-xs text-slate-700 font-mono whitespace-pre-wrap break-words bg-slate-50 border border-slate-200 rounded p-1.5"
-              >{{ res.text || '—' }}</pre>
+            </div>
+          </details>
+
+          <details class="fold-card raw-json-card">
+            <summary class="fold-summary">
+              <ChevronRight :size="12" class="fold-chevron" />
+              <FileJson :size="12" />
+              <span>识别原始字段</span>
+              <button
+                class="copy-button ml-auto"
+                title="复制识别原始字段"
+                @click.prevent.stop="emit('copy', rawJson(detail.recognition.rawFields))"
+              >
+                <Copy :size="10" />
+              </button>
+            </summary>
+            <pre>{{ rawJson(detail.recognition.rawFields) }}</pre>
+          </details>
+        </div>
+      </section>
+
+      <section
+        v-if="detail.action"
+        class="overflow-hidden rounded-xl border border-violet-200 bg-white shadow-sm"
+      >
+        <div class="stage-header border-violet-100 bg-violet-50/70">
+          <div class="flex items-center gap-2">
+            <span class="stage-icon bg-violet-100 text-violet-600">
+              <MousePointerClick :size="15" />
+            </span>
+            <div>
+              <div class="text-xs font-semibold text-slate-700">动作 · {{ actionLabel }}</div>
+              <div class="font-mono text-[10px] text-slate-400">{{ detail.action.type }}</div>
             </div>
           </div>
+          <span
+            class="status-pill"
+            :class="
+              isSuccess(detail.action.status)
+                ? 'bg-emerald-100 text-emerald-700'
+                : 'bg-rose-100 text-rose-700'
+            "
+          >
+            <component :is="isSuccess(detail.action.status) ? CheckCircle2 : XCircle" :size="11" />
+            {{ statusText(detail.action.status) }}
+          </span>
         </div>
-      </div>
+
+        <div class="space-y-3 p-3">
+          <div class="grid grid-cols-2 gap-2 text-[10px]">
+            <div v-if="detail.action.id != null" class="detail-stat">
+              <Hash :size="11" /><span>动作 ID</span><b>{{ detail.action.id }}</b>
+            </div>
+            <div v-if="detail.action.nodeId != null" class="detail-stat">
+              <Hash :size="11" /><span>节点 ID</span><b>{{ detail.action.nodeId }}</b>
+            </div>
+          </div>
+
+          <details v-if="detail.action.parameters.length" class="fold-card" open>
+            <summary class="fold-summary">
+              <ChevronRight :size="12" class="fold-chevron" />
+              <span>动作参数</span>
+              <span class="fold-count">{{ detail.action.parameters.length }}</span>
+            </summary>
+            <div class="space-y-1.5 border-t border-slate-100 p-2">
+              <div
+                v-for="field in detail.action.parameters"
+                :key="field.key"
+                class="parameter-row"
+              >
+                <span>{{ field.label }}</span>
+                <code v-if="field.kind === 'rect' || field.kind === 'point'">
+                  {{ formatDebugRect(field.value) }}
+                </code>
+                <code v-else>{{ field.kind === 'boolean' ? (field.value ? '启用' : '关闭') : field.text }}</code>
+                <button
+                  class="copy-button"
+                  :title="`复制 ${field.label}`"
+                  @click="emit('copy', field.text)"
+                >
+                  <Copy :size="10" />
+                </button>
+              </div>
+            </div>
+          </details>
+
+          <details class="fold-card snapshot-card" open>
+            <summary class="fold-summary">
+              <ChevronRight :size="12" class="fold-chevron" />
+              <ImageIcon :size="12" />
+              <span>动作快照</span>
+              <span class="ml-auto text-[9px] font-normal text-slate-400">默认展开</span>
+            </summary>
+            <div class="border-t border-slate-100 p-2">
+              <button
+                class="snapshot-main"
+                :class="detail.action.snapshot.mainImage ? 'cursor-zoom-in' : ''"
+                @click="
+                  detail.action.snapshot.mainImage &&
+                  emit('image-preview', detail.action.snapshot.mainImage)
+                "
+              >
+                <img
+                  v-if="detail.action.snapshot.mainImage"
+                  :src="detail.action.snapshot.mainImage"
+                  alt="action snapshot"
+                  class="h-full w-full object-contain"
+                />
+                <span v-else class="text-xs text-slate-400">暂无动作快照</span>
+                <Maximize2
+                  v-if="detail.action.snapshot.mainImage"
+                  :size="13"
+                  class="absolute right-2 top-2 text-white drop-shadow"
+                />
+              </button>
+              <div
+                v-if="detail.action.snapshot.drawImages.length"
+                class="mt-2 grid grid-cols-4 gap-1.5"
+              >
+                <button
+                  v-for="(image, index) in detail.action.snapshot.drawImages"
+                  :key="index"
+                  class="h-14 overflow-hidden rounded-md border border-slate-200 bg-slate-50 hover:border-violet-300"
+                  @click="emit('image-preview', image)"
+                >
+                  <img :src="image" :alt="`action-draw-${index}`" class="h-full w-full object-contain" />
+                </button>
+              </div>
+            </div>
+          </details>
+
+          <details class="fold-card raw-json-card">
+            <summary class="fold-summary">
+              <ChevronRight :size="12" class="fold-chevron" />
+              <FileJson :size="12" />
+              <span>动作原始字段</span>
+              <button
+                class="copy-button ml-auto"
+                title="复制动作原始字段"
+                @click.prevent.stop="emit('copy', rawJson(detail.action.rawFields))"
+              >
+                <Copy :size="10" />
+              </button>
+            </summary>
+            <pre>{{ rawJson(detail.action.rawFields) }}</pre>
+          </details>
+        </div>
+      </section>
     </div>
-  </div>
+  </aside>
 </template>
+
+<style scoped>
+  .stage-header {
+    @apply flex items-center justify-between border-b px-3 py-2;
+  }
+
+  .stage-icon {
+    @apply flex h-7 w-7 items-center justify-center rounded-lg;
+  }
+
+  .status-pill {
+    @apply flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold;
+  }
+
+  .detail-stat {
+    @apply flex min-w-0 items-center gap-1.5 rounded-lg border border-slate-100 bg-slate-50 px-2 py-1.5 text-slate-400;
+  }
+
+  .detail-stat b {
+    @apply ml-auto min-w-0 truncate font-mono font-medium text-slate-700;
+  }
+
+  .fold-card {
+    @apply overflow-hidden rounded-lg border border-slate-200 bg-white;
+  }
+
+  .fold-summary,
+  .result-group-summary {
+    @apply flex cursor-pointer list-none items-center gap-1.5 px-2.5 py-2 text-[10px] font-semibold text-slate-600;
+  }
+
+  .fold-summary::-webkit-details-marker,
+  .result-group-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  details[open] > summary .fold-chevron {
+    @apply rotate-90;
+  }
+
+  .fold-chevron {
+    @apply shrink-0 text-slate-400 transition-transform;
+  }
+
+  .fold-count {
+    @apply ml-auto rounded-full bg-white px-1.5 py-0.5 text-[9px] font-semibold text-slate-500 shadow-sm;
+  }
+
+  .result-group {
+    @apply overflow-hidden rounded-lg border;
+  }
+
+  .parameter-row {
+    @apply flex items-start gap-2 rounded-lg border border-slate-100 bg-slate-50/70 px-2.5 py-2 text-[10px];
+  }
+
+  .parameter-row > span:first-child {
+    @apply shrink-0 text-slate-500;
+  }
+
+  .parameter-row code {
+    @apply min-w-0 flex-1 whitespace-pre-wrap break-all text-right font-mono text-slate-700;
+  }
+
+  .copy-button {
+    @apply flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600;
+  }
+
+  .snapshot-main {
+    @apply relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-950/5;
+  }
+
+  .raw-json-card pre {
+    @apply max-h-72 overflow-auto whitespace-pre-wrap break-all border-t border-slate-700 bg-slate-900 p-3 font-mono text-[10px] leading-4 text-slate-200;
+  }
+
+  .empty-result {
+    @apply rounded-lg border border-dashed border-slate-200 bg-white/70 py-3 text-center text-[10px] text-slate-400;
+  }
+</style>

@@ -7,8 +7,9 @@ import type {
   DeviceConfigPayload,
   ApiDeviceInfo,
   WorkspaceState,
-  CustomCompletionRules
+  CustomCompletionRules,
 } from '@/services/api'
+import type { AgentProfile } from '@/services/api'
 import type { EdgeType } from '@/utils/flowOptions'
 import type { LayoutAlgorithm, LayoutDirection, SpacingKey } from '@/utils/flowTypes'
 import type { TabResourceInfo } from '@/utils/flowWorkspaceTypes'
@@ -16,7 +17,7 @@ import {
   buildResourceSignature,
   legacyTabsToWorkspaceState,
   toPersistedTabs,
-  toRuntimeTabs
+  toRuntimeTabs,
 } from '@/utils/workspaceState'
 
 interface CanvasSettings {
@@ -72,24 +73,24 @@ const DEFAULT_CANVAS: CanvasSettings = {
   pipelineVersion: 'V1',
   lowMemoryMode: false,
   restoreWorkspaceOnStart: true,
-  nodeNamePrefixEnabled: true
+  nodeNamePrefixEnabled: true,
 }
 
 const createEmptyWorkspace = (): TabState => ({
   items: [],
-  activeTabId: ''
+  activeTabId: '',
 })
 
 const createInitialTab = (): TabResourceInfo => ({
   id: `flow-${crypto.randomUUID()}`,
   title: '流程 1',
-  resourceFile: ''
+  resourceFile: '',
 })
 
 const cloneTab = (tab: TabResourceInfo): TabResourceInfo => ({
   id: tab.id || `flow-${crypto.randomUUID()}`,
   title: tab.title || '',
-  resourceFile: tab.resourceFile || ''
+  resourceFile: tab.resourceFile || '',
 })
 
 export const useAppConfigStore = defineStore('appConfig', () => {
@@ -101,24 +102,24 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     loaded: false,
     signature: '',
     lastWorkspace: null,
-    customCompletions: { action: [], recognition: [] }
+    customCompletions: { action: [], recognition: [] },
   })
   const device = ref<DeviceState>({
     status: 'disconnected',
     currentDevice: null,
     lastSearched: [],
-    lastDevice: null
+    lastDevice: null,
   })
   const agent = ref<AgentState>({
     socketId: null,
     status: 'disconnected',
-    message: 'Agent 未连接'
+    message: 'Agent 未连接',
   })
   const tabs = ref<TabState>(createEmptyWorkspace())
   const system = ref<SystemState>({
     status: 'disconnected',
     initialized: false,
-    isSaving: false
+    isSaving: false,
   })
 
   const currentProfile = computed(
@@ -132,7 +133,7 @@ export const useAppConfigStore = defineStore('appConfig', () => {
       resource_signature: resource.value.signature || undefined,
       tabs: toPersistedTabs(tabs.value.items),
       active_tab_id: tabs.value.activeTabId || undefined,
-      restore_workspace_on_start: canvas.value.restoreWorkspaceOnStart
+      restore_workspace_on_start: canvas.value.restoreWorkspaceOnStart,
     }
   })
 
@@ -141,24 +142,35 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     if (!workspace) return null
     return {
       resource_index: workspace.resource_index ?? 0,
-      tabs: (workspace.tabs || []).map(tab => ({
+      tabs: (workspace.tabs || []).map((tab) => ({
         id: tab.id || '',
         title: tab.title || '',
-        resource_file: tab.resource_file || ''
+        resource_file: tab.resource_file || '',
       })),
-      active_tab_id: workspace.active_tab_id
+      active_tab_id: workspace.active_tab_id,
     }
   })
 
-  const isDirty = computed(() => tabs.value.items.some(t => t.resourceFile !== ''))
+  const isDirty = computed(() => tabs.value.items.some((t) => t.resourceFile !== ''))
 
   function normalizeProfiles(profiles?: ResourceProfile[]): ResourceProfile[] {
-    return (profiles || []).map(p => ({
+    return (profiles || []).map((p) => ({
       ...p,
       paths: Array.isArray((p as Record<string, unknown>).paths)
         ? [...((p as Record<string, unknown>).paths as string[])]
         : [],
-      schema_path: typeof p.schema_path === 'string' ? p.schema_path : ''
+      schema_path: typeof p.schema_path === 'string' ? p.schema_path : '',
+      interface_path: typeof p.interface_path === 'string' ? p.interface_path : '',
+      agent: p.agent
+        ? {
+            child_exec: p.agent.child_exec || '',
+            child_args: Array.isArray(p.agent.child_args) ? [...p.agent.child_args] : [],
+            working_directory: p.agent.working_directory || '',
+            socket_id: p.agent.socket_id || '',
+            auto_start: p.agent.auto_start !== false,
+            environment: { ...(p.agent.environment || {}) },
+          }
+        : undefined,
     }))
   }
 
@@ -225,6 +237,9 @@ export const useAppConfigStore = defineStore('appConfig', () => {
         agent.value.socketId = data.agent_socket_id
         agent.value.status = 'disconnected'
       }
+      if (currentProfile.value.agent?.socket_id) {
+        agent.value.socketId = currentProfile.value.agent.socket_id
+      }
 
       device.value.lastDevice = data.last_device ?? null
 
@@ -253,21 +268,21 @@ export const useAppConfigStore = defineStore('appConfig', () => {
           layout_algorithm: canvas.value.layoutAlgorithm,
           layout_direction: canvas.value.layoutDirection,
           pipeline_version: canvas.value.pipelineVersion,
-          node_name_prefix_enabled: canvas.value.nodeNamePrefixEnabled
+          node_name_prefix_enabled: canvas.value.nodeNamePrefixEnabled,
         },
         restore_workspace_on_start: canvas.value.restoreWorkspaceOnStart,
         workspace_state: workspaceToSave,
         last_tabs: workspaceToSave
           ? {
               resource_index: workspaceToSave.resource_index ?? 0,
-              tabs: toPersistedTabs(workspaceToSave.tabs).map(tab => ({
+              tabs: toPersistedTabs(workspaceToSave.tabs).map((tab) => ({
                 id: tab.id,
                 title: tab.title,
-                resource_file: tab.resource_file
+                resource_file: tab.resource_file,
               })),
-              active_tab_id: workspaceToSave.active_tab_id
+              active_tab_id: workspaceToSave.active_tab_id,
             }
-          : undefined
+          : undefined,
       }
       await systemApi.saveDeviceConfig(payload)
     } catch (e) {
@@ -301,6 +316,9 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     resource.value.customCompletions = { action: [], recognition: [] }
     resource.value.signature = buildResourceSignature(resource.value.profiles[index])
     tabs.value = createEmptyWorkspace()
+    agent.value.socketId = resource.value.profiles[index]?.agent?.socket_id || null
+    agent.value.status = 'disconnected'
+    agent.value.message = 'Agent 未连接'
     await saveToBackend()
   }
 
@@ -335,7 +353,7 @@ export const useAppConfigStore = defineStore('appConfig', () => {
   function setCustomCompletions(rules?: CustomCompletionRules) {
     resource.value.customCompletions = {
       action: [...(rules?.action || [])],
-      recognition: [...(rules?.recognition || [])]
+      recognition: [...(rules?.recognition || [])],
     }
   }
 
@@ -415,14 +433,32 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     if (message) agent.value.message = message
   }
 
-  async function connectAgent(socketId: string) {
+  async function updateCurrentAgentSettings(settings: AgentProfile) {
+    const profile = resource.value.profiles[resource.value.profileIndex]
+    if (!profile) return
+    profile.agent = {
+      ...settings,
+      child_args: [...settings.child_args],
+      environment: { ...(settings.environment || {}) },
+    }
+    agent.value.socketId = settings.socket_id || null
+    await saveToBackend()
+  }
+
+  async function connectAgent(socketId?: string) {
     agent.value.status = 'loading'
     try {
-      const response = await agentApi.connect(socketId)
+      const profileAgent = currentProfile.value.agent
+      const resolvedSocketId = (socketId || profileAgent?.socket_id || '').trim()
+      if (!resolvedSocketId) throw new Error('请先设置 Socket ID')
+      if (profileAgent) {
+        await agentApi.start({ ...profileAgent, socket_id: resolvedSocketId })
+      }
+      const response = await agentApi.connect(resolvedSocketId)
       if (response.success === false) {
         throw new Error(response.message || 'Agent 连接失败')
       }
-      agent.value.socketId = socketId
+      agent.value.socketId = resolvedSocketId
       agent.value.status = 'connected'
       agent.value.message = 'Agent 已连接'
       await saveToBackend()
@@ -441,7 +477,7 @@ export const useAppConfigStore = defineStore('appConfig', () => {
 
   function closeTab(tabId: string) {
     if (tabs.value.items.length <= 1) return
-    const idx = tabs.value.items.findIndex(t => t.id === tabId)
+    const idx = tabs.value.items.findIndex((t) => t.id === tabId)
     if (idx < 0) return
     tabs.value.items.splice(idx, 1)
     if (tabs.value.activeTabId === tabId) {
@@ -456,7 +492,7 @@ export const useAppConfigStore = defineStore('appConfig', () => {
   }
 
   function updateTabResourceFile(tabId: string, resourceFile: string, title?: string) {
-    const tab = tabs.value.items.find(t => t.id === tabId)
+    const tab = tabs.value.items.find((t) => t.id === tabId)
     if (!tab) return
     tab.resourceFile = resourceFile
     if (title) tab.title = title
@@ -505,7 +541,7 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     if (!canRestoreLastWorkspace()) return []
     const lastWorkspace = resource.value.lastWorkspace
     const restoredTabs = toRuntimeTabs(lastWorkspace?.tabs || []).filter(
-      tab => !validResourceFiles || validResourceFiles.has(tab.resourceFile)
+      (tab) => !validResourceFiles || validResourceFiles.has(tab.resourceFile)
     )
 
     if (restoredTabs.length === 0) {
@@ -514,11 +550,11 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     }
 
     tabs.value.items = restoredTabs
-    tabs.value.activeTabId = restoredTabs.some(tab => tab.id === lastWorkspace?.active_tab_id)
+    tabs.value.activeTabId = restoredTabs.some((tab) => tab.id === lastWorkspace?.active_tab_id)
       ? lastWorkspace?.active_tab_id || restoredTabs[0].id
       : restoredTabs[0].id
     resource.value.selectedFileId =
-      restoredTabs.find(tab => tab.id === tabs.value.activeTabId)?.resourceFile ||
+      restoredTabs.find((tab) => tab.id === tabs.value.activeTabId)?.resourceFile ||
       restoredTabs[0].resourceFile ||
       ''
     void saveToBackend()
@@ -552,6 +588,7 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     connectWin32,
     searchDevices,
     setAgentStatus,
+    updateCurrentAgentSettings,
     connectAgent,
     setTabs,
     addTab,
@@ -563,6 +600,6 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     hydrateWorkspaceFromResource,
     canRestoreLastWorkspace,
     restoreLastWorkspace,
-    ensureWorkspaceTab
+    ensureWorkspaceTab,
   }
 })

@@ -213,13 +213,13 @@ defineExpose({
         <button
           type="button"
           class="status-trigger"
-          :class="[agentStatus.status === 'connected' ? 'border-violet-200 bg-violet-50 text-violet-700' : '', openPanel === 'agent' ? 'ring-2 ring-violet-100 border-violet-300' : '']"
+          :class="[agentStatus.status === 'connected' ? 'status-trigger-connected' : '', openPanel === 'agent' ? 'ring-2 ring-emerald-100 border-emerald-300' : '']"
           :title="agentStatus.message"
           @click="togglePanel('agent')"
         >
           <Bot :size="14" />
           <span>Agent</span>
-          <span class="status-text" :class="agentStatus.status === 'connected' ? 'text-violet-600' : ''">
+          <span class="status-text" :class="agentStatus.status === 'connected' ? 'text-emerald-600' : ''">
             {{ statusLabel(agentStatus.status, '已连接') }}
           </span>
           <ChevronDown :size="12" :class="openPanel === 'agent' ? 'rotate-180' : ''" />

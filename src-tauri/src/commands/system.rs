@@ -1,4 +1,4 @@
-use crate::config::AppConfig;
+use crate::config::{AgentProfile, AppConfig, ResourceProfile};
 use crate::maafw::MaaFrameworkWrapper;
 use crate::response::ApiResponse;
 use std::fs;
@@ -19,6 +19,186 @@ pub fn system_pick_folder() -> Option<String> {
     rfd::FileDialog::new()
         .pick_folder()
         .map(|path| path.to_string_lossy().into_owned())
+}
+
+/// Import resource profiles and Agent launch settings from a MaaFramework
+/// Project Interface V2 file.
+#[tauri::command]
+pub fn system_import_interface() -> Result<serde_json::Value, String> {
+    let path = rfd::FileDialog::new()
+        .add_filter("MaaFramework interface", &["json"])
+        .set_file_name("interface.json")
+        .pick_file()
+        .ok_or_else(|| "已取消导入".to_string())?;
+    import_interface_file(&path)
+}
+
+fn import_interface_file(path: &std::path::Path) -> Result<serde_json::Value, String> {
+    let content = fs::read_to_string(path)
+        .map_err(|error| format!("无法读取 {}: {error}", path.display()))?;
+    let interface: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|error| format!("interface.json 格式错误: {error}"))?;
+    if interface
+        .get("interface_version")
+        .and_then(|value| value.as_i64())
+        != Some(2)
+    {
+        return Err("仅支持 interface_version 为 2 的配置".to_string());
+    }
+
+    let root = path
+        .parent()
+        .ok_or_else(|| "interface.json 没有有效的父目录".to_string())?;
+    let project_name = interface
+        .get("label")
+        .or_else(|| interface.get("name"))
+        .and_then(|value| value.as_str())
+        .unwrap_or("Imported");
+    let project_id = interface
+        .get("name")
+        .and_then(|value| value.as_str())
+        .unwrap_or("imported");
+    let project_version = interface
+        .get("version")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default();
+    let agent_value = match interface.get("agent") {
+        Some(serde_json::Value::Array(items)) => items.first(),
+        value => value,
+    };
+
+    let resources = interface
+        .get("resource")
+        .and_then(|value| value.as_array())
+        .ok_or_else(|| "interface.json 中没有 resource 数组".to_string())?;
+    let import_stamp = chrono::Utc::now().timestamp_millis();
+    let mut profiles = Vec::new();
+
+    for resource in resources {
+        let resource_name = resource
+            .get("label")
+            .or_else(|| resource.get("name"))
+            .and_then(|value| value.as_str())
+            .unwrap_or("Resource");
+        let paths = resource
+            .get("path")
+            .and_then(|value| value.as_array())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item.as_str())
+                    .map(|item| {
+                        let candidate = PathBuf::from(item);
+                        if candidate.is_absolute() {
+                            candidate
+                        } else {
+                            root.join(candidate)
+                        }
+                        .to_string_lossy()
+                        .into_owned()
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        let agent = agent_value.and_then(|value| {
+            let child_exec = value.get("child_exec")?.as_str()?.to_string();
+            let child_args = value
+                .get("child_args")
+                .and_then(|args| args.as_array())
+                .map(|args| {
+                    args.iter()
+                        .filter_map(|arg| arg.as_str().map(ToOwned::to_owned))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let socket_id = value
+                .get("identifier")
+                .and_then(|identifier| identifier.as_str())
+                .map(ToOwned::to_owned)
+                .unwrap_or_else(|| {
+                    let slug = format!("{project_id}-{resource_name}")
+                        .chars()
+                        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+                        .collect::<String>();
+                    format!("maa-inspector-{slug}-{import_stamp}")
+                });
+            let mut environment = std::collections::HashMap::new();
+            environment.insert("PI_INTERFACE_VERSION".to_string(), "v2.5.0".to_string());
+            environment.insert("PI_CLIENT_NAME".to_string(), "MaaInspector".to_string());
+            environment.insert("PI_CLIENT_LANGUAGE".to_string(), "zh_cn".to_string());
+            environment.insert("PI_VERSION".to_string(), project_version.to_string());
+            environment.insert("PI_RESOURCE".to_string(), resource.to_string());
+            Some(AgentProfile {
+                child_exec,
+                child_args,
+                working_directory: root.to_string_lossy().into_owned(),
+                socket_id,
+                auto_start: true,
+                environment,
+            })
+        });
+
+        profiles.push(ResourceProfile {
+            name: Some(format!("{project_name} · {resource_name}")),
+            paths: Some(paths),
+            schema_path: None,
+            interface_path: Some(path.to_string_lossy().into_owned()),
+            agent,
+        });
+    }
+
+    if profiles.is_empty() {
+        return Err("interface.json 中没有可导入的资源配置".to_string());
+    }
+    Ok(serde_json::json!({
+        "profiles": profiles,
+        "interface_path": path.to_string_lossy(),
+        "project_name": project_name
+    }))
+}
+
+#[cfg(test)]
+mod interface_tests {
+    use super::*;
+
+    #[test]
+    fn imports_resource_paths_and_agent_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let interface_path = dir.path().join("interface.json");
+        fs::write(
+            &interface_path,
+            r#"{
+                "interface_version": 2,
+                "name": "Demo",
+                "label": "演示",
+                "version": "1.2.3",
+                "resource": [
+                    { "name": "Official", "label": "官服", "path": ["./base", "./official"] }
+                ],
+                "agent": {
+                    "child_exec": ".\\agent\\agent.exe",
+                    "child_args": ["--mode", "debug"]
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let imported = import_interface_file(&interface_path).unwrap();
+        let profile = &imported["profiles"][0];
+        assert_eq!(profile["name"], "演示 · 官服");
+        assert_eq!(
+            profile["paths"][0],
+            dir.path().join("./base").to_string_lossy().as_ref()
+        );
+        assert_eq!(profile["agent"]["child_exec"], ".\\agent\\agent.exe");
+        assert_eq!(
+            profile["agent"]["working_directory"],
+            dir.path().to_string_lossy().as_ref()
+        );
+        assert_eq!(profile["agent"]["child_args"][1], "debug");
+        assert_eq!(profile["agent"]["environment"]["PI_VERSION"], "1.2.3");
+    }
 }
 
 /// Return the centralized resource backup directory, creating it on demand.

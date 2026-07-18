@@ -8,14 +8,15 @@ mod maafw;
 mod resources;
 mod response;
 
+use commands::{AgentClientState, AgentProcessState};
 use commands::{
-    agent_connect, debug_get_reco_details, debug_ocr_text, debug_run_node, debug_status,
-    debug_stop, device_connect_adb, device_connect_win32, device_screenshot, devtools_open,
-    log_frontend_batch, log_get_dir, resource_check_unused_images, resource_create_file,
-    resource_get_file_nodes, resource_get_templates, resource_load, resource_process_images,
-    resource_save_file_nodes, resource_search_nodes, system_get_backup_dir, system_init,
-    system_open_backup_dir, system_open_log_dir, system_pick_folder, system_save_config,
-    system_search_devices,
+    agent_connect, agent_start, debug_get_reco_details, debug_ocr_text, debug_run_node,
+    debug_status, debug_stop, device_connect_adb, device_connect_win32, device_screenshot,
+    devtools_open, log_frontend_batch, log_get_dir, resource_check_unused_images,
+    resource_create_file, resource_get_file_nodes, resource_get_templates, resource_load,
+    resource_process_images, resource_save_file_nodes, resource_search_nodes,
+    system_get_backup_dir, system_import_interface, system_init, system_open_backup_dir,
+    system_open_log_dir, system_pick_folder, system_save_config, system_search_devices,
 };
 use events::DebugEventBroker;
 use maafw::MaaFrameworkWrapper;
@@ -121,6 +122,8 @@ fn load_maa_library<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), 
 pub fn run() {
     let maafw: Mutex<Option<MaaFrameworkWrapper>> = Mutex::new(None);
     let resources_manager: ResourcesManagerState = Arc::new(RwLock::new(None));
+    let agent_process = AgentProcessState::default();
+    let agent_client = AgentClientState::default();
     let backup_dir = resolve_backup_dir().expect("failed to resolve backup directory");
 
     tauri::Builder::default()
@@ -148,11 +151,14 @@ pub fn run() {
         })
         .manage(maafw)
         .manage(resources_manager)
+        .manage(agent_process)
+        .manage(agent_client)
         .manage(backup_dir)
         .invoke_handler(tauri::generate_handler![
             // System commands
             system_init,
             system_pick_folder,
+            system_import_interface,
             system_get_backup_dir,
             system_open_log_dir,
             system_open_backup_dir,
@@ -173,6 +179,7 @@ pub fn run() {
             resource_process_images,
             // Agent commands
             agent_connect,
+            agent_start,
             // Debug commands
             debug_run_node,
             debug_stop,

@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ChevronDown, Check } from 'lucide-vue-next'
 import type { DropdownOption } from './types'
+import FloatingDropdownMenu from './FloatingDropdownMenu.vue'
 
 const props = withDefaults(defineProps<{
   modelValue: PropertyKey
@@ -117,44 +118,28 @@ const sizeClasses = computed(() => {
       />
     </button>
 
-    <!-- 下拉菜单 -->
-    <Transition
-      enter-active-class="transition ease-out duration-100"
-      enter-from-class="transform opacity-0 scale-95"
-      enter-to-class="transform opacity-100 scale-100"
-      leave-active-class="transition ease-in duration-75"
-      leave-from-class="transform opacity-100 scale-100"
-      leave-to-class="transform opacity-0 scale-95"
-    >
-      <div
-        v-if="isOpen"
-        class="absolute z-50 w-full bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden"
-        :class="sizeClasses.dropdown"
+    <FloatingDropdownMenu :open="isOpen" :anchor="dropdownRef" :max-height="240">
+      <button
+        v-for="option in options"
+        :key="option.value"
+        type="button"
+        :disabled="option.disabled"
+        class="flex w-full items-center justify-between px-3 py-2 text-left text-xs transition-colors"
+        :class="{
+          'bg-indigo-50 text-indigo-700': option.value === modelValue,
+          'text-slate-600 hover:bg-slate-50': option.value !== modelValue && !option.disabled,
+          'cursor-not-allowed text-slate-400': option.disabled
+        }"
+        @click="selectOption(option)"
       >
-        <div class="max-h-60 overflow-y-auto custom-scrollbar">
-          <button
-            v-for="option in options"
-            :key="option.value"
-            type="button"
-            :disabled="option.disabled"
-            class="w-full text-left px-3 py-2 text-xs transition-colors flex items-center justify-between"
-            :class="{
-              'bg-indigo-50 text-indigo-700': option.value === modelValue,
-              'text-slate-600 hover:bg-slate-50': option.value !== modelValue && !option.disabled,
-              'text-slate-400 cursor-not-allowed': option.disabled
-            }"
-            @click="selectOption(option)"
-          >
-            <span class="truncate">{{ option.label }}</span>
-            <Check
-              v-if="option.value === modelValue"
-              :size="14"
-              class="text-indigo-600 flex-shrink-0 ml-2"
-            />
-          </button>
-        </div>
-      </div>
-    </Transition>
+        <span class="truncate">{{ option.label }}</span>
+        <Check
+          v-if="option.value === modelValue"
+          :size="14"
+          class="ml-2 flex-shrink-0 text-indigo-600"
+        />
+      </button>
+    </FloatingDropdownMenu>
   </div>
 </template>
 

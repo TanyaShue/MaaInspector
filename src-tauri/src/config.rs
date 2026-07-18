@@ -234,6 +234,30 @@ pub struct ResourceProfile {
     pub paths: Option<Vec<String>>,
     #[serde(default)]
     pub schema_path: Option<String>,
+    #[serde(default)]
+    pub interface_path: Option<String>,
+    #[serde(default)]
+    pub agent: Option<AgentProfile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AgentProfile {
+    #[serde(default)]
+    pub child_exec: String,
+    #[serde(default)]
+    pub child_args: Vec<String>,
+    #[serde(default)]
+    pub working_directory: String,
+    #[serde(default)]
+    pub socket_id: String,
+    #[serde(default = "default_agent_auto_start")]
+    pub auto_start: bool,
+    #[serde(default)]
+    pub environment: std::collections::HashMap<String, String>,
+}
+
+fn default_agent_auto_start() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

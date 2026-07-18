@@ -2,24 +2,25 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useAppConfigStore } from '@/stores/appConfig'
 import { buildResourceSignature } from '@/utils/workspaceState'
-import { systemApi } from '@/services/api'
+import { agentApi, systemApi } from '@/services/api'
 
 vi.mock('@/services/api', async () => {
   return {
     systemApi: {
       getInitialState: vi.fn(),
-      saveDeviceConfig: vi.fn()
+      saveDeviceConfig: vi.fn(),
     },
     resourceApi: {
-      load: vi.fn()
+      load: vi.fn(),
     },
     deviceApi: {
       connectAdb: vi.fn(),
-      connectWin32: vi.fn()
+      connectWin32: vi.fn(),
     },
     agentApi: {
-      connect: vi.fn()
-    }
+      start: vi.fn(),
+      connect: vi.fn(),
+    },
   }
 })
 
@@ -36,8 +37,8 @@ describe('appConfig workspace state', () => {
         resource_index: 0,
         resource_signature: buildResourceSignature({ name: 'default', paths: ['D:/maa'] }),
         tabs: [{ id: 'tab-1', title: 'pipeline.json', resource_file: 'D:/maa|pipeline.json' }],
-        active_tab_id: 'tab-1'
-      }
+        active_tab_id: 'tab-1',
+      },
     })
 
     const store = useAppConfigStore()
@@ -55,8 +56,8 @@ describe('appConfig workspace state', () => {
         resource_index: 0,
         resource_signature: buildResourceSignature(profile),
         tabs: [{ id: 'tab-1', title: 'pipeline.json', resource_file: 'D:/maa|pipeline.json' }],
-        active_tab_id: 'tab-1'
-      }
+        active_tab_id: 'tab-1',
+      },
     })
 
     const store = useAppConfigStore()
@@ -77,10 +78,10 @@ describe('appConfig workspace state', () => {
         resource_signature: buildResourceSignature(profile),
         tabs: [
           { id: 'tab-1', title: 'a.json', resource_file: 'D:/maa|a.json' },
-          { id: 'tab-2', title: 'b.json', resource_file: 'D:/maa|b.json' }
+          { id: 'tab-2', title: 'b.json', resource_file: 'D:/maa|b.json' },
         ],
-        active_tab_id: 'tab-2'
-      }
+        active_tab_id: 'tab-2',
+      },
     })
 
     const store = useAppConfigStore()
@@ -99,8 +100,8 @@ describe('appConfig workspace state', () => {
         resource_index: 0,
         resource_signature: buildResourceSignature({ name: 'default', paths: ['D:/maa'] }),
         tabs: [{ id: 'tab-1', title: 'pipeline.json', resource_file: 'D:/maa|pipeline.json' }],
-        active_tab_id: 'tab-1'
-      }
+        active_tab_id: 'tab-1',
+      },
     })
 
     const store = useAppConfigStore()
@@ -114,7 +115,7 @@ describe('appConfig workspace state', () => {
 
   it('saves only lightweight tab metadata in workspace_state', async () => {
     vi.mocked(systemApi.getInitialState).mockResolvedValue({
-      resource_profiles: [{ name: 'default', paths: ['D:/maa'] }]
+      resource_profiles: [{ name: 'default', paths: ['D:/maa'] }],
     })
 
     const store = useAppConfigStore()
@@ -123,15 +124,19 @@ describe('appConfig workspace state', () => {
     const tab = store.ensureWorkspaceTab()
     store.updateTabResourceFile(tab.id, 'D:/maa|pipeline.json', 'pipeline.json')
 
-    expect(systemApi.saveDeviceConfig).toHaveBeenLastCalledWith(expect.objectContaining({
-      workspace_state: expect.objectContaining({
-        tabs: [{
-          id: tab.id,
-          title: 'pipeline.json',
-          resource_file: 'D:/maa|pipeline.json'
-        }]
+    expect(systemApi.saveDeviceConfig).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        workspace_state: expect.objectContaining({
+          tabs: [
+            {
+              id: tab.id,
+              title: 'pipeline.json',
+              resource_file: 'D:/maa|pipeline.json',
+            },
+          ],
+        }),
       })
-    }))
+    )
   })
 
   it('loads and persists the last connected device', async () => {
@@ -145,9 +150,34 @@ describe('appConfig workspace state', () => {
     const nextDevice = { type: 'win32', hwnd: 42, name: 'Game' }
     store.rememberDevice(nextDevice)
     await vi.waitFor(() => {
-      expect(systemApi.saveDeviceConfig).toHaveBeenLastCalledWith(expect.objectContaining({
-        last_device: nextDevice
-      }))
+      expect(systemApi.saveDeviceConfig).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          last_device: nextDevice,
+        })
+      )
     })
+  })
+
+  it('starts Agent with the active resource settings before connecting', async () => {
+    const agent = {
+      child_exec: '.\\agent\\agent.exe',
+      child_args: ['--debug'],
+      working_directory: 'D:\\MaaYYs',
+      socket_id: 'maayys-agent',
+      auto_start: true,
+    }
+    vi.mocked(systemApi.getInitialState).mockResolvedValue({
+      resource_profiles: [{ name: 'MaaYYs', paths: ['D:/MaaYYs/resource'], agent }],
+    })
+    vi.mocked(agentApi.start).mockResolvedValue({ success: true })
+    vi.mocked(agentApi.connect).mockResolvedValue({ success: true })
+
+    const store = useAppConfigStore()
+    await store.loadFromBackend()
+    await store.connectAgent()
+
+    expect(agentApi.start).toHaveBeenCalledWith(expect.objectContaining(agent))
+    expect(agentApi.connect).toHaveBeenCalledWith('maayys-agent')
+    expect(store.agent.status).toBe('connected')
   })
 })
