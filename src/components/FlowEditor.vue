@@ -11,6 +11,7 @@ import { useFlowEditorVm } from '@/composables/viewModels/useFlowEditorVm'
 import { useEdgeRenderWindow } from '@/composables/flowGraph/useEdgeRenderWindow'
 import { syncNodePositions } from '@/utils/editorInteraction'
 import type { FlowNode } from '@/utils/flowTypes'
+import type { FlowEditorStatus } from '@/composables/viewModels/types'
 
 const NodeSearch = defineAsyncComponent(() => import('./Flow/NodeSearch.vue'))
 const SaveConfirmModal = defineAsyncComponent(() => import('./Flow/Modals/SaveConfirmModal.vue'))
@@ -28,6 +29,7 @@ const emit = defineEmits<{
   'request-switch-file': [payload: { filename: string; source: string }]
   'open-debug-panel': [payload?: { nodeId?: string }]
   'close-debug-panel': []
+  'status-change': [payload: FlowEditorStatus]
 }>()
 
 const {

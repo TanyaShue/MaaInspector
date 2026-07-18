@@ -372,4 +372,39 @@ describe('useFlowWorkspaceVm', () => {
       filename: 'b.json'
     })
   })
+
+  it('reactively tracks status changes from every editor while only exposing the active status', () => {
+    const store = useAppConfigStore()
+    store.setTabs([
+      { id: 'tab-1', title: 'a.json', resourceFile: 'D:/maa|a.json' },
+      { id: 'tab-2', title: 'b.json', resourceFile: 'D:/maa|b.json' }
+    ], 'tab-1')
+    const vm = useFlowWorkspaceVm()
+    vm.registerEditor('tab-1', createEditorPort())
+    vm.registerEditor('tab-2', createEditorPort())
+
+    vm.handleEditorStatusChange('tab-2', {
+      isDirty: true,
+      nodeCount: 3,
+      edgeCount: 2
+    })
+
+    expect([...vm.dirtyTabIds.value]).toEqual(['tab-2'])
+    expect(vm.hasDirtyTabs.value).toBe(true)
+    expect(vm.activeEditorStatus.value.isDirty).toBe(false)
+
+    vm.selectTab('tab-2')
+    expect(vm.activeEditorStatus.value).toEqual({
+      isDirty: true,
+      nodeCount: 3,
+      edgeCount: 2
+    })
+
+    vm.handleEditorStatusChange('tab-2', {
+      isDirty: false,
+      nodeCount: 3,
+      edgeCount: 2
+    })
+    expect(vm.hasDirtyTabs.value).toBe(false)
+  })
 })

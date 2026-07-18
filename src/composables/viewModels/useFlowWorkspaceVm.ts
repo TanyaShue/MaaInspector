@@ -5,7 +5,7 @@ import { useAppConfigStore } from '@/stores/appConfig'
 import type { FlowBusinessData, LayoutAlgorithm, LayoutDirection, SpacingKey } from '@/utils/flowTypes'
 import type { EdgeType } from '@/utils/flowOptions'
 import type { TabResourceInfo } from '@/utils/flowWorkspaceTypes'
-import type { DebugPanelState, FlowEditorPort, InfoPanelPort } from './types'
+import type { DebugPanelState, FlowEditorPort, FlowEditorStatus, InfoPanelPort } from './types'
 
 export function useFlowWorkspaceVm() {
   const appConfig = useAppConfigStore()
@@ -30,19 +30,20 @@ export function useFlowWorkspaceVm() {
   const debugPanel = ref<DebugPanelState>({ visible: false, nodeId: '' })
   const pendingVisibleLayoutTabs = ref<Set<string>>(new Set())
   const loadingRestoredTabs = ref<Set<string>>(new Set())
+  const editorStatuses = ref<Map<string, FlowEditorStatus>>(new Map())
 
   const activeTab = computed(() => tabs.value.items.find(t => t.id === activeTabId.value) || tabs.value.items[0] || null)
   const resourceLoaded = computed(() => appConfig.resource.loaded)
   const activeEditorRef = computed(() => editorRefs.value.get(activeTabId.value) || null)
-  const activeEditorStatus = computed(() => activeEditorRef.value?.getEditorStatus() ?? {
+  const activeEditorStatus = computed(() => editorStatuses.value.get(activeTabId.value) ?? {
     isDirty: false,
     nodeCount: 0,
     edgeCount: 0
   })
   const dirtyTabIds = computed(() => {
     const dirtyIds = new Set<string>()
-    for (const [tabId, editor] of editorRefs.value) {
-      if (editor.getEditorStatus().isDirty) dirtyIds.add(tabId)
+    for (const tab of tabs.value.items) {
+      if (editorStatuses.value.get(tab.id)?.isDirty) dirtyIds.add(tab.id)
     }
     return dirtyIds
   })
@@ -53,6 +54,9 @@ export function useFlowWorkspaceVm() {
   const registerEditor = (tabId: string, editor: FlowEditorPort | null) => {
     if (editor) {
       editorRefs.value.set(tabId, editor)
+      const nextStatuses = new Map(editorStatuses.value)
+      nextStatuses.set(tabId, editor.getEditorStatus())
+      editorStatuses.value = nextStatuses
       void editor.handleUpdateCanvasConfig({
         edgeType: appSettings.value.edgeType,
         spacing: appSettings.value.spacing,
@@ -62,6 +66,12 @@ export function useFlowWorkspaceVm() {
     } else {
       editorRefs.value.delete(tabId)
     }
+  }
+
+  const handleEditorStatusChange = (tabId: string, status: FlowEditorStatus) => {
+    const nextStatuses = new Map(editorStatuses.value)
+    nextStatuses.set(tabId, status)
+    editorStatuses.value = nextStatuses
   }
 
   const registerActiveEditor = (editor: FlowEditorPort | null) => {
@@ -140,6 +150,10 @@ export function useFlowWorkspaceVm() {
 
   const closeTab = (tabId: string) => {
     tabManagerCloseTab(tabId)
+    editorRefs.value.delete(tabId)
+    const nextStatuses = new Map(editorStatuses.value)
+    nextStatuses.delete(tabId)
+    editorStatuses.value = nextStatuses
     appConfig.selectResourceFile(activeTab.value?.resourceFile || '')
   }
 
@@ -206,7 +220,9 @@ export function useFlowWorkspaceVm() {
   const handleSaveAllNodes = async () => {
     const dirtyEntries = tabs.value.items
       .map(tab => ({ tab, editor: editorRefs.value.get(tab.id) }))
-      .filter(({ tab, editor }) => Boolean(tab.resourceFile && editor?.getEditorStatus().isDirty))
+      .filter(({ tab, editor }) =>
+        Boolean(tab.resourceFile && editor && dirtyTabIds.value.has(tab.id))
+      )
 
     for (const { tab, editor } of dirtyEntries) {
       if (!editor) continue
@@ -279,6 +295,7 @@ export function useFlowWorkspaceVm() {
     resourceLoaded,
     activeEditorRef,
     activeEditorStatus,
+    editorStatuses,
     dirtyTabIds,
     hasDirtyTabs,
     isRestoringWorkspace,
@@ -286,6 +303,7 @@ export function useFlowWorkspaceVm() {
     makeTabTitle,
     registerEditor,
     registerActiveEditor,
+    handleEditorStatusChange,
     selectTab,
     addTab,
     closeTab,

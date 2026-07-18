@@ -63,6 +63,7 @@ const {
   resourceLoaded,
   activeEditorRef,
   activeEditorStatus,
+  handleEditorStatusChange,
   dirtyTabIds,
   hasDirtyTabs,
   isRestoringWorkspace,
@@ -334,6 +335,7 @@ const openCreateResourceFile = (source: string) => {
         @request-switch-file="handleRequestSwitchFile"
         @open-debug-panel="openDebugPanel"
         @close-debug-panel="closeDebugPanel"
+        @status-change="status => handleEditorStatusChange(activeTab.id, status)"
       />
 
       <div
@@ -352,6 +354,7 @@ const openCreateResourceFile = (source: string) => {
           @request-switch-file="handleRequestSwitchFile"
           @open-debug-panel="openDebugPanel"
           @close-debug-panel="closeDebugPanel"
+          @status-change="status => handleEditorStatusChange(tab.id, status)"
         />
       </div>
 

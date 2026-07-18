@@ -6,12 +6,14 @@ export interface DebugPanelState {
   nodeId: string
 }
 
+export interface FlowEditorStatus {
+  isDirty: boolean
+  nodeCount: number
+  edgeCount: number
+}
+
 export interface FlowEditorPort {
-  getEditorStatus: () => {
-    isDirty: boolean
-    nodeCount: number
-    edgeCount: number
-  }
+  getEditorStatus: () => FlowEditorStatus
   loadResourceFile: (fileId: string, options?: { deferLayout?: boolean }) => Promise<void>
   handleLoadNodesWrapper: (payload: {
     filename: string

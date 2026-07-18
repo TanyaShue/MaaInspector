@@ -242,6 +242,11 @@ defineExpose({
               :size="12"
               :class="{'animate-spin': systemState.isSaving.value}"
             />
+            <span
+              v-if="props.hasDirtyTabs"
+              class="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-500 ring-2 ring-white"
+              title="存在未保存的标签"
+            />
           </button>
           <div
             v-if="props.hasDirtyTabs"

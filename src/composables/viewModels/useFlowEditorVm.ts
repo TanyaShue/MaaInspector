@@ -1,4 +1,4 @@
-import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { useVueFlow, type NodeTypesObject } from '@vue-flow/core'
 import { ElMessage } from 'element-plus'
 import { useFlowGraph } from '@/composables/useFlowGraph'
@@ -18,7 +18,7 @@ import {
 } from '@/utils/editorInteraction'
 import { provideNodeDetailsController } from '@/composables/useNodeDetailsController'
 import { getEdgeStyle } from '@/composables/flowGraph/useConnectionManager'
-import type { FlowEditorPort } from './types'
+import type { FlowEditorPort, FlowEditorStatus } from './types'
 import { useAppConfigStore } from '@/stores/appConfig'
 
 interface UseFlowEditorVmOptions {
@@ -28,6 +28,7 @@ interface UseFlowEditorVmOptions {
     (e: 'request-switch-file', payload: { filename: string; source: string }): void
     (e: 'open-debug-panel', payload?: { nodeId?: string }): void
     (e: 'close-debug-panel'): void
+    (e: 'status-change', payload: FlowEditorStatus): void
   }
 }
 
@@ -549,6 +550,22 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     handleDebugNodeFromPanel,
     handleUpdateNodeStatus,
   }
+
+  watch(
+    [
+      isDirtyCombined,
+      () => nodes.value.length,
+      () => edges.value.length,
+    ],
+    ([dirty, nodeCount, edgeCount]) => {
+      options.emit('status-change', {
+        isDirty: Boolean(dirty),
+        nodeCount: Number(nodeCount),
+        edgeCount: Number(edgeCount),
+      })
+    },
+    { immediate: true }
+  )
 
   return {
     nodes,
