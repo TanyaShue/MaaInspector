@@ -28,6 +28,7 @@ describe('ContextMenu', () => {
     })
 
     expect(wrapper.text()).toContain('在子画布中重排任务链')
+    expect(wrapper.text()).toContain('查看任务链')
   })
 
   it('hides the sub-canvas entry from sub-canvas node menus', () => {
@@ -43,6 +44,7 @@ describe('ContextMenu', () => {
     })
 
     expect(wrapper.text()).not.toContain('在子画布中重排任务链')
+    expect(wrapper.text()).not.toContain('查看任务链')
   })
 
   it('opens a submenu without executing the parent action', async () => {

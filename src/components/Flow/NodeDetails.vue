@@ -38,7 +38,7 @@ const emit = defineEmits<{
 const formMethods = useNodeForm(props, emit as unknown as UseNodeFormEmit)
 const {
   formData, jsonStr, jsonError, getValue, setValue,
-  getArrayList, setArrayList, updateJsonFromForm, handleJsonInput,
+  getArrayList, setArrayList, setArrayLists, updateJsonFromForm, handleJsonInput,
   focusData, availableFocusEvents, addFocusParam, removeFocusParam, updateFocusParam
 } = formMethods
 
@@ -156,13 +156,57 @@ const handleRemoveLink = ({ key, index }: { key: string; index: number }) => {
   setArrayList(key, current)
 }
 
-const handleMoveLink = ({ key, index, direction }: { key: string; index: number; direction: number }) => {
+const handleMoveLink = ({
+  key,
+  index,
+  direction,
+  position,
+}: {
+  key: string
+  index: number
+  direction?: number
+  position?: 'top' | 'bottom'
+}) => {
   const current = getArrayList(key)
-  const targetIndex = index + direction
+  const targetIndex = position === 'top'
+    ? 0
+    : position === 'bottom'
+      ? current.length - 1
+      : index + (direction ?? 0)
   if (targetIndex < 0 || targetIndex >= current.length) return
   const [item] = current.splice(index, 1)
   current.splice(targetIndex, 0, item)
   setArrayList(key, current)
+}
+
+const handleReorderLink = ({
+  sourceKey,
+  sourceIndex,
+  targetKey,
+  targetIndex,
+}: {
+  sourceKey: string
+  sourceIndex: number
+  targetKey: string
+  targetIndex: number
+}) => {
+  const source = getArrayList(sourceKey)
+  if (sourceIndex < 0 || sourceIndex >= source.length) return
+
+  const [item] = source.splice(sourceIndex, 1)
+  if (sourceKey === targetKey) {
+    const adjustedIndex = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex
+    source.splice(Math.max(0, Math.min(adjustedIndex, source.length)), 0, item)
+    setArrayList(sourceKey, source)
+    return
+  }
+
+  const target = getArrayList(targetKey)
+  target.splice(Math.max(0, Math.min(targetIndex, target.length)), 0, item)
+  setArrayLists({
+    [sourceKey]: source,
+    [targetKey]: target,
+  })
 }
 
 const handleJsonTextInput = (val: string) => {
@@ -282,6 +326,7 @@ watch(() => props.visible, (val) => {
             @add-link="handleAddLink"
             @remove-link="handleRemoveLink"
             @move-link="handleMoveLink"
+            @reorder-link="handleReorderLink"
           />
         </div>
 

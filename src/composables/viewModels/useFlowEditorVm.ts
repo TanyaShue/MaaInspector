@@ -88,6 +88,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
   const initialLayoutPending = ref(false)
   let initialLayoutPromise: Promise<void> | null = null
   const pendingFocusNodeId = ref<string | null>(null)
+  const taskChainFocusId = ref<string | null>(null)
   const lastPointerPosition = ref<{ x: number; y: number } | null>(null)
   const { showClearCanvasModal, subCanvas, openClearCanvasModal, openSubCanvas, closeSubCanvas } =
     useEditorModals()
@@ -157,6 +158,10 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     onDebugNode: debugRunner.handleDebugNode,
     onOpenDebugPanel: (payload) => options.emit('open-debug-panel', payload),
     onOpenSubCanvas: (payload) => openSubCanvas(payload.nodeId, payload.algorithm),
+    onViewTaskChain: (nodeId) => {
+      nodeDetailsController.close()
+      taskChainFocusId.value = nodeId
+    },
     onCloseDebugPanel: () => options.emit('close-debug-panel'),
     onIncrementCloseAllDetails: () => {
       nodeDetailsController.close()
@@ -415,6 +420,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     }
 
     if (e.key === 'Escape') {
+      taskChainFocusId.value = null
       searchVisible.value = false
       showSaveModal.value = false
       showDeleteImagesModal.value = false
@@ -464,6 +470,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
       nodeCount: Object.keys(payload.nodes).length,
     })
     try {
+      taskChainFocusId.value = null
       initialLayoutPending.value = true
       await loadNodes(payload, { applyInitialLayout: false })
       perfLog('FlowEditor.loadNodes', start, { tabId: options.tabId, filename: payload.filename })
@@ -622,5 +629,9 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     closeSubCanvas,
     editorPort,
     markNodeStructureChanged,
+    taskChainFocusId,
+    clearTaskChainFocus: () => {
+      taskChainFocusId.value = null
+    },
   }
 }

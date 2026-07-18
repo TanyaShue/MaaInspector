@@ -27,6 +27,7 @@ const createActions = (filename = 'demo.json') => {
   const getViewport = vi.fn(() => ({ x: 12, y: 34, zoom: 1.5 }))
   const setViewport = vi.fn().mockResolvedValue(true)
   const updateNodeInternals = vi.fn()
+  const onViewTaskChain = vi.fn()
 
   const actions = useEditorActions({
     nodes,
@@ -59,11 +60,12 @@ const createActions = (filename = 'demo.json') => {
     updateNodeInternals,
     onDebugNode: vi.fn(),
     onOpenDebugPanel: vi.fn(),
+    onViewTaskChain,
     onCloseDebugPanel: vi.fn(),
     onIncrementCloseAllDetails: vi.fn()
   })
 
-  return { actions, nodes, edges, requestClearCanvas, markDataChanged, markNodeStructureChanged, snapshotState, getViewport, setViewport, updateNodeInternals }
+  return { actions, nodes, edges, requestClearCanvas, markDataChanged, markNodeStructureChanged, snapshotState, getViewport, setViewport, updateNodeInternals, onViewTaskChain }
 }
 
 describe('useEditorActions', () => {
@@ -124,5 +126,17 @@ describe('useEditorActions', () => {
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(setViewport).toHaveBeenCalledWith({ x: 12, y: 34, zoom: 1.5 }, { duration: 0 })
     expect(updateNodeInternals).toHaveBeenCalled()
+  })
+
+  it('opens task-chain focus for the selected node', () => {
+    const { actions, nodes, onViewTaskChain } = createActions()
+
+    actions.handleMenuAction({
+      action: 'view_task_chain',
+      type: 'node',
+      data: nodes.value[0],
+    })
+
+    expect(onViewTaskChain).toHaveBeenCalledWith('Start')
   })
 })

@@ -30,6 +30,7 @@ import {
   isAnchorNode,
   parseLinkFlags,
   buildLinkId,
+  buildOutgoingEdges,
 } from './flowGraph/useConnectionManager'
 import {
   getNodesData,
@@ -410,6 +411,18 @@ export function useFlowGraph() {
     else if (nodeMeta.data) nodeMeta.data.recognition = newType
 
     normalizeLinksAcrossNodes(nodes.value)
+    if (nodeMeta.data) {
+      const outgoingEdges = buildOutgoingEdges(
+        node.id,
+        nodeMeta.data as FlowBusinessData,
+        nodes.value,
+        currentEdgeType.value
+      )
+      edges.value = [
+        ...edges.value.filter(edge => edge.source !== node.id),
+        ...outgoingEdges,
+      ]
+    }
 
     markDataChanged()
   }

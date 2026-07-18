@@ -46,19 +46,82 @@ export const getEdgeStyle = (
   currentEdgeType: EdgeType
 ): EdgeStyleResult => {
   const config = PORT_MAPPING[handleId] || { color: '#94a3b8' }
-  const strokeColor = isJumpBack ? '#a855f7' : config.color
+  const isErrorJumpBack = isJumpBack && handleId === 'source-c'
+  const strokeColor = isJumpBack
+    ? isErrorJumpBack ? '#f97316' : '#a855f7'
+    : config.color
 
   return {
     style: {
       stroke: strokeColor,
-      strokeWidth: 2,
-      strokeDasharray: '5 5',
+      strokeWidth: isJumpBack ? 2.5 : 2,
+      strokeDasharray: isJumpBack
+        ? isErrorJumpBack ? '2 4' : '8 4'
+        : '5 5',
     },
     animated: true,
     type: currentEdgeType,
     markerEnd: MarkerType.ArrowClosed,
     data: { isJumpBack },
   }
+}
+
+export const buildOutgoingEdges = (
+  sourceId: string,
+  sourceData: FlowBusinessData,
+  nodes: FlowNode[],
+  currentEdgeType: EdgeType
+): FlowEdge[] => {
+  const targetNodesByLinkId = new Map<string, FlowNode[]>()
+  nodes.forEach((node) => {
+    const linkId = getNodeLinkId(node)
+    const targets = targetNodesByLinkId.get(linkId)
+    if (targets) targets.push(node)
+    else targetNodesByLinkId.set(linkId, [node])
+  })
+
+  const targetUseCounts = new Map<string, number>()
+  const linkFields: Array<{
+    key: 'next' | 'on_error' | 'timeout_next'
+    handle: 'source-a' | 'source-c'
+  }> = [
+    { key: 'next', handle: 'source-a' },
+    { key: 'on_error', handle: 'source-c' },
+    { key: 'timeout_next', handle: 'source-c' },
+  ]
+
+  return linkFields.flatMap(({ key, handle }) => {
+    const rawValue = sourceData[key]
+    const rawTargets = Array.isArray(rawValue)
+      ? rawValue
+      : typeof rawValue === 'string' && rawValue ? [rawValue] : []
+
+    return rawTargets.flatMap((rawTarget, linkIndex) => {
+      const flags = parseLinkFlags(rawTarget)
+      const linkId = flags.id || rawTarget
+      const candidates = targetNodesByLinkId.get(linkId) ?? []
+      const useCount = targetUseCounts.get(linkId) ?? 0
+      const targetNode = nodes.find(node => node.id === linkId)
+        ?? candidates[Math.min(useCount, Math.max(0, candidates.length - 1))]
+      if (!targetNode) return []
+      targetUseCounts.set(linkId, useCount + 1)
+
+      const edgeStyle = getEdgeStyle(handle, flags.jumpBack, currentEdgeType)
+      return [{
+        id: `e-${sourceId}-${targetNode.id}-${key}-${linkIndex}`,
+        source: sourceId,
+        target: targetNode.id,
+        sourceHandle: handle,
+        targetHandle: 'in',
+        label: flags.jumpBack ? 'JumpBack' : key,
+        ...edgeStyle,
+        data: {
+          ...edgeStyle.data,
+          linkIndex,
+        },
+      } satisfies FlowEdge]
+    })
+  })
 }
 
 export const updateNodeDataConnection = (

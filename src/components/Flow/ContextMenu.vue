@@ -2,7 +2,7 @@
 import {computed, ref, onMounted, nextTick, type Component} from 'vue'
 import {
   Trash2, Copy, ClipboardPaste, PlusCircle, RefreshCw, XCircle, ChevronRight,
-  Check, Bug, Scissors, Search, FolderClosed, Repeat, ArrowRightCircle, Move
+  Check, Bug, Scissors, Search, FolderClosed, Repeat, ArrowRightCircle, Move, Eye
 } from 'lucide-vue-next'
 import { recognitionMenuOptions } from '@/utils/node-config'
 import { 
@@ -135,6 +135,13 @@ const menuItems = computed<MenuItem[]>(() => {
 
     if (props.mode !== 'subcanvas') {
       items.push(
+      {
+        type: 'item',
+        label: '查看任务链',
+        action: 'view_task_chain',
+        icon: Eye,
+        color: 'text-cyan-600'
+      },
       {
         type: 'item',
         key: 'layout-chain-algorithm',

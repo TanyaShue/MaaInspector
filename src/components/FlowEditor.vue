@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import { defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { SelectionMode, VueFlow, type NodeDragEvent } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
-import { FolderSearch } from 'lucide-vue-next'
+import { Eye, FolderSearch, X } from 'lucide-vue-next'
 import ContextMenu from './Flow/ContextMenu.vue'
 import SubCanvasPanel from './Flow/SubCanvasPanel.vue'
 import NodeDetailsHost from './Flow/NodeDetailsHost.vue'
 import { useFlowEditorVm } from '@/composables/viewModels/useFlowEditorVm'
 import { useEdgeRenderWindow } from '@/composables/flowGraph/useEdgeRenderWindow'
 import { syncNodePositions } from '@/utils/editorInteraction'
+import { collectReachableNodeIds } from '@/utils/flowSubgraph'
 import type { FlowNode } from '@/utils/flowTypes'
 import type { FlowEditorStatus } from '@/composables/viewModels/types'
 
@@ -86,6 +87,8 @@ const {
   closeSubCanvas,
   editorPort,
   markNodeStructureChanged,
+  taskChainFocusId,
+  clearTaskChainFocus,
 } = useFlowEditorVm({
   tabId: props.tabId,
   isActive: () => props.isActive !== false,
@@ -114,6 +117,96 @@ const {
   nodeStructureVersion,
   lowMemoryMode: () => props.lowMemoryMode === true,
   pauseAnimations: () => subCanvas.value.visible,
+})
+
+const focusedTaskChainNodeIds = computed(() => {
+  if (!taskChainFocusId.value) return new Set<string>()
+  return collectReachableNodeIds(taskChainFocusId.value, nodes.value, edges.value)
+})
+
+const nodeInteractionDefaults = new Map<string, {
+  draggable: boolean
+  selectable: boolean
+  focusable: boolean
+  zIndex?: number
+}>()
+
+const taskChainClassNames = new Set(['task-chain-member', 'task-chain-nonmember'])
+const stripTaskChainClasses = <T,>(value: T): T => {
+  if (typeof value === 'string') {
+    return value
+      .split(/\s+/)
+      .filter(className => className && !taskChainClassNames.has(className))
+      .join(' ') as T
+  }
+  if (Array.isArray(value)) {
+    return value.map(item => stripTaskChainClasses(item)) as T
+  }
+  return value
+}
+
+watch(taskChainFocusId, (focusId, previousFocusId) => {
+  if (!focusId || previousFocusId) return
+  nodeInteractionDefaults.clear()
+  nodes.value.forEach(node => {
+    nodeInteractionDefaults.set(node.id, {
+      draggable: node.draggable ?? true,
+      selectable: node.selectable ?? true,
+      focusable: node.focusable ?? true,
+      zIndex: node.zIndex,
+    })
+  })
+}, { flush: 'sync' })
+
+const displayedNodes = computed(() => {
+  const focusedIds = focusedTaskChainNodeIds.value
+  const focusActive = Boolean(taskChainFocusId.value && focusedIds.size > 0)
+  return nodes.value.map(node => {
+    const defaults = nodeInteractionDefaults.get(node.id) ?? {
+      draggable: node.draggable ?? true,
+      selectable: node.selectable ?? true,
+      focusable: node.focusable ?? true,
+      zIndex: node.zIndex,
+    }
+    if (!focusActive) {
+      return {
+        ...node,
+        draggable: defaults.draggable,
+        selectable: defaults.selectable,
+        focusable: defaults.focusable,
+        zIndex: defaults.zIndex,
+      }
+    }
+
+    const isTaskChainMember = focusedIds.has(node.id)
+    return {
+      ...node,
+      class: [
+        stripTaskChainClasses(node.class),
+        isTaskChainMember ? 'task-chain-member' : 'task-chain-nonmember',
+      ],
+      draggable: isTaskChainMember ? defaults.draggable : false,
+      selectable: isTaskChainMember ? defaults.selectable : false,
+      focusable: isTaskChainMember ? defaults.focusable : false,
+      zIndex: isTaskChainMember ? Math.max(defaults.zIndex ?? 0, 10) : -1,
+    }
+  })
+})
+
+const displayedEdges = computed(() => {
+  const focusedIds = focusedTaskChainNodeIds.value
+  if (!taskChainFocusId.value || focusedIds.size === 0) return renderedEdges.value
+  return renderedEdges.value.map(edge => {
+    const isTaskChainMember = focusedIds.has(edge.source) && focusedIds.has(edge.target)
+    return {
+      ...edge,
+      animated: isTaskChainMember ? edge.animated : false,
+      class: [
+        stripTaskChainClasses(edge.class),
+        isTaskChainMember ? 'task-chain-member' : 'task-chain-nonmember',
+      ],
+    }
+  })
 })
 
 const handleMainMoveStart = (event: Parameters<typeof handleMoveStart>[0]) => {
@@ -149,11 +242,12 @@ onBeforeUnmount(() => {
   <div
     ref="editorRootRef"
     class="w-full h-full min-h-[500px] bg-slate-50 relative"
+    :class="{ 'task-chain-focus-active': taskChainFocusId && focusedTaskChainNodeIds.size > 0 }"
   >
     <VueFlow
       class="flow-canvas-layer"
-      :nodes="nodes"
-      :edges="renderedEdges"
+      :nodes="displayedNodes"
+      :edges="displayedEdges"
       :node-types="nodeTypesObject"
       :default-zoom="1"
       :min-zoom="0.1"
@@ -208,6 +302,21 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </VueFlow>
+    <div
+      v-if="taskChainFocusId"
+      class="absolute left-1/2 top-3 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-cyan-200 bg-white/95 px-3 py-1.5 text-xs text-cyan-800 shadow-lg backdrop-blur"
+    >
+      <Eye :size="14" />
+      <span>正在查看 <strong class="font-mono">{{ taskChainFocusId }}</strong> 的任务链</span>
+      <button
+        class="ml-1 rounded-full p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+        title="退出任务链查看"
+        aria-label="退出任务链查看"
+        @click="clearTaskChainFocus"
+      >
+        <X :size="14" />
+      </button>
+    </div>
     <ContextMenu
       v-if="menu.visible"
       :x="menu.x"
@@ -321,5 +430,23 @@ onBeforeUnmount(() => {
 }
 .vue-flow__node.dragging .node-card {
   box-shadow: none !important;
+}
+.task-chain-focus-active .vue-flow__node.task-chain-nonmember {
+  pointer-events: none !important;
+  opacity: 0.12;
+  filter: blur(2px) grayscale(0.85) saturate(0.1);
+  transition: opacity 160ms ease, filter 160ms ease;
+}
+.task-chain-focus-active .vue-flow__edge.task-chain-nonmember {
+  pointer-events: none !important;
+  opacity: 0.08;
+  filter: blur(1.5px) grayscale(0.85) saturate(0.1);
+  transition: opacity 160ms ease, filter 160ms ease;
+}
+.task-chain-focus-active .vue-flow__node.task-chain-member,
+.task-chain-focus-active .vue-flow__edge.task-chain-member {
+  pointer-events: auto !important;
+  opacity: 1;
+  filter: none;
 }
 </style>

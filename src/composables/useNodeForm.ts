@@ -79,10 +79,19 @@ export function useNodeForm(props: UseNodeFormProps, emit: UseNodeFormEmit) {
     emitUpdateData()
   }
 
-  const setArrayList = (key: string, arr: string[]) => {
+  const assignArrayList = (key: string, arr: string[]) => {
     const cleaned = (arr || []).map(v => typeof v === 'string' ? v.trim() : v).filter(Boolean)
     if (!cleaned.length) delete (formData.value as Record<string, unknown>)[key]
     else (formData.value as Record<string, unknown>)[key] = cleaned
+  }
+
+  const setArrayList = (key: string, arr: string[]) => {
+    assignArrayList(key, arr)
+    emitUpdateData()
+  }
+
+  const setArrayLists = (values: Record<string, string[]>) => {
+    Object.entries(values).forEach(([key, arr]) => assignArrayList(key, arr))
     emitUpdateData()
   }
 
@@ -182,7 +191,7 @@ export function useNodeForm(props: UseNodeFormProps, emit: UseNodeFormEmit) {
 
   return {
     formData, jsonStr, jsonError, getValue, setValue, setValues, getArrayValue, setArrayValue,
-    getArrayList, setArrayList, getJsonValue, setJsonValue, getTargetValue, setTargetValue, handleJsonInput,
+    getArrayList, setArrayList, setArrayLists, getJsonValue, setJsonValue, getTargetValue, setTargetValue, handleJsonInput,
     updateJsonFromForm,
     focusData, availableFocusEvents, addFocusParam, removeFocusParam, updateFocusParam
   }
