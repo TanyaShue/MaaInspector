@@ -181,6 +181,10 @@ export function useFlowWorkspaceVm() {
     debugPanel.value = { visible: false, nodeId: '' }
   }
 
+  const closeEditorTransientUi = () => {
+    for (const editor of editorRefs.value.values()) editor.closeTransientUi()
+  }
+
   const handleLoadNodes = async (payload: {
     filename: string
     source: string
@@ -318,6 +322,7 @@ export function useFlowWorkspaceVm() {
     handleRequestSwitchFile,
     openDebugPanel,
     closeDebugPanel,
+    closeEditorTransientUi,
     applyActiveEditorLayout,
     handleLoadNodes,
     handleLoadImages,

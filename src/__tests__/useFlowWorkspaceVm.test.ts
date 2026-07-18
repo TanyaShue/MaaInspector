@@ -21,7 +21,8 @@ const createEditorPort = (): FlowEditorPort => ({
   handleApplyLayout: vi.fn().mockResolvedValue(undefined),
   handleLocateNode: vi.fn(),
   handleDebugNodeFromPanel: vi.fn(),
-  handleUpdateNodeStatus: vi.fn()
+  handleUpdateNodeStatus: vi.fn(),
+  closeTransientUi: vi.fn()
 })
 
 const createDeferred = <T = void>() => {
@@ -172,6 +173,9 @@ describe('useFlowWorkspaceVm', () => {
 
     vm.closeDebugPanel()
     expect(vm.debugPanel.value).toEqual({ visible: false, nodeId: '' })
+
+    vm.closeEditorTransientUi()
+    expect(editor.closeTransientUi).toHaveBeenCalledOnce()
   })
 
   it('syncs canvas settings to newly registered editors without laying out hidden canvases', () => {

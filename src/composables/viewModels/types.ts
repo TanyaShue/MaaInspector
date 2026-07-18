@@ -35,6 +35,7 @@ export interface FlowEditorPort {
   handleLocateNode: (nodeId: string) => void
   handleDebugNodeFromPanel: (nodeId: string) => void
   handleUpdateNodeStatus: (payload: { nodeId: string; status: NodeStatus }) => void
+  closeTransientUi: () => void
 }
 
 export interface InfoPanelPort {

@@ -74,6 +74,7 @@ const {
   handleRequestSwitchFile,
   openDebugPanel,
   closeDebugPanel,
+  closeEditorTransientUi,
   applyActiveEditorLayout,
   handleLoadNodes,
   handleLoadImages,
@@ -149,6 +150,12 @@ const selectResourceSource = (source: string) => {
 
 const openCreateResourceFile = (source: string) => {
   infoPanelRef.value?.openCreateResourceFile(source)
+}
+
+const handleOpenAppSettings = () => {
+  openFileMenuTabId.value = ''
+  closeDebugPanel()
+  closeEditorTransientUi()
 }
 </script>
 
@@ -277,6 +284,7 @@ const openCreateResourceFile = (source: string) => {
             @restore-tabs="handleRestoreTabs"
             @clear-tabs="handleClearTabs"
             @open-debug-panel="openDebugPanel"
+            @open-app-settings="handleOpenAppSettings"
             @resource-files-change="resourceFiles = $event"
           />
         </div>

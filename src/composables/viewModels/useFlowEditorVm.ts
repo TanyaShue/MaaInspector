@@ -556,6 +556,13 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     handleLocateNode,
     handleDebugNodeFromPanel,
     handleUpdateNodeStatus,
+    closeTransientUi: () => {
+      closeMenu()
+      searchVisible.value = false
+      closeSubCanvas()
+      nodeDetailsController.close()
+      taskChainFocusId.value = null
+    },
   }
 
   watch(

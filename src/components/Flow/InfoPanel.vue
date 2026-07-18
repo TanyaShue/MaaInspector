@@ -56,6 +56,7 @@ const emit = defineEmits<{
   'restore-tabs': [tabs: TabResourceInfo[]]
   'clear-tabs': []
   'open-debug-panel': []
+  'open-app-settings': []
   'update:collapsed': [value: boolean]
   'resource-files-change': [files: import('@/services/api').ResourceFileInfo[]]
 }>()
@@ -99,6 +100,15 @@ const openPanel = ref<QuickPanel | null>(null)
 
 const togglePanel = (panel: QuickPanel) => {
   openPanel.value = openPanel.value === panel ? null : panel
+}
+
+const openAppSettings = () => {
+  openPanel.value = null
+  showResourceSettings.value = false
+  showCreateFileModal.value = false
+  showAnnouncement.value = false
+  emit('open-app-settings')
+  showAppSettings.value = true
 }
 
 const closeOnOutsideClick = (event: MouseEvent) => {
@@ -263,7 +273,7 @@ defineExpose({
           type="button"
           class="flex h-7 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
           title="应用设置"
-          @click="showAppSettings = true"
+          @click="openAppSettings"
         >
           <SettingsIcon :size="14" />
         </button>
