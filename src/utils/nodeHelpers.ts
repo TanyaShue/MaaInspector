@@ -30,7 +30,11 @@ export const waitForFrame = (): Promise<void> =>
  */
 export const deepClone = <T>(value: T): T => {
   if (typeof structuredClone === 'function') {
-    return structuredClone(value)
+    try {
+      return structuredClone(value)
+    } catch {
+      // Vue reactive proxies cannot be cloned by structuredClone.
+    }
   }
   return JSON.parse(JSON.stringify(value)) as T
 }

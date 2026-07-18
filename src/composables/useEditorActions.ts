@@ -1,4 +1,4 @@
-import { nextTick, ref } from 'vue'
+import { nextTick, ref, type ComputedRef } from 'vue'
 import type { EdgeMouseEvent, NodeMouseEvent } from '@vue-flow/core'
 import type {
   FlowNode,
@@ -13,6 +13,7 @@ import type {
 import type { EdgeType } from '@/utils/flowOptions'
 import { isEdgeType, isSpacingKey, isLayoutAlgorithm, isLayoutDirection } from '@/utils/typeGuards'
 import { waitForFrame, deepClone } from '@/utils/nodeHelpers'
+import { useNodeClipboard } from '@/composables/useNodeClipboard'
 
 type MenuData = FlowNode | FlowEdge | null
 
@@ -34,6 +35,8 @@ export interface EditorActionsDeps {
   currentAlgorithm: { value: LayoutAlgorithm }
   currentDirection: { value: LayoutDirection }
   isFileLoaded: { value: boolean }
+  currentFilename?: { value: string }
+  nodeNamePrefixEnabled?: { value: boolean }
   createNodeObject: (
     id: string,
     rawContent: FlowBusinessData,
@@ -78,12 +81,6 @@ export interface EditorActionsDeps {
   onIncrementCloseAllDetails: () => void
 }
 
-interface ClipboardNode {
-  data: FlowBusinessData
-  position: { x: number; y: number }
-  images: TemplateImage[]
-}
-
 export function useEditorActions(deps: EditorActionsDeps) {
   const {
     mode = 'main',
@@ -94,6 +91,8 @@ export function useEditorActions(deps: EditorActionsDeps) {
     currentAlgorithm,
     currentDirection,
     isFileLoaded,
+    currentFilename,
+    nodeNamePrefixEnabled,
     createNodeObject,
     applyLayout,
     removeEdges,
@@ -123,7 +122,8 @@ export function useEditorActions(deps: EditorActionsDeps) {
     flowPos: { x: 0, y: 0 },
   })
   const searchVisible = ref(false)
-  const copiedNodes = ref<ClipboardNode[]>([])
+  const clipboard = useNodeClipboard()
+  const clipboardHistory: ComputedRef<Array<{ value: string; label: string }>> = clipboard.history
 
   const closeMenu = () => {
     menu.value.visible = false
@@ -193,21 +193,32 @@ export function useEditorActions(deps: EditorActionsDeps) {
     await deps.setViewport(previousViewport, { duration: 0 })
   }
 
+  const getFilenamePrefix = () => {
+    if (nodeNamePrefixEnabled?.value === false || !currentFilename?.value) return ''
+    const basename = currentFilename.value.split(/[\\/]/).pop() || ''
+    return basename.replace(/\.json$/i, '').replace(/[^\p{L}\p{N}_-]+/gu, '_')
+  }
+
   const createUniqueNodeId = () => {
-    let id = `N-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+    const prefix = getFilenamePrefix()
+    const generateId = () => prefix
+      ? `${prefix}_${Math.floor(100000 + Math.random() * 900000)}`
+      : `N-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+    let id = generateId()
     while (nodes.value.some((node) => node.id === id)) {
-      id = `N-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+      id = generateId()
     }
     return id
   }
 
-  const toClipboardNode = (node: FlowNode): ClipboardNode | null => {
+  const toClipboardNode = (node: FlowNode) => {
     if (!node.data?.data || !node.position) return null
     const data = clone(node.data.data)
     delete (data as Record<string, unknown>).next
     delete (data as Record<string, unknown>).on_error
     delete (data as Record<string, unknown>).timeout_next
     return {
+      label: node.id,
       data,
       position: { ...node.position },
       images: imageManager.getNodeImages(node.id),
@@ -224,23 +235,30 @@ export function useEditorActions(deps: EditorActionsDeps) {
     const normalized = sourceNodes
       .filter((node) => !node.data?._isMissing)
       .map(toClipboardNode)
-      .filter((node): node is ClipboardNode => !!node)
+      .filter((node): node is NonNullable<typeof node> => !!node)
 
-    copiedNodes.value = normalized
-    return normalized.length
+    return clipboard.copy(normalized)
   }
 
-  const pasteNodesFromClipboard = (position?: { x: number; y: number } | null): FlowNode[] => {
-    if (!isFileLoaded.value || copiedNodes.value.length === 0) return []
+  const pasteNodesFromClipboard = (
+    position?: { x: number; y: number } | null,
+    historyKey?: string | null
+  ): FlowNode[] => {
+    const copiedNodes = historyKey
+      ? [clipboard.getRecentNode(historyKey)].filter(
+          (node): node is NonNullable<typeof node> => !!node
+        )
+      : clipboard.getBatch()
+    if (!isFileLoaded.value || copiedNodes.length === 0) return []
     const pastePosition = position || menu.value.flowPos
     if (!pastePosition) return []
     const previousViewport = deps.getViewport?.() || null
 
-    const minX = Math.min(...copiedNodes.value.map((node) => node.position.x))
-    const minY = Math.min(...copiedNodes.value.map((node) => node.position.y))
+    const minX = Math.min(...copiedNodes.map((node) => node.position.x))
+    const minY = Math.min(...copiedNodes.map((node) => node.position.y))
     const nextNodes: FlowNode[] = []
 
-    copiedNodes.value.forEach((clipboardNode) => {
+    copiedNodes.forEach((clipboardNode) => {
       const nodeId = createUniqueNodeId()
       const copyData = { ...clone(clipboardNode.data), id: nodeId }
       const newNode = createNodeObject(nodeId, copyData)
@@ -280,7 +298,7 @@ export function useEditorActions(deps: EditorActionsDeps) {
     switch (action) {
       case 'add': {
         const recognition = typeof payload === 'string' ? payload : undefined
-        const newId = `N-${Date.now()}`
+        const newId = createUniqueNodeId()
         const newNode = createNodeObject(newId, {
           id: newId,
           recognition: recognition || 'DirectHit',
@@ -297,7 +315,7 @@ export function useEditorActions(deps: EditorActionsDeps) {
         break
       }
       case 'add_anchor': {
-        const anchorId = `A-${Date.now()}`
+        const anchorId = createUniqueNodeId()
         const anchorNode = createNodeObject(anchorId, {
           id: anchorId,
           recognition: 'Anchor',
@@ -335,7 +353,10 @@ export function useEditorActions(deps: EditorActionsDeps) {
         }
         break
       case 'paste':
-        pasteNodesFromClipboard(menu.value.flowPos)
+        pasteNodesFromClipboard(
+          menu.value.flowPos,
+          typeof payload === 'string' ? payload : clipboard.history.value[0]?.value
+        )
         break
       case 'delete':
         if (type === 'node' && data?.id) {
@@ -437,6 +458,7 @@ export function useEditorActions(deps: EditorActionsDeps) {
     handleMenuAction,
     copyNodesToClipboard,
     pasteNodesFromClipboard,
+    clipboardHistory,
     isFlowNodeData,
   }
 }

@@ -27,6 +27,7 @@ interface CanvasSettings {
   pipelineVersion: 'V1' | 'V2'
   lowMemoryMode: boolean
   restoreWorkspaceOnStart: boolean
+  nodeNamePrefixEnabled: boolean
 }
 
 interface ResourceState {
@@ -70,7 +71,8 @@ const DEFAULT_CANVAS: CanvasSettings = {
   layoutDirection: 'TB',
   pipelineVersion: 'V1',
   lowMemoryMode: false,
-  restoreWorkspaceOnStart: true
+  restoreWorkspaceOnStart: true,
+  nodeNamePrefixEnabled: true
 }
 
 const createEmptyWorkspace = (): TabState => ({
@@ -201,6 +203,9 @@ export const useAppConfigStore = defineStore('appConfig', () => {
       if (typeof data.restore_workspace_on_start === 'boolean') {
         canvas.value.restoreWorkspaceOnStart = data.restore_workspace_on_start
       }
+      if (typeof data.canvas_settings?.node_name_prefix_enabled === 'boolean') {
+        canvas.value.nodeNamePrefixEnabled = data.canvas_settings.node_name_prefix_enabled
+      }
 
       resource.value.signature = buildResourceSignature(
         resource.value.profiles[resource.value.profileIndex]
@@ -247,7 +252,8 @@ export const useAppConfigStore = defineStore('appConfig', () => {
           spacing: canvas.value.spacing,
           layout_algorithm: canvas.value.layoutAlgorithm,
           layout_direction: canvas.value.layoutDirection,
-          pipeline_version: canvas.value.pipelineVersion
+          pipeline_version: canvas.value.pipelineVersion,
+          node_name_prefix_enabled: canvas.value.nodeNamePrefixEnabled
         },
         restore_workspace_on_start: canvas.value.restoreWorkspaceOnStart,
         workspace_state: workspaceToSave,
@@ -283,6 +289,8 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     if (partial.lowMemoryMode !== undefined) canvas.value.lowMemoryMode = partial.lowMemoryMode
     if (partial.restoreWorkspaceOnStart !== undefined)
       canvas.value.restoreWorkspaceOnStart = partial.restoreWorkspaceOnStart
+    if (partial.nodeNamePrefixEnabled !== undefined)
+      canvas.value.nodeNamePrefixEnabled = partial.nodeNamePrefixEnabled
     void saveToBackend()
   }
 

@@ -19,6 +19,7 @@ import {
 import { provideNodeDetailsController } from '@/composables/useNodeDetailsController'
 import { getEdgeStyle } from '@/composables/flowGraph/useConnectionManager'
 import type { FlowEditorPort } from './types'
+import { useAppConfigStore } from '@/stores/appConfig'
 
 interface UseFlowEditorVmOptions {
   tabId?: string
@@ -31,6 +32,7 @@ interface UseFlowEditorVmOptions {
 }
 
 export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
+  const appConfig = useAppConfigStore()
   const {
     nodes,
     edges,
@@ -133,6 +135,8 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     currentAlgorithm,
     currentDirection,
     isFileLoaded,
+    currentFilename,
+    nodeNamePrefixEnabled: computed(() => appConfig.canvas.nodeNamePrefixEnabled),
     createNodeObject,
     applyLayout,
     removeEdges,
@@ -167,6 +171,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     handleMenuAction,
     copyNodesToClipboard,
     pasteNodesFromClipboard,
+    clipboardHistory,
   } = editorActions
   const {
     loadedFileVersion,
@@ -576,6 +581,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     onNodeContextMenu,
     onEdgeContextMenu,
     handleMenuAction,
+    clipboardHistory,
     showClearCanvasModal,
     handleCancelClearCanvas,
     handleConfirmClearCanvas,

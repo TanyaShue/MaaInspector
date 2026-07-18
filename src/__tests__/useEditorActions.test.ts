@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, ref } from 'vue'
 import { useEditorActions } from '@/composables/useEditorActions'
+import { resetNodeClipboardForTests } from '@/composables/useNodeClipboard'
 import type { FlowBusinessData, FlowEdge, FlowNode } from '@/utils/flowTypes'
 
 const createNode = (id: string, data: FlowBusinessData = { id, recognition: 'DirectHit' }): FlowNode => ({
@@ -14,7 +15,7 @@ const createNode = (id: string, data: FlowBusinessData = { id, recognition: 'Dir
   }
 })
 
-const createActions = () => {
+const createActions = (filename = 'demo.json') => {
   const nodes = ref<FlowNode[]>([createNode('Start')])
   const edges = ref<FlowEdge[]>([
     { id: 'e-Start-End-next', source: 'Start', target: 'End' }
@@ -35,6 +36,8 @@ const createActions = () => {
     currentAlgorithm: ref('layered'),
     currentDirection: ref('TB'),
     isFileLoaded: ref(true),
+    currentFilename: ref(filename),
+    nodeNamePrefixEnabled: ref(true),
     createNodeObject: createNode,
     applyLayout: vi.fn().mockResolvedValue(undefined),
     removeEdges: vi.fn(),
@@ -65,6 +68,7 @@ const createActions = () => {
 
 describe('useEditorActions', () => {
   beforeEach(() => {
+    resetNodeClipboardForTests()
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
       cb(0)
       return 0
@@ -91,7 +95,22 @@ describe('useEditorActions', () => {
     const addedNode = nodes.value[nodes.value.length - 1]
     expect(addedNode?.position).toEqual({ x: 40, y: 60 })
     expect(addedNode?.data?.data?.recognition).toBe('OCR')
+    expect(addedNode?.id).toMatch(/^demo_\d{6}$/)
     expect(markNodeStructureChanged).toHaveBeenCalledTimes(1)
+  })
+
+  it('shares copied nodes between editor instances and exposes recent node names', () => {
+    const source = createActions('source.json')
+    const sourceActions = source.actions
+    const target = createActions('target.json')
+
+    expect(sourceActions.copyNodesToClipboard(source.nodes.value[0])).toBe(1)
+    expect(target.actions.clipboardHistory.value[0]?.label).toBe('Start')
+
+    const pasted = target.actions.pasteNodesFromClipboard({ x: 25, y: 35 })
+    expect(pasted).toHaveLength(1)
+    expect(pasted[0]?.id).toMatch(/^target_\d{6}$/)
+    expect(pasted[0]?.position).toEqual({ x: 25, y: 35 })
   })
 
   it('preserves the viewport when adding a node', async () => {

@@ -61,6 +61,7 @@ const {
   onNodeContextMenu,
   onEdgeContextMenu,
   handleMenuAction,
+  clipboardHistory,
   showClearCanvasModal,
   handleCancelClearCanvas,
   handleConfirmClearCanvas,
@@ -210,6 +211,7 @@ onBeforeUnmount(() => {
       :current-direction="currentDirection"
       :debug-panel-visible="props.debugPanelVisible"
       :search-visible="searchVisible"
+      :clipboard-history="clipboardHistory"
       mode="main"
       @close="closeMenu"
       @action="handleMenuAction"

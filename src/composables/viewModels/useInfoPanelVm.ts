@@ -255,6 +255,7 @@ export function useInfoPanelVm(props: UseInfoPanelVmProps, emit: InfoPanelEmit) 
     pipelineVersion: 'V1' | 'V2'
     restoreWorkspaceOnStart: boolean
     lowMemoryMode: boolean
+    nodeNamePrefixEnabled: boolean
   }) => {
     appConfig.updateCanvasSettings({
       edgeType: payload.edgeType,
@@ -263,7 +264,8 @@ export function useInfoPanelVm(props: UseInfoPanelVmProps, emit: InfoPanelEmit) 
       layoutDirection: payload.layoutDirection,
       pipelineVersion: payload.pipelineVersion,
       restoreWorkspaceOnStart: payload.restoreWorkspaceOnStart,
-      lowMemoryMode: payload.lowMemoryMode
+      lowMemoryMode: payload.lowMemoryMode,
+      nodeNamePrefixEnabled: payload.nodeNamePrefixEnabled
     })
     showAppSettings.value = false
   }

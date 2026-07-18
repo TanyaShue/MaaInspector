@@ -13,6 +13,7 @@ import { useNodeForm, type UseNodeFormEmit } from '@/composables/useNodeForm'
 import { recognitionTypes, actionTypes } from '@/utils/node-config'
 import { useDeviceScreenPicker, type PickerPayload } from '@/composables/useDeviceScreenPicker'
 import type { FlowBusinessData, FlowNodeMeta } from '@/utils/flowTypes'
+import { removePreviousNodeTypeProperties } from '@/utils/nodeTypeProperties'
 
 const props = defineProps<{
   visible: boolean
@@ -107,12 +108,24 @@ const confirmIdChange = () => {
 }
 
 const selectRecognitionType = (newType: string) => {
+  formData.value = removePreviousNodeTypeProperties(
+    formData.value,
+    'recognition',
+    currentRecognition.value,
+    newType
+  )
   setValue('recognition', newType)
   emit('update-type', newType)
   dropdownStates.recognition = false
 }
 
 const selectActionType = (newAction: string) => {
+  formData.value = removePreviousNodeTypeProperties(
+    formData.value,
+    'action',
+    currentAction.value,
+    newAction
+  )
   setValue('action', newAction)
   dropdownStates.action = false
 }

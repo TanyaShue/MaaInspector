@@ -88,6 +88,7 @@ export interface SystemState {
   layout_algorithm?: string;
   layout_direction?: string;
   pipeline_version?: string;
+  node_name_prefix_enabled?: boolean;
   restore_workspace_on_start?: boolean;
 }
 
@@ -97,6 +98,7 @@ export interface CanvasSettings {
   layout_algorithm?: string;
   layout_direction?: string;
   pipeline_version?: string;
+  node_name_prefix_enabled?: boolean;
 }
 
 export interface TabResourceInfo {

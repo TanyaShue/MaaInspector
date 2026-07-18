@@ -45,6 +45,7 @@ const props = defineProps<{
   debugPanelVisible?: boolean
   searchVisible?: boolean
   mode?: 'main' | 'subcanvas'
+  clipboardHistory?: Array<{ value: string; label: string }>
 }>()
 
 const emit = defineEmits<{
@@ -194,7 +195,16 @@ const menuItems = computed<MenuItem[]>(() => {
           color: 'text-amber-600'
         },
         {type: 'divider'},
-        {type: 'item', label: '粘贴节点', action: 'paste', icon: ClipboardPaste, color: 'text-slate-600'},
+        {
+          type: 'item',
+          key: 'paste-history',
+          label: '粘贴节点',
+          action: 'paste',
+          icon: ClipboardPaste,
+          color: 'text-slate-600',
+          submenu: props.clipboardHistory || [],
+          submenuAction: 'paste'
+        },
         {type: 'divider'},
         {type: 'item', label: '关闭所有节点面板', action: 'closeAllDetails', icon: FolderClosed, color: 'text-slate-600'},
         {type: 'divider'},
@@ -235,7 +245,16 @@ const menuItems = computed<MenuItem[]>(() => {
         color: 'text-amber-600'
       },
       {type: 'divider'},
-      {type: 'item', label: '粘贴节点', action: 'paste', icon: ClipboardPaste, color: 'text-slate-600'},
+      {
+        type: 'item',
+        key: 'paste-history',
+        label: '粘贴节点',
+        action: 'paste',
+        icon: ClipboardPaste,
+        color: 'text-slate-600',
+        submenu: props.clipboardHistory || [],
+        submenuAction: 'paste'
+      },
       {type: 'divider'},
       searchMenuItem,
       debugMenuItem,
@@ -299,7 +318,7 @@ const menuItems = computed<MenuItem[]>(() => {
           <div
             data-testid="submenu-trigger"
             class="flex items-center justify-between px-3 py-2.5 cursor-pointer transition-colors hover:bg-slate-50 active:bg-slate-100 group/main"
-            @click.stop="item.submenu ? showSubmenu(item, index) : handleAction(item.action)"
+            @click.stop="item.action === 'paste' ? handleAction(item.action) : item.submenu ? showSubmenu(item, index) : handleAction(item.action)"
           >
             <div class="flex items-center gap-2.5">
               <component 

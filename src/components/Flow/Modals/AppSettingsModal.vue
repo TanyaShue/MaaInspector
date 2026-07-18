@@ -26,6 +26,7 @@ interface AppSettingsProps {
   defaultPipelineVersion?: PipelineVersion
   defaultRestoreWorkspaceOnStart?: boolean
   defaultLowMemoryMode?: boolean
+  defaultNodeNamePrefixEnabled?: boolean
 }
 
 const props = withDefaults(defineProps<AppSettingsProps>(), {
@@ -36,7 +37,8 @@ const props = withDefaults(defineProps<AppSettingsProps>(), {
   defaultLayoutDirection: 'TB',
   defaultPipelineVersion: 'V1',
   defaultRestoreWorkspaceOnStart: true,
-  defaultLowMemoryMode: false
+  defaultLowMemoryMode: false,
+  defaultNodeNamePrefixEnabled: true
 })
 
 const emit = defineEmits<{
@@ -49,6 +51,7 @@ const emit = defineEmits<{
     pipelineVersion: PipelineVersion
     restoreWorkspaceOnStart: boolean
     lowMemoryMode: boolean
+    nodeNamePrefixEnabled: boolean
   }): void
 }>()
 
@@ -67,6 +70,7 @@ const layoutDirection = ref<LayoutDirection>(props.defaultLayoutDirection)
 const pipelineVersion = ref<PipelineVersion>(props.defaultPipelineVersion)
 const restoreWorkspaceOnStart = ref(props.defaultRestoreWorkspaceOnStart)
 const lowMemoryMode = ref(props.defaultLowMemoryMode)
+const nodeNamePrefixEnabled = ref(props.defaultNodeNamePrefixEnabled)
 const activeSection = ref<SectionId>('canvas')
 const scrollContainer = ref<HTMLElement | null>(null)
 const sectionRefs = new Map<SectionId, HTMLElement>()
@@ -108,6 +112,7 @@ const resetForm = () => {
   pipelineVersion.value = props.defaultPipelineVersion
   restoreWorkspaceOnStart.value = props.defaultRestoreWorkspaceOnStart
   lowMemoryMode.value = props.defaultLowMemoryMode
+  nodeNamePrefixEnabled.value = props.defaultNodeNamePrefixEnabled
 }
 
 watch(() => props.visible, async visible => {
@@ -131,7 +136,8 @@ const handleSave = () => emit('save', {
   layoutDirection: layoutDirection.value,
   pipelineVersion: pipelineVersion.value,
   restoreWorkspaceOnStart: restoreWorkspaceOnStart.value,
-  lowMemoryMode: lowMemoryMode.value
+  lowMemoryMode: lowMemoryMode.value,
+  nodeNamePrefixEnabled: nodeNamePrefixEnabled.value
 })
 
 const handleReset = () => {
@@ -142,6 +148,7 @@ const handleReset = () => {
   pipelineVersion.value = 'V1'
   restoreWorkspaceOnStart.value = true
   lowMemoryMode.value = false
+  nodeNamePrefixEnabled.value = true
 }
 
 const handleCheckUpdate = async () => {
@@ -231,6 +238,7 @@ const handleOpenBackupDir = async () => {
               <div class="setting-row"><div><h5>Pipeline 版本</h5><p>保存 Pipeline 文件时使用的格式版本</p></div><div class="option-grid grid-cols-2"><button :class="{ active: pipelineVersion === 'V1' }" @click="pipelineVersion = 'V1'">V1</button><button :class="{ active: pipelineVersion === 'V2' }" @click="pipelineVersion = 'V2'">V2</button></div></div>
               <div class="setting-row"><div><h5>启动时恢复工作区</h5><p>自动加载上次资源，并重连设备与 Agent</p></div><button class="toggle" :class="{ enabled: restoreWorkspaceOnStart }" @click="restoreWorkspaceOnStart = !restoreWorkspaceOnStart"><span /></button></div>
               <div class="setting-row"><div><h5>低消耗模式</h5><p>{{ lowMemoryMode ? '切换标签页时重建编辑器，减少内存占用' : '保留编辑器实例，标签页切换更快速' }}</p></div><button class="toggle" :class="{ enabled: lowMemoryMode }" @click="lowMemoryMode = !lowMemoryMode"><span /></button></div>
+              <div class="setting-row"><div><h5>文件级节点名称前缀</h5><p>新建节点使用“当前文件名_随机数”作为名称</p></div><button class="toggle" :class="{ enabled: nodeNamePrefixEnabled }" @click="nodeNamePrefixEnabled = !nodeNamePrefixEnabled"><span /></button></div>
             </div>
           </section>
 

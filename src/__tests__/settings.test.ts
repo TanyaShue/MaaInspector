@@ -42,6 +42,11 @@ describe('useAppConfigStore canvas settings', () => {
       const store = useAppConfigStore()
       expect(store.canvas.lowMemoryMode).toBe(false)
     })
+
+    it('should enable file-level node name prefixes by default', () => {
+      const store = useAppConfigStore()
+      expect(store.canvas.nodeNamePrefixEnabled).toBe(true)
+    })
   })
 
   describe('updateCanvasSettings', () => {
@@ -85,6 +90,12 @@ describe('useAppConfigStore canvas settings', () => {
       const store = useAppConfigStore()
       store.updateCanvasSettings({ lowMemoryMode: true })
       expect(store.canvas.lowMemoryMode).toBe(true)
+    })
+
+    it('should update nodeNamePrefixEnabled', () => {
+      const store = useAppConfigStore()
+      store.updateCanvasSettings({ nodeNamePrefixEnabled: false })
+      expect(store.canvas.nodeNamePrefixEnabled).toBe(false)
     })
 
     it('should update multiple settings at once', () => {

@@ -317,6 +317,7 @@ defineExpose({
       :default-pipeline-version="appConfig.canvas.pipelineVersion"
       :default-restore-workspace-on-start="props.restoreWorkspaceOnStart"
       :default-low-memory-mode="props.lowMemoryMode"
+      :default-node-name-prefix-enabled="appConfig.canvas.nodeNamePrefixEnabled"
       @close="showAppSettings = false"
       @save="handleAppSettingsSave"
     />
