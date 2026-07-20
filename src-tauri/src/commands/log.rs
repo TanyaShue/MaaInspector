@@ -17,3 +17,8 @@ pub fn log_get_dir() -> Result<String, String> {
         .map(|path| path.to_string_lossy().into_owned())
         .ok_or_else(|| "Logger is not initialized".to_string())
 }
+
+#[tauri::command]
+pub fn log_read_tail(kind: String, max_lines: Option<usize>) -> Result<Vec<String>, String> {
+    logging::read_tail(&kind, max_lines.unwrap_or(100))
+}

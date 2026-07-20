@@ -1,28 +1,53 @@
 use super::MaaFrameworkState;
 use crate::config::AgentProfile;
+use crate::logging;
 use crate::response::ApiResponse;
 use maa_framework::agent_client::AgentClient;
+use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use tauri::State;
 
-#[derive(Default)]
-pub struct AgentProcessState(Mutex<Option<Child>>);
+struct ManagedChild {
+    child: Child,
+    #[cfg(windows)]
+    job_handle: isize,
+}
 
-impl AgentProcessState {
-    fn lock(&self) -> std::sync::LockResult<std::sync::MutexGuard<'_, Option<Child>>> {
-        self.0.lock()
+impl ManagedChild {
+    fn stop(&mut self) {
+        #[cfg(windows)]
+        if self.job_handle != 0 {
+            unsafe {
+                windows_sys::Win32::Foundation::CloseHandle(self.job_handle as _);
+            }
+            self.job_handle = 0;
+        }
+        let _ = self.child.kill();
+        let _ = self.child.wait();
     }
 }
 
-impl Drop for AgentProcessState {
+impl Drop for ManagedChild {
     fn drop(&mut self) {
-        if let Ok(process) = self.0.get_mut()
+        self.stop();
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct AgentProcessState(Arc<Mutex<Option<ManagedChild>>>);
+
+impl AgentProcessState {
+    fn lock(&self) -> std::sync::LockResult<std::sync::MutexGuard<'_, Option<ManagedChild>>> {
+        self.0.lock()
+    }
+
+    pub fn stop(&self) {
+        if let Ok(mut process) = self.0.lock()
             && let Some(mut child) = process.take()
         {
-            let _ = child.kill();
-            let _ = child.wait();
+            child.stop();
         }
     }
 }
@@ -48,6 +73,64 @@ fn resolve_executable(executable: &str, working_directory: &Path) -> PathBuf {
         working_directory.join(path)
     } else {
         path
+    }
+}
+
+fn pipe_agent_output<R: Read + Send + 'static>(reader: R, stream: &'static str) {
+    std::thread::spawn(move || {
+        let mut reader = BufReader::new(reader);
+        let mut bytes = Vec::new();
+        loop {
+            bytes.clear();
+            match reader.read_until(b'\n', &mut bytes) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {
+                    while bytes
+                        .last()
+                        .is_some_and(|byte| *byte == b'\n' || *byte == b'\r')
+                    {
+                        bytes.pop();
+                    }
+                    logging::agent_output(stream, &String::from_utf8_lossy(&bytes));
+                }
+            }
+        }
+    });
+}
+
+#[cfg(windows)]
+fn attach_kill_on_close_job(child: &Child) -> Result<isize, String> {
+    use std::mem::{size_of, zeroed};
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+        SetInformationJobObject,
+    };
+
+    unsafe {
+        let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+        if job.is_null() {
+            return Err("无法创建 Agent 进程作业对象".to_string());
+        }
+        let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = zeroed();
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        if SetInformationJobObject(
+            job,
+            JobObjectExtendedLimitInformation,
+            &info as *const _ as _,
+            size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+        ) == 0
+        {
+            CloseHandle(job);
+            return Err("无法配置 Agent 进程作业对象".to_string());
+        }
+        if AssignProcessToJobObject(job, child.as_raw_handle() as _) == 0 {
+            CloseHandle(job);
+            return Err("无法将 Agent 加入进程作业对象".to_string());
+        }
+        Ok(job as isize)
     }
 }
 
@@ -96,8 +179,7 @@ pub async fn agent_start(
             .lock()
             .map_err(|_| "Agent 进程状态锁已损坏".to_string())?;
         if let Some(mut existing) = guard.take() {
-            let _ = existing.kill();
-            let _ = existing.wait();
+            existing.stop();
         }
     }
     {
@@ -137,9 +219,15 @@ pub async fn agent_start(
             .current_dir(&working_directory)
             .envs(&config.environment)
             .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        let child = command.spawn().map_err(|error| {
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+        let mut child = command.spawn().map_err(|error| {
             format!(
                 "启动 Agent 失败（{}，工作目录 {}）: {error}",
                 executable.display(),
@@ -147,7 +235,24 @@ pub async fn agent_start(
             )
         })?;
         pid = Some(child.id());
-        *guard = Some(child);
+        if let Some(stdout) = child.stdout.take() {
+            pipe_agent_output(stdout, "stdout");
+        }
+        if let Some(stderr) = child.stderr.take() {
+            pipe_agent_output(stderr, "stderr");
+        }
+        logging::agent_output("system", &format!("Agent 已启动，PID {}", child.id()));
+        #[cfg(windows)]
+        let job_handle = attach_kill_on_close_job(&child).map_err(|error| {
+            let _ = child.kill();
+            let _ = child.wait();
+            error
+        })?;
+        *guard = Some(ManagedChild {
+            child,
+            #[cfg(windows)]
+            job_handle,
+        });
     }
     {
         let mut client_guard = client_state
@@ -164,6 +269,21 @@ pub async fn agent_start(
             "working_directory": working_directory
         }),
     ))
+}
+
+#[tauri::command]
+pub fn agent_stop(
+    process_state: State<'_, AgentProcessState>,
+    client_state: State<'_, AgentClientState>,
+) -> Result<ApiResponse, String> {
+    if let Ok(mut client) = client_state.lock()
+        && let Some(existing) = client.take()
+    {
+        let _ = existing.disconnect();
+    }
+    process_state.stop();
+    logging::agent_output("system", "Agent 已停止");
+    Ok(ApiResponse::ok("Agent 已停止"))
 }
 
 /// Connect to agent.

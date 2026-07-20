@@ -1,3 +1,4 @@
+use crate::app_paths::AppPaths;
 use crate::config::{AgentProfile, AppConfig, ResourceProfile};
 use crate::maafw::MaaFrameworkWrapper;
 use crate::response::ApiResponse;
@@ -8,9 +9,20 @@ use tauri_plugin_opener::OpenerExt;
 
 /// Get initial system state
 #[tauri::command]
-pub fn system_init(config_dir: State<'_, String>) -> serde_json::Value {
-    let config = AppConfig::load(&config_dir);
-    serde_json::to_value(&config).unwrap_or(serde_json::json!({}))
+pub fn system_init(paths: State<'_, AppPaths>) -> serde_json::Value {
+    let config = AppConfig::load_path(&paths.config_dir);
+    let mut value = serde_json::to_value(&config).unwrap_or(serde_json::json!({}));
+    if let Some(object) = value.as_object_mut() {
+        object.insert(
+            "storage_paths".to_string(),
+            serde_json::json!({
+                "log_dir": paths.log_dir,
+                "config_dir": paths.config_dir,
+                "default_config_dir": paths.default_config_dir,
+            }),
+        );
+    }
+    value
 }
 
 /// Pick a local folder and return its absolute path
@@ -225,8 +237,8 @@ fn open_folder(app: &AppHandle, path: &PathBuf) -> Result<(), String> {
 /// Open the application log directory from the backend so the path is not
 /// rejected by the frontend opener scope.
 #[tauri::command]
-pub fn system_open_log_dir(app: AppHandle, config_dir: State<'_, String>) -> Result<(), String> {
-    open_folder(&app, &PathBuf::from(config_dir.inner()).join("logs"))
+pub fn system_open_log_dir(app: AppHandle, paths: State<'_, AppPaths>) -> Result<(), String> {
+    open_folder(&app, &paths.log_dir)
 }
 
 /// Open the centralized resource backup directory.
@@ -241,17 +253,54 @@ pub fn system_open_backup_dir(
 /// Save configuration
 #[tauri::command]
 pub fn system_save_config(
-    config_dir: State<'_, String>,
+    paths: State<'_, AppPaths>,
     config_data: serde_json::Value,
 ) -> ApiResponse {
-    let mut config = AppConfig::load(&config_dir);
+    let mut config = AppConfig::load_path(&paths.config_dir);
     config.merge(&config_data);
 
-    if config.save(&config_dir) {
+    if config.save(&paths.config_dir.to_string_lossy()) {
         ApiResponse::ok("Saved")
     } else {
         ApiResponse::error_with_status("Save failed", 500)
     }
+}
+
+#[tauri::command]
+pub fn system_set_storage(
+    paths: State<'_, AppPaths>,
+    log_dir: String,
+    config_dir: String,
+) -> Result<ApiResponse, String> {
+    let log_dir = PathBuf::from(log_dir.trim());
+    if log_dir.as_os_str().is_empty() {
+        return Err("日志目录不能为空".to_string());
+    }
+    fs::create_dir_all(&log_dir)
+        .map_err(|error| format!("无法创建日志目录 {}: {error}", log_dir.display()))?;
+
+    let config_dir = PathBuf::from(config_dir.trim());
+    if config_dir.as_os_str().is_empty() {
+        return Err("config.json 目录不能为空".to_string());
+    }
+    let config_path = config_dir.join("config.json");
+    let mut config = if config_path.is_file() {
+        AppConfig::validate_file(&config_path)?
+    } else if config_dir == paths.config_dir || config_dir == paths.default_config_dir {
+        AppConfig::load_path(&paths.config_dir)
+    } else {
+        return Err(format!("未找到配置文件: {}", config_path.display()));
+    };
+    config.storage_settings.log_dir = Some(log_dir.to_string_lossy().into_owned());
+    if !config.save(&config_dir.to_string_lossy()) {
+        return Err("无法保存所选 config.json".to_string());
+    }
+    paths.save_config_location(&config_dir)?;
+
+    Ok(ApiResponse::ok_with_data(
+        "存储设置已保存，重启后生效",
+        serde_json::json!({ "restart_required": true }),
+    ))
 }
 
 /// Search for devices (ADB and/or Win32)

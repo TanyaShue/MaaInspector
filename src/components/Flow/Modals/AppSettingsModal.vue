@@ -30,6 +30,8 @@ interface AppSettingsProps {
   defaultNodeNamePrefixEnabled?: boolean
   defaultNodeNamePrefixMode?: NodeNamePrefixMode
   defaultNodeNameCustomPrefix?: string
+  defaultLogDir?: string
+  defaultConfigDir?: string
 }
 
 const props = withDefaults(defineProps<AppSettingsProps>(), {
@@ -43,7 +45,9 @@ const props = withDefaults(defineProps<AppSettingsProps>(), {
   defaultLowMemoryMode: false,
   defaultNodeNamePrefixEnabled: true,
   defaultNodeNamePrefixMode: 'filename',
-  defaultNodeNameCustomPrefix: ''
+  defaultNodeNameCustomPrefix: '',
+  defaultLogDir: '',
+  defaultConfigDir: ''
 })
 
 const emit = defineEmits<{
@@ -79,6 +83,10 @@ const restoreWorkspaceOnStart = ref(props.defaultRestoreWorkspaceOnStart)
 const lowMemoryMode = ref(props.defaultLowMemoryMode)
 const nodeNamePrefixMode = ref<NodeNamePrefixMode>(props.defaultNodeNamePrefixMode)
 const nodeNameCustomPrefix = ref(props.defaultNodeNameCustomPrefix)
+const logDir = ref(props.defaultLogDir)
+const configDir = ref(props.defaultConfigDir)
+const storageError = ref('')
+const applyingStorage = ref(false)
 const activeSection = ref<SectionId>('canvas')
 const scrollContainer = ref<HTMLElement | null>(null)
 const sectionRefs = new Map<SectionId, HTMLElement>()
@@ -122,6 +130,9 @@ const resetForm = () => {
   lowMemoryMode.value = props.defaultLowMemoryMode
   nodeNamePrefixMode.value = props.defaultNodeNamePrefixMode
   nodeNameCustomPrefix.value = props.defaultNodeNameCustomPrefix
+  logDir.value = props.defaultLogDir
+  configDir.value = props.defaultConfigDir
+  storageError.value = ''
 }
 
 watch(() => props.visible, async visible => {
@@ -207,6 +218,24 @@ const handleOpenLogDir = async () => {
 const handleOpenBackupDir = async () => {
   try { await systemApi.openBackupDir() } catch (error) { console.error('Failed to open backup directory:', error) }
 }
+const pickStorageFolder = async (target: 'log' | 'config') => {
+  const folder = await systemApi.pickFolder()
+  if (!folder) return
+  if (target === 'log') logDir.value = folder
+  else configDir.value = folder
+}
+const handleApplyStorage = async () => {
+  storageError.value = ''
+  applyingStorage.value = true
+  try {
+    await systemApi.setStorage(logDir.value, configDir.value)
+    await appUpdater.relaunch()
+  } catch (error) {
+    storageError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    applyingStorage.value = false
+  }
+}
 </script>
 
 <template>
@@ -277,7 +306,19 @@ const handleOpenBackupDir = async () => {
             <h4>存储与备份</h4><p class="section-description">查看 MaaInspector 在本机保存的数据</p>
             <div class="setting-group mt-4 divide-y divide-slate-100">
               <div class="setting-row"><div><h5>数据备份</h5><p>备份按日期保存于软件目录的 backup 文件夹</p></div><button class="action-button" @click="handleOpenBackupDir"><FolderOpen :size="14" />打开备份目录</button></div>
-              <div class="setting-row"><div><h5>运行日志</h5><p>查看前端与后端分别保存的日志文件</p></div><button class="action-button" @click="handleOpenLogDir"><FolderOpen :size="14" />打开日志目录</button></div>
+              <div class="setting-row items-start">
+                <div class="min-w-0 flex-1"><h5>日志目录</h5><p>默认位于软件根目录的 log 文件夹，修改后需重启</p>
+                  <div class="mt-2 flex gap-2"><input v-model="logDir" class="input-base min-w-0 flex-1" readonly /><button class="action-button shrink-0" @click="pickStorageFolder('log')"><FolderOpen :size="14" />选择</button></div>
+                </div>
+                <button class="action-button ml-3" @click="handleOpenLogDir"><FolderOpen :size="14" />打开日志目录</button>
+              </div>
+              <div class="setting-row items-start">
+                <div class="min-w-0 flex-1"><h5>config.json 目录</h5><p>切换前会校验 config.json 的 JSON 与字段格式</p>
+                  <div class="mt-2 flex gap-2"><input v-model="configDir" class="input-base min-w-0 flex-1" readonly /><button class="action-button shrink-0" @click="pickStorageFolder('config')"><FolderOpen :size="14" />选择</button></div>
+                  <p v-if="storageError" class="mt-2 text-[11px] text-rose-600">{{ storageError }}</p>
+                </div>
+                <button class="action-button primary ml-3" :disabled="applyingStorage" @click="handleApplyStorage"><LoaderCircle v-if="applyingStorage" class="animate-spin" :size="14" /><RefreshCw v-else :size="14" />应用并重启</button>
+              </div>
             </div>
           </section>
 

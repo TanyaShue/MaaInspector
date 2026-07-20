@@ -338,6 +338,8 @@ defineExpose({
       :default-node-name-prefix-enabled="appConfig.canvas.nodeNamePrefixEnabled"
       :default-node-name-prefix-mode="appConfig.canvas.nodeNamePrefixMode"
       :default-node-name-custom-prefix="appConfig.canvas.nodeNameCustomPrefix"
+      :default-log-dir="appConfig.storage.log_dir"
+      :default-config-dir="appConfig.storage.config_dir"
       @close="showAppSettings = false"
       @save="handleAppSettingsSave"
     />

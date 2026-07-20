@@ -151,6 +151,13 @@ export interface SystemInitResponse {
   restore_workspace_on_start?: boolean
   workspace_state?: WorkspaceState
   last_tabs?: LastTabsState
+  storage_paths?: StoragePaths
+}
+
+export interface StoragePaths {
+  log_dir: string
+  config_dir: string
+  default_config_dir: string
 }
 
 export interface DeviceConfigPayload {
@@ -323,11 +330,26 @@ export const systemApi = {
   ): Promise<ApiResponse<{ devices?: ApiDeviceInfo[] }>> => {
     return invokeCommand('system_search_devices', { deviceType })
   },
+
+  pickFolder: async (): Promise<string | null> => {
+    return invokeCommand('system_pick_folder')
+  },
+
+  setStorage: async (logDir: string, configDir: string): Promise<ApiResponse> => {
+    return invokeCommand('system_set_storage', { logDir, configDir })
+  },
 }
 
 export const logApi = {
   getDir: async (): Promise<string> => {
     return invokeCommand('log_get_dir')
+  },
+
+  readTail: async (
+    kind: 'maafw' | 'agent' | 'software',
+    maxLines = 100
+  ): Promise<string[]> => {
+    return invokeCommand('log_read_tail', { kind, maxLines })
   },
 }
 
@@ -464,6 +486,10 @@ export const agentApi = {
 
   connect: async (socketId: string): Promise<ApiResponse> => {
     return invokeCommand('agent_connect', { socketId })
+  },
+
+  stop: async (): Promise<ApiResponse> => {
+    return invokeCommand('agent_stop')
   },
 }
 

@@ -6,6 +6,11 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+$OutputEncoding = $utf8NoBom
+[Console]::OutputEncoding = $utf8NoBom
+$env:LANG = "C.UTF-8"
+$env:LC_ALL = "C.UTF-8"
 
 function Escape-TypeScriptTemplate([string]$Value) {
   return $Value.Replace('\', '\\').Replace('`', '\`').Replace('$', '\$')
@@ -17,7 +22,7 @@ function Invoke-GitOptional {
   $oldPreference = $ErrorActionPreference
   $ErrorActionPreference = "Continue"
   try {
-    $result = & git @Arguments 2>$null
+    $result = & git -c core.quotepath=false -c i18n.logOutputEncoding=utf-8 @Arguments 2>$null
     $exitCode = $LASTEXITCODE
     $global:LASTEXITCODE = 0
     if ($exitCode -ne 0) {
@@ -175,7 +180,8 @@ import type { ChangelogRelease } from '@/features/changelog/types'
 export const changelogContent = ``$escaped``
 export const changelogReleases = [$releaseJson] satisfies ChangelogRelease[]
 "@
-  $module | Set-Content -Path $outputPath -Encoding UTF8
+  $module += [Environment]::NewLine
+  [System.IO.File]::WriteAllText($outputPath, $module, $utf8NoBom)
 
   if ($Stdout) {
     Write-Output $body

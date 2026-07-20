@@ -11,9 +11,9 @@ use crate::response::{
 use controller::wait_with_timeout;
 use maa_framework::controller::Controller;
 use maa_framework::resource::Resource;
+use maa_framework::set_debug_mode;
 use maa_framework::sys;
 use maa_framework::tasker::Tasker;
-use maa_framework::{set_debug_mode, toolkit::Toolkit};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -69,7 +69,12 @@ fn convert_recognition_detail(
         best_result: None,
         raw_detail: Some(detail.detail.clone()),
         raw_image: include_images
-            .then(|| detail.raw_image.as_ref().and_then(|value| image::encode_raw_image(value)))
+            .then(|| {
+                detail
+                    .raw_image
+                    .as_ref()
+                    .and_then(|value| image::encode_raw_image(value))
+            })
             .flatten(),
         draw_images: include_images.then(|| {
             detail
@@ -114,10 +119,17 @@ pub struct MaaFrameworkWrapper {
 }
 
 impl MaaFrameworkWrapper {
-    pub fn new(work_dir: impl AsRef<Path>) -> Self {
-        let target_dir: PathBuf = work_dir.as_ref().join("maa-framework");
+    pub fn new(log_dir: impl AsRef<Path>) -> Self {
+        let target_dir: PathBuf = log_dir.as_ref().to_path_buf();
         let _ = std::fs::create_dir_all(&target_dir);
-        let _ = Toolkit::init_option(&target_dir.to_string_lossy(), "{}");
+        if let Err(error) = maa_framework::configure_logging(&target_dir.to_string_lossy()) {
+            crate::backend_log_error!(
+                "maafw",
+                "Failed to configure MaaFramework log directory {}: {}",
+                target_dir.display(),
+                error
+            );
+        }
 
         let _ = set_debug_mode(true);
 

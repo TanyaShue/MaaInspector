@@ -273,6 +273,12 @@ pub struct CanvasSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct StorageSettings {
+    #[serde(default)]
+    pub log_dir: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TabResourceInfo {
     pub id: Option<String>,
     pub title: Option<String>,
@@ -313,9 +319,29 @@ pub struct AppConfig {
     pub workspace_state: Option<WorkspaceState>,
     #[serde(default)]
     pub last_tabs: Option<LastTabsState>,
+    #[serde(default)]
+    pub storage_settings: StorageSettings,
 }
 
 impl AppConfig {
+    pub fn load_path(config_dir: &Path) -> Self {
+        Self::load(&config_dir.to_string_lossy())
+    }
+
+    pub fn validate_file(config_path: &Path) -> Result<Self, String> {
+        if !config_path.is_file() {
+            return Err(format!("未找到配置文件: {}", config_path.display()));
+        }
+        let content = fs::read_to_string(config_path)
+            .map_err(|error| format!("无法读取 {}: {error}", config_path.display()))?;
+        let value: serde_json::Value = serde_json::from_str(&content)
+            .map_err(|error| format!("config.json 不是有效的 JSON: {error}"))?;
+        if !value.is_object() {
+            return Err("config.json 顶层必须是 JSON 对象".to_string());
+        }
+        serde_json::from_value(value).map_err(|error| format!("config.json 字段格式错误: {error}"))
+    }
+
     pub fn load(config_dir: &str) -> Self {
         let config_path = Path::new(config_dir).join(CONFIG_FILE);
         let backup_path = Path::new(config_dir).join(CONFIG_BACKUP_FILE);
@@ -398,6 +424,11 @@ impl AppConfig {
                     "last_tabs" => {
                         if let Ok(v) = serde_json::from_value::<LastTabsState>(value.clone()) {
                             self.last_tabs = Some(v);
+                        }
+                    }
+                    "storage_settings" => {
+                        if let Ok(v) = serde_json::from_value::<StorageSettings>(value.clone()) {
+                            self.storage_settings = v;
                         }
                     }
                     _ => {}
@@ -500,5 +531,31 @@ mod tests {
             AppConfig::load(config_dir).agent_socket_id.as_deref(),
             Some("recoverable")
         );
+    }
+
+    #[test]
+    fn validate_file_rejects_invalid_or_non_object_json() {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join(CONFIG_FILE);
+
+        fs::write(&config_path, b"[1, 2, 3]").unwrap();
+        assert!(AppConfig::validate_file(&config_path).is_err());
+
+        fs::write(&config_path, br#"{"resource_profiles":"invalid"}"#).unwrap();
+        assert!(AppConfig::validate_file(&config_path).is_err());
+    }
+
+    #[test]
+    fn validate_file_accepts_a_well_formed_config() {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join(CONFIG_FILE);
+        fs::write(
+            &config_path,
+            br#"{"resource_profiles":[],"storage_settings":{"log_dir":"D:\\logs"}}"#,
+        )
+        .unwrap();
+
+        let config = AppConfig::validate_file(&config_path).unwrap();
+        assert_eq!(config.storage_settings.log_dir.as_deref(), Some("D:\\logs"));
     }
 }

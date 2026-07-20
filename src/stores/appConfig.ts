@@ -8,6 +8,7 @@ import type {
   ApiDeviceInfo,
   WorkspaceState,
   CustomCompletionRules,
+  StoragePaths,
 } from '@/services/api'
 import type { AgentProfile } from '@/services/api'
 import type { EdgeType } from '@/utils/flowOptions'
@@ -127,6 +128,11 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     initialized: false,
     isSaving: false,
   })
+  const storage = ref<StoragePaths>({
+    log_dir: '',
+    config_dir: '',
+    default_config_dir: '',
+  })
 
   const currentProfile = computed(
     () => resource.value.profiles[resource.value.profileIndex] || { name: 'None', paths: [] }
@@ -198,6 +204,9 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     system.value.status = 'loading'
     try {
       const data: SystemInitResponse = await systemApi.getInitialState()
+      if (data.storage_paths) {
+        storage.value = { ...data.storage_paths }
+      }
 
       if (data.resource_profiles) {
         resource.value.profiles = normalizeProfiles(data.resource_profiles)
@@ -594,6 +603,7 @@ export const useAppConfigStore = defineStore('appConfig', () => {
     agent,
     tabs,
     system,
+    storage,
     currentProfile,
     isDirty,
     cachedLastTabs,

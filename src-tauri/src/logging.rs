@@ -2,7 +2,7 @@ use chrono::Local;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use zip::write::SimpleFileOptions;
@@ -10,7 +10,10 @@ use zip::write::SimpleFileOptions;
 const LOG_SIZE_LIMIT_BYTES: u64 = 10 * 1024 * 1024;
 const FRONTEND_DIR: &str = "frontend";
 const BACKEND_DIR: &str = "backend";
+const AGENT_DIR: &str = "agent";
+const MAAFW_DIR: &str = "maafw";
 const ARCHIVE_DIR: &str = "archive";
+const MAX_TAIL_BYTES_PER_FILE: u64 = 2 * 1024 * 1024;
 
 static LOGGER: OnceLock<Mutex<FileLogger>> = OnceLock::new();
 
@@ -28,18 +31,21 @@ struct FileLogger {
     logs_dir: PathBuf,
     frontend_file: File,
     backend_file: File,
+    agent_file: File,
 }
 
-pub fn init(app_data_dir: &Path) -> io::Result<PathBuf> {
-    let logs_dir = app_data_dir.join("logs");
+pub fn init(logs_dir: &Path) -> io::Result<PathBuf> {
+    let logs_dir = logs_dir.to_path_buf();
     prepare_logs_dir(&logs_dir, LOG_SIZE_LIMIT_BYTES)?;
 
     let frontend_file = open_log_file(&logs_dir.join(FRONTEND_DIR), "frontend")?;
     let backend_file = open_log_file(&logs_dir.join(BACKEND_DIR), "backend")?;
+    let agent_file = open_log_file(&logs_dir.join(AGENT_DIR), "agent")?;
     let logger = FileLogger {
         logs_dir: logs_dir.clone(),
         frontend_file,
         backend_file,
+        agent_file,
     };
 
     let _ = LOGGER.set(Mutex::new(logger));
@@ -56,6 +62,10 @@ pub fn logs_dir() -> Option<PathBuf> {
     LOGGER
         .get()
         .and_then(|logger| logger.lock().ok().map(|guard| guard.logs_dir.clone()))
+}
+
+pub fn maafw_logs_dir() -> Option<PathBuf> {
+    logs_dir().map(|path| path.join(MAAFW_DIR))
 }
 
 pub fn write_frontend_batch(entries: &[FrontendLogEntry]) -> io::Result<()> {
@@ -85,6 +95,19 @@ pub fn backend_log(level: &str, target: &str, message: String, fields: Value) {
         });
         write_json_line(&mut logger.backend_file, &line)?;
         logger.backend_file.flush()
+    });
+}
+
+pub fn agent_output(stream: &str, message: &str) {
+    let _ = with_logger(|logger| {
+        writeln!(
+            logger.agent_file,
+            "[{}] [{}] {}",
+            now_string(),
+            stream,
+            message
+        )?;
+        logger.agent_file.flush()
     });
 }
 
@@ -118,6 +141,8 @@ fn with_logger<T>(f: impl FnOnce(&mut FileLogger) -> io::Result<T>) -> io::Resul
 fn prepare_logs_dir(logs_dir: &Path, size_limit: u64) -> io::Result<()> {
     fs::create_dir_all(logs_dir.join(FRONTEND_DIR))?;
     fs::create_dir_all(logs_dir.join(BACKEND_DIR))?;
+    fs::create_dir_all(logs_dir.join(AGENT_DIR))?;
+    fs::create_dir_all(logs_dir.join(MAAFW_DIR))?;
     fs::create_dir_all(logs_dir.join(ARCHIVE_DIR))?;
 
     let log_files = collect_log_files(logs_dir)?;
@@ -137,7 +162,7 @@ fn prepare_logs_dir(logs_dir: &Path, size_limit: u64) -> io::Result<()> {
 
 fn collect_log_files(logs_dir: &Path) -> io::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
-    for dir_name in [FRONTEND_DIR, BACKEND_DIR] {
+    for dir_name in [FRONTEND_DIR, BACKEND_DIR, AGENT_DIR] {
         let dir = logs_dir.join(dir_name);
         if !dir.exists() {
             continue;
@@ -150,6 +175,113 @@ fn collect_log_files(logs_dir: &Path) -> io::Result<Vec<PathBuf>> {
         }
     }
     Ok(files)
+}
+
+fn collect_files_recursive(dir: &Path) -> Vec<PathBuf> {
+    if !dir.exists() {
+        return Vec::new();
+    }
+    let mut files = walkdir::WalkDir::new(dir)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_file())
+        .filter(|entry| {
+            entry
+                .path()
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| {
+                    matches!(
+                        extension.to_ascii_lowercase().as_str(),
+                        "log" | "txt" | "jsonl"
+                    )
+                })
+        })
+        .map(|entry| entry.into_path())
+        .collect::<Vec<_>>();
+    files.sort_by_key(|path| {
+        fs::metadata(path)
+            .and_then(|metadata| metadata.modified())
+            .ok()
+    });
+    files
+}
+
+fn read_tail_lines(files: &[PathBuf], max_lines: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    for path in files.iter().rev() {
+        let Ok(mut file) = File::open(path) else {
+            continue;
+        };
+        let file_size = file.metadata().map(|metadata| metadata.len()).unwrap_or(0);
+        let offset = file_size.saturating_sub(MAX_TAIL_BYTES_PER_FILE);
+        if file.seek(SeekFrom::Start(offset)).is_err() {
+            continue;
+        }
+        let mut bytes = Vec::new();
+        if file.read_to_end(&mut bytes).is_err() {
+            continue;
+        }
+        let text = String::from_utf8_lossy(&bytes);
+        let mut file_lines = text.lines().map(ToOwned::to_owned).collect::<Vec<_>>();
+        if offset > 0 && text.contains('\n') && !file_lines.is_empty() {
+            file_lines.remove(0);
+        }
+        file_lines.append(&mut lines);
+        lines = file_lines;
+        if lines.len() >= max_lines {
+            break;
+        }
+    }
+    if lines.len() > max_lines {
+        lines.drain(..lines.len() - max_lines);
+    }
+    lines
+}
+
+fn software_line_timestamp(line: &str) -> i64 {
+    serde_json::from_str::<Value>(line)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("ts")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned)
+        })
+        .and_then(|timestamp| chrono::DateTime::parse_from_rfc3339(&timestamp).ok())
+        .and_then(|timestamp| timestamp.timestamp_nanos_opt())
+        .unwrap_or_default()
+}
+
+pub fn read_tail(kind: &str, max_lines: usize) -> Result<Vec<String>, String> {
+    let root = logs_dir().ok_or_else(|| "Logger is not initialized".to_string())?;
+    let max_lines = max_lines.clamp(1, 2000);
+    match kind {
+        "maafw" => Ok(read_tail_lines(
+            &collect_files_recursive(&root.join(MAAFW_DIR)),
+            max_lines,
+        )),
+        "agent" => Ok(read_tail_lines(
+            &collect_files_recursive(&root.join(AGENT_DIR)),
+            max_lines,
+        )),
+        "software" => {
+            let mut lines = read_tail_lines(
+                &collect_files_recursive(&root.join(FRONTEND_DIR)),
+                max_lines,
+            );
+            lines.extend(read_tail_lines(
+                &collect_files_recursive(&root.join(BACKEND_DIR)),
+                max_lines,
+            ));
+            lines.sort_by_key(|line| software_line_timestamp(line));
+            if lines.len() > max_lines {
+                lines.drain(..lines.len() - max_lines);
+            }
+            Ok(lines)
+        }
+        _ => Err(format!("未知日志类型: {kind}")),
+    }
 }
 
 fn archive_log_files(logs_dir: &Path, files: &[PathBuf]) -> io::Result<PathBuf> {

@@ -7,6 +7,7 @@
   import DebugEventTimeline from './DebugPanel/DebugEventTimeline.vue'
   import DebugDetailPanel from './DebugPanel/DebugDetailPanel.vue'
   import ImagePreviewOverlay from './DebugPanel/ImagePreviewOverlay.vue'
+  import DebugLogPanel from './DebugPanel/DebugLogPanel.vue'
   import { useDebugPanelState } from '@/composables/useDebugPanelState'
   import type {
     NextChild,
@@ -15,6 +16,7 @@
   } from '@/composables/useDebugPanelState'
   import { useFloatingPanel } from '@/composables/useFloatingPanel'
   import { useDebugPanelColumns } from '@/composables/useDebugPanelColumns'
+  import { useDebugLogPanelHeight } from '@/composables/useDebugLogPanelHeight'
   import { buildDebugConfigFields } from '@/utils/debugDetailPresentation'
   import type { DebugDetailField } from '@/utils/debugDetailPresentation'
   import {
@@ -75,6 +77,17 @@
     computed(() => rect.value.width),
     {
       storageKey: 'maainspector.debugPanel.columnLayout.v1',
+    }
+  )
+  const {
+    panelStyle: logPanelStyle,
+    load: loadLogPanelHeight,
+    startResize: startLogPanelResize,
+    stopResize: stopLogPanelResize,
+  } = useDebugLogPanelHeight(
+    computed(() => rect.value.height),
+    {
+      storageKey: 'maainspector.debugPanel.logHeight.v1',
     }
   )
 
@@ -342,6 +355,7 @@
       if (val) {
         loadLayout()
         loadColumnLayout()
+        loadLogPanelHeight()
         selectedNodeId.value = props.initialNodeId || ''
         searchValue.value = props.initialNodeId || ''
         startPreviewAutoRefresh()
@@ -351,6 +365,7 @@
         )
       } else {
         stopColumnResize()
+        stopLogPanelResize()
         stopPreviewAutoRefresh()
         stopRealtimeStream()
       }
@@ -374,6 +389,7 @@
   onUnmounted(() => {
     stopInteraction()
     stopColumnResize()
+    stopLogPanelResize()
     stopRealtimeStream()
     stopPreviewAutoRefresh()
     if (typeof window !== 'undefined') {
@@ -425,9 +441,9 @@
           class="bg-slate-50 flex flex-col shrink-0"
           :style="previewStyle"
         >
-          <div class="p-2 border-b border-slate-200">
+          <div class="min-h-0 flex-1 p-2 border-b border-slate-200">
             <div
-              class="relative w-full aspect-[4/5] bg-white border border-slate-200 rounded overflow-hidden"
+              class="relative h-full w-full bg-white border border-slate-200 rounded overflow-hidden"
             >
               <img
                 v-if="previewUrl"
@@ -443,6 +459,17 @@
               </div>
             </div>
           </div>
+          <button
+            type="button"
+            data-testid="debug-log-resizer"
+            aria-label="调整设备预览与日志区域高度"
+            class="log-resizer"
+            title="拖动调整设备预览与日志区域的高度比例"
+            @mousedown.stop="startLogPanelResize"
+          >
+            <span />
+          </button>
+          <DebugLogPanel :active="visible" class="shrink-0" :style="logPanelStyle" />
         </div>
         <button
           v-if="showPreviewPanel"
@@ -552,6 +579,18 @@
   }
 
   .split-resizer:hover span {
+    @apply bg-indigo-400;
+  }
+
+  .log-resizer {
+    @apply relative z-20 flex h-2 w-full shrink-0 cursor-ns-resize items-center justify-center border-y border-slate-200 bg-white transition-colors hover:bg-indigo-50;
+  }
+
+  .log-resizer span {
+    @apply h-0.5 w-10 rounded-full bg-slate-200 transition-colors;
+  }
+
+  .log-resizer:hover span {
     @apply bg-indigo-400;
   }
 </style>

@@ -1,5 +1,6 @@
 // MaaInspector - Rust backend using maa-framework-rs
 
+mod app_paths;
 mod commands;
 mod config;
 mod events;
@@ -8,15 +9,17 @@ mod maafw;
 mod resources;
 mod response;
 
+use app_paths::AppPaths;
 use commands::{AgentClientState, AgentProcessState};
 use commands::{
-    agent_connect, agent_start, debug_get_action_details, debug_get_reco_details, debug_ocr_text,
-    debug_run_node, debug_status, debug_stop, device_connect_adb, device_connect_win32, device_screenshot,
-    devtools_open, log_frontend_batch, log_get_dir, resource_check_unused_images,
-    resource_create_file, resource_get_file_nodes, resource_get_templates, resource_load,
-    resource_process_images, resource_save_file_nodes, resource_search_nodes,
-    system_get_backup_dir, system_import_interface, system_init, system_open_backup_dir,
-    system_open_log_dir, system_pick_folder, system_save_config, system_search_devices,
+    agent_connect, agent_start, agent_stop, debug_get_action_details, debug_get_reco_details,
+    debug_ocr_text, debug_run_node, debug_status, debug_stop, device_connect_adb,
+    device_connect_win32, device_screenshot, devtools_open, log_frontend_batch, log_get_dir,
+    log_read_tail, resource_check_unused_images, resource_create_file, resource_get_file_nodes,
+    resource_get_templates, resource_load, resource_process_images, resource_save_file_nodes,
+    resource_search_nodes, system_get_backup_dir, system_import_interface, system_init,
+    system_open_backup_dir, system_open_log_dir, system_pick_folder, system_save_config,
+    system_search_devices, system_set_storage,
 };
 use events::DebugEventBroker;
 use maafw::MaaFrameworkWrapper;
@@ -123,29 +126,34 @@ pub fn run() {
     let maafw: Mutex<Option<MaaFrameworkWrapper>> = Mutex::new(None);
     let resources_manager: ResourcesManagerState = Arc::new(RwLock::new(None));
     let agent_process = AgentProcessState::default();
+    let exit_agent_process = agent_process.clone();
     let agent_client = AgentClientState::default();
     let backup_dir = resolve_backup_dir().expect("failed to resolve backup directory");
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let app_data_dir = resolve_app_data_dir(app.handle())
                 .map_err(|e| Box::<dyn std::error::Error>::from(std::io::Error::other(e)))?;
-            logging::init(&app_data_dir)
+            let paths = AppPaths::load(app_data_dir)
+                .map_err(|e| Box::<dyn std::error::Error>::from(std::io::Error::other(e)))?;
+            logging::init(&paths.log_dir)
                 .map_err(|e| Box::<dyn std::error::Error>::from(std::io::Error::other(e)))?;
             load_maa_library(app.handle())
                 .map_err(|e| Box::<dyn std::error::Error>::from(std::io::Error::other(e)))?;
 
             let broker = DebugEventBroker::new_with_handle(app.handle().clone());
             let broker_arc = Arc::new(broker);
-            let mut maafw = MaaFrameworkWrapper::new(&app_data_dir);
+            let maafw_log_dir = logging::maafw_logs_dir()
+                .ok_or_else(|| std::io::Error::other("logger is not initialized"))?;
+            let mut maafw = MaaFrameworkWrapper::new(maafw_log_dir);
             maafw.set_event_broker(broker_arc);
 
             let maafw_state = app.state::<Mutex<Option<MaaFrameworkWrapper>>>();
             *maafw_state.blocking_lock() = Some(maafw);
-            app.manage(app_data_dir.to_string_lossy().to_string());
+            app.manage(paths);
 
             Ok(())
         })
@@ -180,6 +188,7 @@ pub fn run() {
             // Agent commands
             agent_connect,
             agent_start,
+            agent_stop,
             // Debug commands
             debug_run_node,
             debug_stop,
@@ -190,7 +199,14 @@ pub fn run() {
             devtools_open,
             log_frontend_batch,
             log_get_dir,
+            log_read_tail,
+            system_set_storage,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+    app.run(move |_handle, event| {
+        if matches!(event, tauri::RunEvent::Exit) {
+            exit_agent_process.stop();
+        }
+    });
 }
