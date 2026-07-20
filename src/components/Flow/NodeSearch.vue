@@ -72,8 +72,8 @@ const localResults = computed(() => {
   // 按节点名称排序
   return [...filtered]
     .sort((a, b) => {
-      const aId = ((a as any).data?.data?.id || a.id).toLowerCase()
-      const bId = ((b as any).data?.data?.id || b.id).toLowerCase()
+      const aId = (a.data?.data?.id || a.id).toLowerCase()
+      const bId = (b.data?.data?.id || b.id).toLowerCase()
       return aId.localeCompare(bId)
     })
     .slice(0, 15)
@@ -126,7 +126,16 @@ const performRemoteSearch = async (generation: number) => {
         props.currentSource || ''
     )
     if (generation === searchGeneration) {
-      otherFileResults.value = (res as any).results || []
+      otherFileResults.value = Array.isArray(res.results)
+        ? res.results.filter((item): item is RemoteResult => (
+            typeof item === 'object' &&
+            item !== null &&
+            typeof item.node_id === 'string' &&
+            typeof item.filename === 'string' &&
+            typeof item.source === 'string' &&
+            typeof item.display_id === 'string'
+          ))
+        : []
     }
   } catch (e) {
     console.error("Remote search failed", e)
@@ -154,7 +163,7 @@ watch([searchQuery, useRegex], () => {
 
 
 // --- 辅助函数 ---
-const getNodeDisplayId = (node: FlowNode) => (node as any).data?.data?.id || node.id
+const getNodeDisplayId = (node: FlowNode) => node.data?.data?.id || node.id
 const getNodeTypeLabel = (type?: string) => {
   const typeMap = {
     'DirectHit': '通用匹配',

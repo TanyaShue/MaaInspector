@@ -24,10 +24,10 @@ const NodeDetailsStub = defineComponent({
   name: 'NodeDetails',
   props: {
     visible: Boolean,
-    nodeId: String,
-    nodeData: Object,
-    nodeType: String,
-    placement: String
+    nodeId: { type: String, default: undefined },
+    nodeData: { type: Object, default: undefined },
+    nodeType: { type: String, default: undefined },
+    placement: { type: String, default: undefined }
   },
   emits: ['close', 'update-id', 'update-type', 'update-data'],
   template: '<div class="node-details-stub" :data-node-id="nodeId" :data-placement="placement" />'

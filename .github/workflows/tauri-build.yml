@@ -111,6 +111,15 @@ jobs:
       - name: Install frontend deps
         run: pnpm install --frozen-lockfile
 
+      - name: Generate changelog
+        id: changelog
+        run: |
+          $body = .\scripts\generate-changelog.ps1 -Tag "${{ steps.release.outputs.tag }}" -Stdout
+
+          "body<<EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $body | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
       - name: Validate frontend
         run: |
           pnpm lint
@@ -133,15 +142,6 @@ jobs:
           $json = Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json
           $json.version = $version
           $json | ConvertTo-Json -Depth 10 | Set-Content src-tauri/tauri.conf.json
-
-      - name: Generate changelog
-        id: changelog
-        run: |
-          $body = .\scripts\generate-changelog.ps1 -Tag "${{ steps.release.outputs.tag }}" -Stdout
-
-          "body<<EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          $body | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Prepare and validate updater signing key
         env:

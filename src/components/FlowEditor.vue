@@ -183,6 +183,8 @@ watch([currentSource, currentFilename], () => {
 const displayedNodes = computed(() => {
   const focusedIds = focusedTaskChainNodeIds.value
   const focusActive = Boolean(taskChainFocusId.value && focusedIds.size > 0)
+  if (!focusActive) return nodes.value
+
   return nodes.value.map(node => {
     const defaults = nodeInteractionDefaults.get(node.id) ?? {
       type: node.type,
@@ -192,18 +194,6 @@ const displayedNodes = computed(() => {
       connectable: node.connectable ?? true,
       zIndex: node.zIndex,
     }
-    if (!focusActive) {
-      return {
-        ...node,
-        type: defaults.type,
-        draggable: defaults.draggable,
-        selectable: defaults.selectable,
-        focusable: defaults.focusable,
-        connectable: defaults.connectable,
-        zIndex: defaults.zIndex,
-      }
-    }
-
     const isTaskChainMember = focusedIds.has(node.id)
     return {
       ...node,

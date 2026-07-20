@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import {
   Smartphone, Power, Search, Loader2
 } from 'lucide-vue-next'
@@ -9,10 +9,11 @@ import { useAppConfigStore } from '@/stores/appConfig'
 import Dropdown from '@/components/Flow/Common/Dropdown.vue'
 import StatusIndicator from '@/components/Flow/Common/StatusIndicator.vue'
 import type { DropdownOption } from '@/components/Flow/Common/types'
-import type { ApiDeviceInfo } from '@/services/api'
+import type { ApiDeviceInfo, ApiResponse } from '@/services/api'
 import type { DevicePanelSnapshot } from '@/composables/viewModels/types'
 
 const props = defineProps<{
+  active: boolean
   isConnected: boolean
   snapshot?: DevicePanelSnapshot
 }>()
@@ -67,7 +68,9 @@ const win32KeyboardMethod = ref(props.snapshot?.win32KeyboardMethod ?? 1)
 
 // 设备截图相关
 const deviceScreenshot = ref<string>('')
-let screenshotTimer: ReturnType<typeof setInterval> | null = null
+let screenshotTimer: ReturnType<typeof setTimeout> | null = null
+let screenshotRequestPending = false
+let screenshotGeneration = 0
 
 // 当前设备
 const currentDevice = computed<ApiDeviceInfo | null>(() => {
@@ -111,7 +114,8 @@ const deviceButtonLabel = computed(() => status.value === 'connected' ? '重新�
 
 // 截图逻辑
 const fetchDeviceScreenshot = async () => {
-  if (status.value !== 'connected') return
+  if (!props.active || status.value !== 'connected' || screenshotRequestPending) return
+  screenshotRequestPending = true
   try {
     const res = await deviceApi.getScreenshot()
     if (res.success && res.image) {
@@ -119,18 +123,31 @@ const fetchDeviceScreenshot = async () => {
     }
   } catch (e) {
     console.warn('获取设备截图失败', e)
+  } finally {
+    screenshotRequestPending = false
   }
 }
 
 const startScreenshotTimer = () => {
   stopScreenshotTimer()
-  fetchDeviceScreenshot()
-  screenshotTimer = setInterval(fetchDeviceScreenshot, 1000)
+  if (!props.active || status.value !== 'connected') return
+  const generation = screenshotGeneration
+  const poll = async () => {
+    await fetchDeviceScreenshot()
+    if (
+      generation !== screenshotGeneration ||
+      !props.active ||
+      status.value !== 'connected'
+    ) return
+    screenshotTimer = setTimeout(() => void poll(), 1000)
+  }
+  void poll()
 }
 
 const stopScreenshotTimer = () => {
+  screenshotGeneration++
   if (screenshotTimer) {
-    clearInterval(screenshotTimer)
+    clearTimeout(screenshotTimer)
     screenshotTimer = null
   }
   deviceScreenshot.value = ''
@@ -178,7 +195,7 @@ const handleDeviceConnect = async (): Promise<boolean> => {
   message.value = '连接中...'
 
   try {
-    let res: any
+    let res: ApiResponse
 
     if (deviceType.value === 'win32') {
       res = await deviceApi.connectWin32({
@@ -279,11 +296,14 @@ watch(deviceType, () => {
 })
 
 // 监听设备连接状态变化
-watch(status, (newStatus) => {
-  if (newStatus !== 'connected') {
-    stopScreenshotTimer()
-  }
-})
+watch(
+  [() => props.active, status],
+  ([active, currentStatus]) => {
+    if (active && currentStatus === 'connected') startScreenshotTimer()
+    else stopScreenshotTimer()
+  },
+  { immediate: true }
+)
 
 watch([
   status,
@@ -308,12 +328,6 @@ watch([
     win32KeyboardMethod: win32KeyboardMethod.value
   })
 }, { immediate: true })
-
-onMounted(() => {
-  if (status.value === 'connected') {
-    startScreenshotTimer()
-  }
-})
 
 onUnmounted(() => {
   stopScreenshotTimer()

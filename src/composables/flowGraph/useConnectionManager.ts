@@ -208,7 +208,7 @@ export const normalizeLinksAcrossNodes = (targetNodes: FlowNode[]) => {
       ) {
         delete (data as Record<string, unknown>)[field]
       } else {
-        ;(data as Record<string, unknown>)[field] = normalized as any
+        ;(data as Record<string, unknown>)[field] = normalized
       }
     })
   })

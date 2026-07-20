@@ -10,6 +10,7 @@ import { useFloatingPanel } from '@/composables/useFloatingPanel'
 import { useLayout } from '@/composables/useLayout'
 import { useViewportSync } from '@/composables/flowGraph/useViewportSync'
 import { useEdgeRenderWindow } from '@/composables/flowGraph/useEdgeRenderWindow'
+import { logDebug } from '@/utils/logger'
 import ToolbarIconDropdown from './Common/ToolbarIconDropdown.vue'
 import {
   EDGE_TYPE_OPTIONS,
@@ -140,9 +141,10 @@ const panelRootRef = ref<HTMLElement | null>(null)
 const canvasRootRef = ref<HTMLElement | null>(null)
 
 const baseVisibleNodeIds = ref<Set<string>>(new Set())
-const edgeStructureKey = computed(() =>
-  props.edges.map(edge => `${edge.id}:${edge.source}:${edge.target}`).join('|')
-)
+const edgeStructureKey = computed(() => {
+  if (!props.visible) return ''
+  return props.edges.map(edge => `${edge.id}:${edge.source}:${edge.target}`).join('|')
+})
 
 const refreshVisibleNodeIds = () => {
   const reachableIds = collectReachableNodeIds(props.rootNodeId, props.nodes, props.edges)
@@ -167,11 +169,11 @@ const roundDebugNumber = (value: number) => Math.round(value * 100) / 100
 
 const writeSubCanvasDebug = (event: string, fields: Record<string, unknown>) => {
   if (!subCanvasDebugEnabled) return
-  console.debug(`[SubCanvasDebug] ${event} ${JSON.stringify({
+  logDebug('SubCanvasDebug', event, {
     flowId,
     rootNodeId: props.rootNodeId,
     ...fields
-  })}`)
+  })
 }
 
 const collectSubCanvasDebugSnapshot = (event: string, fields: Record<string, unknown> = {}) => {

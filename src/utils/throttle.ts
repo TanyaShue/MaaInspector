@@ -112,13 +112,13 @@ export const createThrottledHandler = <T>(
 /**
  * 节流函数
  */
-export const throttle = <T extends (...args: any[]) => any>(
-  fn: T,
+export const throttle = <Args extends unknown[]>(
+  fn: (...args: Args) => unknown,
   limit: number
-): ((...args: Parameters<T>) => void) => {
+): ((...args: Args) => void) => {
   let inThrottle = false
 
-  return (...args: Parameters<T>) => {
+  return (...args: Args) => {
     if (!inThrottle) {
       fn(...args)
       inThrottle = true

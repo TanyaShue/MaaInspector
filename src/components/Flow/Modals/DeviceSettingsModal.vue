@@ -57,12 +57,12 @@ const cloneDevices = (devices: EditableDevice[]): EditableDevice[] =>
 
 const normalizeDevices = (devices: EditableDevice[], fallbackSource: EditableDevice['source'] = 'saved'): EditableDevice[] =>
   devices.map((dev) => {
-    const address = typeof (dev as any).address === 'string' ? (dev as any).address : ''
-    const config = typeof (dev as any).config === 'object' && (dev as any).config !== null ? (dev as any).config as Record<string, unknown> : {}
-    const type = (dev as any).type || 'adb'
-    const hwnd = (dev as any).hwnd
-    const class_name = typeof (dev as any).class_name === 'string' ? (dev as any).class_name : ''
-    const window_name = typeof (dev as any).window_name === 'string' ? (dev as any).window_name : ''
+    const address = typeof dev.address === 'string' ? dev.address : ''
+    const config = typeof dev.config === 'object' && dev.config !== null ? dev.config : {}
+    const type = dev.type || 'adb'
+    const hwnd = dev.hwnd
+    const class_name = typeof dev.class_name === 'string' ? dev.class_name : ''
+    const window_name = typeof dev.window_name === 'string' ? dev.window_name : ''
     return {
       ...dev,
       name: dev.name ?? 'New Device',
@@ -105,12 +105,12 @@ const handleSearch = async (type: DeviceType) => {
     const found = (res.data?.devices ?? res.devices ?? []) as ApiDeviceInfo[]
     if (found.length) {
       found.forEach((d) => {
-        const address = typeof (d as any).address === 'string' ? (d as any).address : ''
-        const config = typeof (d as any).config === 'object' && (d as any).config !== null ? (d as any).config as Record<string, unknown> : {}
-        const devType = (d as any).type || type || 'adb'
-        const hwnd = (d as any).hwnd
-        const class_name = (d as any).class_name
-        const window_name = (d as any).window_name
+        const address = typeof d.address === 'string' ? d.address : ''
+        const config = typeof d.config === 'object' && d.config !== null ? d.config : {}
+        const devType = d.type || type || 'adb'
+        const hwnd = d.hwnd
+        const class_name = d.class_name
+        const window_name = d.window_name
         const candidate: EditableDevice = { ...d, address, config, type: devType, hwnd, class_name, window_name, source: 'discovered' }
         const existsSaved = editingDevices.value.find((ed) => isSameDevice(ed, candidate))
         const existsFound = discoveredDevices.value.find((ed) => isSameDevice(ed, candidate))

@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
+import type * as Vue from 'vue'
 import { useDeviceScreenPicker } from '@/composables/useDeviceScreenPicker'
 
 vi.mock('vue', async (importOriginal) => {
-  const mod = await importOriginal<typeof import('vue')>()
+  const mod = await importOriginal<typeof Vue>()
   return {
     ...mod,
     inject: vi.fn(() => ({

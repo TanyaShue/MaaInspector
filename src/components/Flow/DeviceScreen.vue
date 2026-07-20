@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { RefreshCw, Crosshair, Check, ZoomIn, Mouse } from 'lucide-vue-next'
-import { deviceApi } from '@/services/api'
+import {
+  deviceApi,
+  type OcrRecognitionCandidate,
+  type OcrRecognitionResponse,
+  type ScreenshotResponse
+} from '@/services/api'
 import DeviceScreenCanvas from './DeviceScreensModals/DeviceScreenCanvas.vue'
 import DeviceScreenSidebar from './DeviceScreensModals/DeviceScreenSidebar.vue'
 import type { TemplateImage } from '@/utils/flowTypes'
@@ -17,12 +22,6 @@ interface Selection {
 
 interface ImageItem extends TemplateImage {
   _source?: 'images' | 'temp' | string
-}
-
-interface OcrCandidate {
-  box?: number[]
-  score: number
-  text: string
 }
 
 const props = defineProps<{
@@ -76,7 +75,7 @@ const previewUrl = ref<string>('')
 const ocrResult = ref<string>('')
 const canvasRef = ref<InstanceType<typeof DeviceScreenCanvas> | null>(null)
 const imageSize = ref({ width: 1280, height: 720 })
-const ocrCandidates = ref<OcrCandidate[]>([])
+const ocrCandidates = ref<OcrRecognitionCandidate[]>([])
 const selectedOcrIndex = ref(0)
 const colorRange = ref<ColorRangeResult | null>(null)
 const colorRangeError = ref('')
@@ -211,9 +210,9 @@ watch(() => props.visible, async (val: boolean) => {
 const fetchScreenshot = async () => {
   isLoading.value = true
   try {
-    const res = await deviceApi.getScreenshot()
-    const img = (res as any)?.image ?? (res as any)?.data
-    const size = Array.isArray((res as any)?.size) ? (res as any).size : null
+    const res: ScreenshotResponse = await deviceApi.getScreenshot()
+    const img = res.image ?? (typeof res.data === 'string' ? res.data : undefined)
+    const size = Array.isArray(res.size) ? res.size : null
     if (img && typeof img === 'string') {
       imageUrl.value = img
       if (props.mode === 'color_range') {
@@ -317,16 +316,18 @@ const handleOcr = async () => {
       Math.round(selection.w),
       Math.round(selection.h)
     ]
-    const res = await deviceApi.ocrText(roi)
-    const payload = (res as any)?.data ?? res
-    if (res && (res as any).success === false) {
-      throw new Error((res as any).message || 'OCR failed')
+    const res: OcrRecognitionResponse = await deviceApi.ocrText(roi)
+    const payload = res.data ?? {}
+    if (res.success === false) {
+      throw new Error(res.message || 'OCR failed')
     }
 
     const all = Array.isArray(payload?.all) ? payload.all : []
     const filtered = Array.isArray(payload?.filtered) ? payload.filtered : []
     const best = payload?.best ?? null
-    ocrCandidates.value = (filtered.length ? filtered : all).filter((item: any) => item && typeof item.text === 'string')
+    ocrCandidates.value = (filtered.length ? filtered : all).filter(
+      (item): item is OcrRecognitionCandidate => Boolean(item && typeof item.text === 'string')
+    )
     if (!ocrCandidates.value.length && best && typeof best.text === 'string') {
       ocrCandidates.value = [best]
     }

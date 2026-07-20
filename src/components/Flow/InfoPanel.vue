@@ -3,7 +3,7 @@ import {
   Bot, Loader2, Save, Bell, Settings as SettingsIcon, Bug, Database, Monitor,
   ChevronDown
 } from 'lucide-vue-next'
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { FlowBusinessData, TemplateImage } from '@/utils/flowTypes'
 import type { EdgeType } from '@/utils/flowOptions'
 import type { SpacingKey, LayoutAlgorithm, LayoutDirection } from '@/utils/flowTypes'
@@ -12,10 +12,20 @@ import { useInfoPanelVm } from '@/composables/viewModels/useInfoPanelVm'
 import ResourceSettingsModal from './Modals/ResourceSettingsModal.vue'
 import CreateResourceModal from './Modals/CreateResourceModal.vue'
 import AppSettingsModal from './Modals/AppSettingsModal.vue'
-import AnnouncementModal from './Modals/AnnouncementModal.vue'
 import DeviceManager from './InfoPanel/DeviceManager.vue'
 import ResourceManager from './InfoPanel/ResourceManager.vue'
 import AgentManager from './InfoPanel/AgentManager.vue'
+import { useAnnouncementState } from '@/features/changelog/useAnnouncementState'
+
+const AnnouncementModal = defineAsyncComponent(
+  () => import('./Modals/AnnouncementModal.vue')
+)
+const {
+  visible: showAnnouncement,
+  hasUnread: hasUnreadAnnouncement,
+  open: openAnnouncement,
+  close: handleAnnouncementClose
+} = useAnnouncementState(__APP_VERSION__)
 
 const props = defineProps<{
   tabs?: FlowTab[]
@@ -68,8 +78,6 @@ const {
   showCreateFileModal,
   createFileInitialPath,
   showAppSettings,
-  showAnnouncement,
-  hasUnreadAnnouncement,
   resourceManagerRef,
   deviceManagerRef,
   agentManagerRef,
@@ -91,7 +99,6 @@ const {
   openCreateResourceFile,
   saveResourceSettings,
   handleAppSettingsSave,
-  handleAnnouncementClose
 } = useInfoPanelVm(props, emit)
 
 type QuickPanel = 'device' | 'resource' | 'agent'
@@ -161,6 +168,7 @@ defineExpose({
           <div class="quick-panel-body">
             <DeviceManager
               ref="deviceManagerRef"
+              :active="openPanel === 'device'"
               :is-connected="appConfig.system.status === 'connected'"
               :snapshot="deviceStatus"
               @device-connected="handleDeviceConnected"
@@ -282,7 +290,7 @@ defineExpose({
           type="button"
           class="relative flex h-7 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-amber-200 hover:bg-amber-50 hover:text-amber-600"
           title="更新公告"
-          @click="showAnnouncement = true"
+          @click="openAnnouncement"
         >
           <Bell
             :size="14"
@@ -334,7 +342,7 @@ defineExpose({
       @save="handleAppSettingsSave"
     />
     <AnnouncementModal
-      :visible="showAnnouncement"
+      v-if="showAnnouncement"
       @close="handleAnnouncementClose"
     />
   </div>

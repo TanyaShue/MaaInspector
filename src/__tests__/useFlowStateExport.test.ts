@@ -28,7 +28,7 @@ const createStateExport = () => {
 }
 
 describe('useFlowStateExport dirty tracking', () => {
-  it('defers serialization until dirty state is consumed', () => {
+  it('tracks edits without serializing nodes on the reactive hot path', () => {
     const { state, getNodesData } = createStateExport()
 
     state.markDataChanged()
@@ -36,15 +36,17 @@ describe('useFlowStateExport dirty tracking', () => {
 
     expect(getNodesData).not.toHaveBeenCalled()
     expect(state.isDirty.value).toBe(true)
-    expect(getNodesData).toHaveBeenCalledTimes(1)
+    expect(getNodesData).not.toHaveBeenCalled()
   })
 
-  it('returns to clean when inverse edits restore the original content', () => {
-    const { state, getNodesData } = createStateExport()
+  it('keeps the revision dirty until a clean baseline is explicitly established', () => {
+    const { state } = createStateExport()
     state.clearDirty()
     state.markDataChanged()
-    getNodesData.mockReturnValue({ Start: { recognition: 'DirectHit' } })
 
+    expect(state.isDirty.value).toBe(true)
+
+    state.clearDirty()
     expect(state.isDirty.value).toBe(false)
   })
 

@@ -68,8 +68,6 @@ export function useInfoPanelVm(props: UseInfoPanelVmProps, emit: InfoPanelEmit) 
   const showCreateFileModal = ref(false)
   const createFileInitialPath = ref('')
   const showAppSettings = ref(false)
-  const showAnnouncement = ref(false)
-  const hasUnreadAnnouncement = ref(true)
 
   const resourceManagerRef = ref<ResourceManagerPort | null>(null)
   const deviceManagerRef = ref<DeviceManagerPort | null>(null)
@@ -290,11 +288,6 @@ export function useInfoPanelVm(props: UseInfoPanelVmProps, emit: InfoPanelEmit) 
     showAppSettings.value = false
   }
 
-  const handleAnnouncementClose = () => {
-    hasUnreadAnnouncement.value = false
-    showAnnouncement.value = false
-  }
-
   const handleCollapsedFileChange = (value: PropertyKey) => {
     const fileId = String(value)
     if (fileId === currentResourceFile.value) return
@@ -320,8 +313,6 @@ export function useInfoPanelVm(props: UseInfoPanelVmProps, emit: InfoPanelEmit) 
     showCreateFileModal,
     createFileInitialPath,
     showAppSettings,
-    showAnnouncement,
-    hasUnreadAnnouncement,
     resourceManagerRef,
     deviceManagerRef,
     agentManagerRef,
@@ -347,7 +338,6 @@ export function useInfoPanelVm(props: UseInfoPanelVmProps, emit: InfoPanelEmit) 
     restoreWorkspaceConnections,
     saveResourceSettings,
     handleAppSettingsSave,
-    handleAnnouncementClose,
     handleCollapsedFileChange
   }
 }

@@ -226,7 +226,7 @@ const openChildPicker = (
     referenceField: refKey || null,
     referenceLabel: refKey || null,
     referenceRect: refRectVal,
-    onConfirm: (val: any) => {
+    onConfirm: (val) => {
       if (Array.isArray(val) && val.length === 4) {
         if (key.includes('offset') && refKey) {
           const refRect = getChildValue(item, refKey, null) as number[] | null

@@ -126,7 +126,7 @@ watchEffect(() => {
 const normalizeProfiles = (profiles?: ResourceProfile[]): EditableProfile[] =>
   (profiles || []).map(p => ({
     ...p,
-    paths: Array.isArray((p as any).paths) ? [...(p as any).paths] : [],
+    paths: Array.isArray(p.paths) ? [...p.paths] : [],
     schema_path: typeof p.schema_path === 'string' ? p.schema_path : ''
   }))
 
@@ -139,18 +139,18 @@ const handleResourceLoad = async (): Promise<boolean> => {
     const res = await resourceApi.load(currentProfile.value)
     appConfig.setCustomCompletions(res.custom_completions)
 
-    const ok = (res as any)?.r ?? (res as any)?.success ?? true
+    const ok = res.r ?? res.success ?? true
     if (!ok) {
       internalStatus.value = 'failed'
-      internalMessage.value = (res as any)?.message || '资源加载失败'
+      internalMessage.value = res.message || '资源加载失败'
       return false
     }
 
     internalStatus.value = 'connected'
     internalMessage.value = '已就绪'
 
-    if ((res as any).list) {
-      availableFiles.value = (res.list || []) as ResourceFileInfo[]
+    if (res.list) {
+      availableFiles.value = res.list
 
       appConfig.markResourceLoaded()
 

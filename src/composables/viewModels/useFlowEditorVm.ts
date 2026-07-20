@@ -8,7 +8,13 @@ import { useDebugRunner } from '@/composables/useDebugRunner'
 import { resourceApi } from '@/services/api'
 import { useEditorModals } from '@/composables/useEditorModals'
 import { parseFileId } from '@/utils/fileId'
-import type { FlowEdge, FlowNode, LoadNodesPayload, TemplateImage } from '@/utils/flowTypes'
+import type {
+  FlowBusinessData,
+  FlowEdge,
+  FlowNode,
+  LoadNodesPayload,
+  TemplateImage
+} from '@/utils/flowTypes'
 import { isPipelineV2Nodes, toPipelineV1Nodes } from '@/utils/pipelineTransform'
 import { perfLog, perfMark, perfNow } from '@/utils/perfTrace'
 import {
@@ -510,7 +516,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
       const res = await resourceApi.getFileNodes(source, filename)
       const nodesRes = res?.nodes
       if (nodesRes) {
-        const rawNodes = nodesRes as Record<string, import('@/utils/flowTypes').FlowBusinessData>
+        const rawNodes = nodesRes as Record<string, FlowBusinessData>
         const fileVersion = isPipelineV2Nodes(rawNodes) ? 'V2' : 'V1'
         const processedNodes = fileVersion === 'V2' ? toPipelineV1Nodes(rawNodes) : rawNodes
 

@@ -21,15 +21,17 @@ let flushTimer: ReturnType<typeof setTimeout> | null = null
 let queue: FrontendLogEntry[] = []
 
 const consoleLevels: LogLevel[] = ['debug', 'info', 'log', 'warn', 'error']
+const runtimeConsole = globalThis.console
 
 export function installFrontendLogger() {
   if (installed) return
   installed = true
 
   for (const level of consoleLevels) {
-    const original = console[level]?.bind(console) as ((...args: unknown[]) => void) | undefined
+    const original = runtimeConsole[level]?.bind(runtimeConsole) as
+      ((...args: unknown[]) => void) | undefined
     originalConsole[level] = original
-    console[level] = (...args: unknown[]) => {
+    runtimeConsole[level] = (...args: unknown[]) => {
       if (isStaleTauriCallbackWarning(args)) return
       original?.(...args)
       enqueueLog(level, 'console', buildMessage(args), { args: serializeArgs(args) })
@@ -49,7 +51,7 @@ export function uninstallFrontendLogger() {
   if (!installed) return
   for (const level of consoleLevels) {
     const original = originalConsole[level]
-    if (original) console[level] = original as typeof console[typeof level]
+    if (original) runtimeConsole[level] = original as typeof runtimeConsole[typeof level]
   }
   installed = false
   originalConsole.debug = undefined

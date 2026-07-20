@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, type Component } from 'vue'
 import {
   Crosshair, Check, X, MousePointer2, ScanText, Loader2, ImageIcon,
   Copy, Maximize, ArrowLeftRight, Palette
@@ -8,7 +8,7 @@ import DeviceScreenImageList from './DeviceScreenImageList.vue'
 import DeviceScreenMaskEditor from './DeviceScreenMaskEditor.vue'
 
 interface Selection { x: number; y: number; w: number; h: number }
-interface GuideItem { icon: any; text: string }
+interface GuideItem { icon: Component; text: string }
 interface OcrCandidate { box?: number[]; score: number; text: string }
 import type { TemplateImage } from '@/utils/flowTypes'
 import type { DevicePickerMode } from '@/composables/useDeviceScreenPicker'
