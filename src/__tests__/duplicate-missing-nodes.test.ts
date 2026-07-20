@@ -340,4 +340,34 @@ describe('Duplicate Missing Nodes', () => {
 
     expect(getNodesData().NodeA.next).toEqual(['MissingNode', 'FixedNode'])
   })
+
+  it('should save a renamed node when Vue Flow uses a detached graph-node copy', async () => {
+    const { loadNodes, nodes, handleNodeUpdate, getNodesData } = useFlowGraph()
+
+    await loadNodes({
+      filename: 'test.json',
+      source: 'source',
+      nodes: {
+        OldName: { recognition: 'DirectHit', description: 'renamed node' },
+        Parent: { next: 'OldName' },
+      },
+    })
+    setVueFlowNodes(nodes.value.map(node => ({
+      ...node,
+      data: node.data
+        ? { ...node.data, data: node.data.data ? { ...node.data.data } : undefined }
+        : undefined,
+    })))
+
+    handleNodeUpdate({
+      oldId: 'OldName',
+      newId: 'NewName',
+      newType: 'DirectHit',
+    })
+
+    const exportedData = getNodesData()
+    expect(exportedData.OldName).toBeUndefined()
+    expect(exportedData.NewName).toMatchObject({ description: 'renamed node' })
+    expect(exportedData.Parent.next).toBe('NewName')
+  })
 })

@@ -277,7 +277,10 @@ export function useFlowGraph() {
    * @param payload - Object containing oldId, newId, newType, and newData
    */
   const handleNodeUpdate = ({ oldId, newId, newType, newData }: NodeUpdatePayload) => {
-    const node = findNode(oldId)
+    // Vue Flow keeps its own graph-node representation. It may not be the same
+    // object as the source `nodes` ref that is used when saving the pipeline.
+    // Always update the source node first so renames are serialized correctly.
+    const node = nodes.value.find(candidate => candidate.id === oldId) ?? findNode(oldId)
     if (!node) return
     const nodeMeta = ensureNodeMeta(node)
     if (!nodeMeta) return
@@ -357,7 +360,8 @@ export function useFlowGraph() {
         edges.value
           .filter((e) => e.target === oldId)
           .forEach((edge) => {
-            const sourceNode = findNode(edge.source)
+            const sourceNode =
+              nodes.value.find(candidate => candidate.id === edge.source) ?? findNode(edge.source)
             const sourceMeta = ensureNodeMeta(sourceNode)
             const portConfig = PORT_MAPPING[edge.sourceHandle || '']
             if (!sourceMeta?.data || !portConfig) return
@@ -379,7 +383,7 @@ export function useFlowGraph() {
         return
       }
 
-      if (findNode(newId)) {
+      if (nodes.value.some(candidate => candidate.id === newId) || findNode(newId)) {
         ElMessage.error(`ID "${newId}" already exists!`)
         return
       }
@@ -403,6 +407,7 @@ export function useFlowGraph() {
         const d = n.data.data as Record<string, unknown>
         ;(['next', 'on_error', 'timeout_next'] as const).forEach((f) => replaceField(d, f))
       })
+      nodes.value = nodes.value.slice()
       markNodeStructureChanged()
     }
 
