@@ -46,6 +46,7 @@ import type {
 const props = defineProps<{
   visible: boolean
   rootNodeId: string
+  contextKey?: string
   initialAlgorithm?: LayoutAlgorithm
   nodes: FlowNode[]
   edges: FlowEdge[]
@@ -56,6 +57,10 @@ const props = defineProps<{
   currentDirection: LayoutDirection
   lowMemoryMode?: boolean
   currentFilename: string
+  currentSource?: string
+  readOnly?: boolean
+  loading?: boolean
+  loadError?: string
   nodeNamePrefixEnabled: boolean
   nodeNamePrefixMode: NodeNamePrefixMode
   nodeNameCustomPrefix: string
@@ -96,6 +101,7 @@ const pendingInitialLayout = ref(false)
 const pendingNodePositions = new Map<string, XYPosition>()
 let layoutRequestId = 0
 let sessionRootNodeId = ''
+let sessionContextKey = ''
 let subCanvasDebugEnabled = false
 let lastViewportDebugAt = 0
 let lastPanelDebugAt = 0
@@ -588,6 +594,7 @@ const handleKeyDown = (e: KeyboardEvent) => {
   }
 
   if ((e.key === 'Delete' || e.key === 'Backspace') && !isEditableTarget(e.target)) {
+    if (props.readOnly) return
     e.preventDefault()
     const selectedNodes = getSelectedNodes.value
     const selectedEdges = getSelectedEdges.value
@@ -603,16 +610,20 @@ const handleKeyDown = (e: KeyboardEvent) => {
   }
 }
 
-watch(() => [props.visible, props.rootNodeId] as const, async ([visible, rootNodeId]) => {
+watch(
+  () => [props.visible, props.rootNodeId, props.contextKey] as const,
+  async ([visible, rootNodeId, contextKey]) => {
   if (!visible) {
     layoutRequestId++
     pendingInitialLayout.value = false
     sessionRootNodeId = ''
+    sessionContextKey = ''
     nodeDetailsController?.close()
     return
   }
-  if (sessionRootNodeId === rootNodeId) return
+  if (sessionRootNodeId === rootNodeId && sessionContextKey === contextKey) return
   sessionRootNodeId = rootNodeId
+  sessionContextKey = contextKey || rootNodeId
   activeAlgorithm.value = props.initialAlgorithm || props.currentAlgorithm
   activeSpacing.value = props.currentSpacing
   activeDirection.value = props.currentDirection
@@ -754,10 +765,10 @@ onBeforeUnmount(() => {
             />
             <div class="min-w-0">
               <div class="truncate text-sm font-semibold text-slate-700">
-                任务链子画布
+                {{ currentFilename }} · {{ rootNodeId }}
               </div>
               <div class="truncate font-mono text-[10px] text-slate-400">
-                #{{ rootNodeId }} · {{ visibleNodeIdList.length }} nodes
+                {{ currentSource || '当前资源' }} · 子节点 {{ Math.max(0, visibleNodeIdList.length - 1) }} 个
               </div>
             </div>
           </div>
@@ -846,8 +857,8 @@ onBeforeUnmount(() => {
             :max-zoom="4"
             :only-render-visible-elements="onlyRenderVisibleElements"
             :is-valid-connection="onValidateConnection"
-            :nodes-draggable="isFileLoaded"
-            :nodes-connectable="isFileLoaded"
+            :nodes-draggable="isFileLoaded && !readOnly"
+            :nodes-connectable="isFileLoaded && !readOnly"
             :elements-selectable="isFileLoaded"
             :selection-key-code="false"
             :multi-selection-key-code="null"
@@ -860,9 +871,9 @@ onBeforeUnmount(() => {
             @nodes-change="handleNodesChange"
             @node-drag-stop="handleNodeDragStop"
             @selection-drag-stop="handleNodeDragStop"
-            @pane-context-menu="onPaneContextMenu"
-            @node-context-menu="(params: NodeMouseEvent) => onNodeContextMenu(params)"
-            @edge-context-menu="(params: EdgeMouseEvent) => onEdgeContextMenu(params)"
+            @pane-context-menu="(event: MouseEvent) => { if (!readOnly) onPaneContextMenu(event) }"
+            @node-context-menu="(params: NodeMouseEvent) => { if (!readOnly) onNodeContextMenu(params) }"
+            @edge-context-menu="(params: EdgeMouseEvent) => { if (!readOnly) onEdgeContextMenu(params) }"
             @pane-click="closeMenu"
             @node-click="closeMenu"
             @edge-click="closeMenu"
@@ -891,6 +902,25 @@ onBeforeUnmount(() => {
             @close="closeMenu"
             @action="handleMenuAction"
           />
+          <div
+            v-if="loading || loadError"
+            class="absolute inset-0 z-20 flex items-center justify-center bg-slate-50/90 p-6 text-center"
+          >
+            <div class="max-w-md text-sm">
+              <div
+                v-if="loading"
+                class="text-slate-500"
+              >
+                正在加载 {{ currentFilename }}…
+              </div>
+              <div
+                v-else
+                class="text-rose-600"
+              >
+                {{ loadError }}
+              </div>
+            </div>
+          </div>
         </div>
 
         <div

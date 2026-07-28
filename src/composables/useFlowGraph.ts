@@ -4,6 +4,7 @@ import { useLayout, type LayoutOptions } from './useLayout'
 import { useImageManager } from './useImageManager'
 import { SPACING_OPTIONS, type EdgeType } from '@/utils/flowOptions'
 import { perfLog, perfNow } from '@/utils/perfTrace'
+import { buildFlowGraph } from '@/utils/flowGraphBuilder'
 import { ElMessage } from 'element-plus'
 import type {
   FlowBusinessData,
@@ -34,7 +35,6 @@ import {
 } from './flowGraph/useConnectionManager'
 import {
   getNodesData,
-  UNKNOWN_NODE_ID_PREFIX,
   setNodeStatus as setNodeStatusImpl,
   selectNodeById as selectNodeByIdImpl,
   createNodeObject,
@@ -443,88 +443,11 @@ export function useFlowGraph() {
   ) => {
     const totalStart = perfNow()
     imageManager.resetForFile({ source, filename })
-    const newNodes: FlowNode[] = []
-    const newEdges: FlowEdge[] = []
-    const createdNodeIds = new Set<string>()
-    const missingNodeCount = new Map<string, number>()
-    const createMissingNodeId = (targetId: string) => {
-      const count = (missingNodeCount.get(targetId) || 0) + 1
-      missingNodeCount.set(targetId, count)
-
-      let suffix = count
-      let candidate = `${UNKNOWN_NODE_ID_PREFIX}${targetId}__${suffix}`
-      while (createdNodeIds.has(candidate) || rawNodesData[candidate] !== undefined) {
-        suffix++
-        candidate = `${UNKNOWN_NODE_ID_PREFIX}${targetId}__${suffix}`
-      }
-      return candidate
-    }
-
-    for (const [nodeId, nodeContent] of Object.entries(rawNodesData)) {
-      newNodes.push(createNodeObject(nodeId, nodeContent))
-      createdNodeIds.add(nodeId)
-    }
-
-    for (const [nodeId, nodeContent] of Object.entries(rawNodesData)) {
-      const linkFields: Array<{
-        key: 'next' | 'on_error' | 'timeout_next'
-        handle: keyof typeof PORT_MAPPING
-      }> = [
-        { key: 'next', handle: 'source-a' },
-        { key: 'on_error', handle: 'source-c' },
-        { key: 'timeout_next', handle: 'source-c' },
-      ]
-
-      linkFields.forEach(({ key, handle }) => {
-        const targetVal = (nodeContent as Record<string, unknown>)[key]
-        if (targetVal) {
-          const rawTargets = Array.isArray(targetVal) ? targetVal : [targetVal]
-
-          rawTargets.forEach((rawTargetId, targetIndex) => {
-            if (!rawTargetId) return
-            const flags = parseLinkFlags(String(rawTargetId))
-            let targetId = flags.id || String(rawTargetId)
-            const isJumpBack = flags.jumpBack
-            const isAnchorTarget = flags.anchor
-
-            const isRealNode = rawNodesData[targetId] !== undefined
-
-            if (!isRealNode) {
-              const missingNodeId = createMissingNodeId(targetId)
-              newNodes.push(
-                createNodeObject(
-                  missingNodeId,
-                  isAnchorTarget
-                    ? ({ id: targetId, anchor: true } as FlowBusinessData)
-                    : ({ id: targetId } as FlowBusinessData),
-                  true,
-                  targetId
-                )
-              )
-              createdNodeIds.add(missingNodeId)
-              targetId = missingNodeId
-            }
-
-            const edgeStyle = getEdgeStyle(handle, isJumpBack, currentEdgeType.value)
-            newEdges.push({
-              id: `e-${nodeId}-${targetId}-${key}`,
-              source: nodeId,
-              target: targetId,
-              sourceHandle: handle,
-              targetHandle: 'in',
-              label: isJumpBack ? 'JumpBack' : key,
-              ...edgeStyle,
-              data: {
-                ...edgeStyle.data,
-                linkIndex: targetIndex,
-              },
-            })
-          })
-        }
-      })
-    }
-
-    normalizeLinksAcrossNodes(newNodes)
+    const { nodes: newNodes, edges: newEdges } = buildFlowGraph(
+      rawNodesData,
+      currentEdgeType.value,
+      createNodeObject
+    )
 
     nodes.value = newNodes
     edges.value = newEdges
