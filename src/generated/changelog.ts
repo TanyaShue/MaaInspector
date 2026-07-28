@@ -3,20 +3,37 @@ import type { ChangelogRelease } from '@/features/changelog/types'
 
 export const changelogContent = `# MaaInspector Changelog
 
-## Unreleased (2026-07-20)
+## Unreleased (2026-07-28)
+
+### Features
+- feat: 在子画布展示跨文件节点链 (bb57d70)
+- feat: 支持定位未知节点定义 (8cc118f)
 
 ### Fixes
-- fix: 修复警告以及性能优化 (64b1e1f)
+- fix: 去重搜索中的未知节点 (914ae7f)
+- fix: 区分节点调试执行模式 (72ff8bb)
+- fix: 调试前重载 MaaFW 资源 (b81668c)
+- fix: 统一调试前保存确认流程 (84c9212)
 `
 export const changelogReleases = [{
     "id":  "unreleased",
     "version":  "Unreleased",
-    "date":  "2026-07-20",
+    "date":  "2026-07-28",
     "sections":  [
+                     {
+                         "kind":  "features",
+                         "items":  [
+                                       "feat: 在子画布展示跨文件节点链 (bb57d70)",
+                                       "feat: 支持定位未知节点定义 (8cc118f)"
+                                   ]
+                     },
                      {
                          "kind":  "fixes",
                          "items":  [
-                                       "fix: 修复警告以及性能优化 (64b1e1f)"
+                                       "fix: 去重搜索中的未知节点 (914ae7f)",
+                                       "fix: 区分节点调试执行模式 (72ff8bb)",
+                                       "fix: 调试前重载 MaaFW 资源 (b81668c)",
+                                       "fix: 统一调试前保存确认流程 (84c9212)"
                                    ]
                      }
                  ]

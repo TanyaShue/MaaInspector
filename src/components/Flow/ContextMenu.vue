@@ -290,7 +290,8 @@ const menuItems = computed<MenuItem[]>(() => {
   <Teleport to="body">
     <div
       ref="mainMenuRef"
-      class="context-menu-surface fixed z-50 w-56 bg-white rounded-lg shadow-xl border border-slate-100 text-sm animate-in fade-in zoom-in-95 duration-100 origin-top-left font-sans select-none"
+      class="context-menu-surface fixed w-56 bg-white rounded-lg shadow-xl border border-slate-100 text-sm animate-in fade-in zoom-in-95 duration-100 origin-top-left font-sans select-none"
+      :class="mode === 'subcanvas' ? 'z-[90]' : 'z-50'"
       :style="{ top: `${adjustedPosition.y}px`, left: `${adjustedPosition.x}px` }"
       @contextmenu.prevent
     >

@@ -1,5 +1,5 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import ContextMenu from '@/components/Flow/ContextMenu.vue'
 import type { FlowNode } from '@/utils/flowTypes'
 
@@ -13,6 +13,23 @@ const targetNode: FlowNode = {
     data: { id: 'target', recognition: 'DirectHit' }
   }
 }
+
+const teleportTargets: HTMLElement[] = []
+
+const mountMenu = (props: InstanceType<typeof ContextMenu>['$props']) => {
+  const target = document.createElement('div')
+  document.body.appendChild(target)
+  teleportTargets.push(target)
+  return mount(ContextMenu, {
+    props,
+    attachTo: target,
+  })
+}
+
+afterEach(() => {
+  teleportTargets.splice(0).forEach(target => target.remove())
+  document.body.innerHTML = ''
+})
 
 describe('ContextMenu', () => {
   it('shows the sub-canvas entry on main node menus', () => {
@@ -91,5 +108,42 @@ describe('ContextMenu', () => {
 
     expect(parentItem!.classes()).toContain('submenu-opens-left')
     expect(wrapper.find('[data-testid="submenu-panel"]').classes()).toContain('right-full')
+  })
+
+  it('renders sub-canvas menus above the floating panel', () => {
+    const wrapper = mountMenu({
+      x: 20,
+      y: 30,
+      type: 'pane',
+      mode: 'subcanvas',
+    })
+
+    expect(document.body.querySelector('.context-menu-surface')?.classList.contains('z-[90]')).toBe(true)
+    expect(document.body.textContent).toContain('添加节点')
+    wrapper.unmount()
+  })
+
+  it('shows only the resource-opening action for an unknown node', () => {
+    const unknownNode: FlowNode = {
+      id: '__maa_unknown_node__target__1',
+      position: { x: 0, y: 0 },
+      data: {
+        id: '__maa_unknown_node__target__1',
+        type: 'Unknown',
+        data: { id: 'target' },
+      },
+    }
+    const wrapper = mountMenu({
+      x: 20,
+      y: 30,
+      type: 'node',
+      data: unknownNode,
+      mode: 'main',
+    })
+
+    expect(document.body.textContent).toContain('在子画布中打开对应节点')
+    expect(document.body.textContent).not.toContain('删除节点')
+    expect(document.body.textContent).not.toContain('调试该节点')
+    wrapper.unmount()
   })
 })
