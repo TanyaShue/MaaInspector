@@ -53,4 +53,28 @@ describe('NodeSearch', () => {
     expect(wrapper.text()).not.toContain('old-result')
     wrapper.unmount()
   })
+
+  it('shows one result for repeated unknown-node instances with the same business id', () => {
+    const wrapper = mount(NodeSearch, {
+      props: {
+        visible: true,
+        nodes: [
+          {
+            id: '__maa_unknown_node__missing-1',
+            position: { x: 0, y: 0 },
+            data: { id: '__maa_unknown_node__missing-1', type: 'Unknown', data: { id: 'shared-node' } }
+          },
+          {
+            id: '__maa_unknown_node__missing-2',
+            position: { x: 20, y: 20 },
+            data: { id: '__maa_unknown_node__missing-2', type: 'Unknown', data: { id: 'shared-node' } }
+          }
+        ]
+      }
+    })
+
+    expect(wrapper.findAll('.search-results')).toHaveLength(0)
+    expect(wrapper.text().match(/shared-node/g)).toHaveLength(1)
+    wrapper.unmount()
+  })
 })

@@ -3,6 +3,7 @@ import {ref, computed, watch, onMounted, onUnmounted} from 'vue'
 import {X, Search, MapPin, Regex, FileJson, Loader2, ArrowRightCircle} from 'lucide-vue-next'
 import {resourceApi} from '@/services/api'
 import type { FlowNode } from '@/utils/flowTypes'
+import { dedupeUnknownNodeInstances, getNodeBusinessId } from '@/utils/nodeIdentity'
 
 interface RemoteResult {
   node_id: string
@@ -70,10 +71,10 @@ const localResults = computed(() => {
   }
   
   // 按节点名称排序
-  return [...filtered]
+  return dedupeUnknownNodeInstances(filtered)
     .sort((a, b) => {
-      const aId = (a.data?.data?.id || a.id).toLowerCase()
-      const bId = (b.data?.data?.id || b.id).toLowerCase()
+      const aId = getNodeBusinessId(a).toLowerCase()
+      const bId = getNodeBusinessId(b).toLowerCase()
       return aId.localeCompare(bId)
     })
     .slice(0, 15)
@@ -163,7 +164,7 @@ watch([searchQuery, useRegex], () => {
 
 
 // --- 辅助函数 ---
-const getNodeDisplayId = (node: FlowNode) => node.data?.data?.id || node.id
+const getNodeDisplayId = getNodeBusinessId
 const getNodeTypeLabel = (type?: string) => {
   const typeMap = {
     'DirectHit': '通用匹配',
