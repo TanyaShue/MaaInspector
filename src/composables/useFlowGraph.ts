@@ -51,7 +51,7 @@ import { useViewportSync } from './flowGraph/useViewportSync'
  * Creates and manages the flow graph state, providing node/edge manipulation,
  * layout, connection handling, and state export/restore capabilities.
  */
-export function useFlowGraph() {
+export function useFlowGraph(flowId?: string) {
   const nodes = ref<FlowNode[]>([])
   const edges = ref<FlowEdge[]>([])
   const currentEdgeType = ref<EdgeType>('smoothstep')
@@ -69,13 +69,13 @@ export function useFlowGraph() {
 
   const imageManager = useImageManager()
 
-  const { findNode, fitView, updateNodeInternals } = useVueFlow()
+  const { findNode, fitView, updateNodeInternals } = useVueFlow(flowId)
   const onlyRenderVisibleElements = ref(true)
   const viewportSync = useViewportSync({
     onlyRenderVisibleElements,
     updateNodeInternals,
   })
-  const { elkLayout, applyLayoutOnRefs, applyOrderedChainLayout } = useLayout()
+  const { elkLayout, applyLayoutOnRefs, applyOrderedChainLayout } = useLayout(flowId)
 
   const {
     isDirty,

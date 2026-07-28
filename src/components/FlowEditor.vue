@@ -13,12 +13,9 @@ import { useFlowEditorVm } from '@/composables/viewModels/useFlowEditorVm'
 import { useEdgeRenderWindow } from '@/composables/flowGraph/useEdgeRenderWindow'
 import { syncNodePositions } from '@/utils/editorInteraction'
 import { collectReachableNodeIds, filterSubgraphEdges } from '@/utils/flowSubgraph'
-import type { FlowBusinessData, FlowEdge, FlowNode } from '@/utils/flowTypes'
+import type { FlowNode } from '@/utils/flowTypes'
 import type { FlowEditorStatus } from '@/composables/viewModels/types'
 import type { DebugMode } from '@/utils/debugMode'
-import { resourceApi } from '@/services/api'
-import { buildFlowGraph } from '@/utils/flowGraphBuilder'
-import { isPipelineV2Nodes, toPipelineV1Nodes } from '@/utils/pipelineTransform'
 
 const NodeSearch = defineAsyncComponent(() => import('./Flow/NodeSearch.vue'))
 const SaveConfirmModal = defineAsyncComponent(() => import('./Flow/Modals/SaveConfirmModal.vue'))
@@ -116,58 +113,11 @@ const replaceSubCanvasNodes = (nextNodes: FlowNode[]) => {
   markNodeStructureChanged()
 }
 
-const externalSubCanvasNodes = ref<FlowNode[]>([])
-const externalSubCanvasEdges = ref<FlowEdge[]>([])
-const externalSubCanvasLoading = ref(false)
-const externalSubCanvasError = ref('')
-let externalGraphRequest = 0
-
-const subCanvasNodes = computed(() =>
-  subCanvas.value.external ? externalSubCanvasNodes.value : nodes.value
-)
-const subCanvasEdges = computed(() =>
-  subCanvas.value.external ? externalSubCanvasEdges.value : edges.value
-)
 const subCanvasFilename = computed(() => subCanvas.value.filename || currentFilename.value)
 const subCanvasSource = computed(() => subCanvas.value.source || currentSource.value)
 const subCanvasContextKey = computed(() =>
-  `${subCanvasSource.value}::${subCanvasFilename.value}::${subCanvas.value.nodeId}::${externalSubCanvasLoading.value ? 'loading' : subCanvasNodes.value.length}`
+  `${subCanvasSource.value}::${subCanvasFilename.value}::${subCanvas.value.nodeId}`
 )
-
-watch(subCanvas, async (state) => {
-  const request = ++externalGraphRequest
-  externalSubCanvasNodes.value = []
-  externalSubCanvasEdges.value = []
-  externalSubCanvasError.value = ''
-  if (!state.visible || !state.external || !state.source || !state.filename) return
-
-  externalSubCanvasLoading.value = true
-  try {
-    const response = await resourceApi.getFileNodes<Record<string, FlowBusinessData>>(
-      state.source,
-      state.filename
-    )
-    if (request !== externalGraphRequest) return
-    const responseNodes = response.nodes || {}
-    const rawNodes = isPipelineV2Nodes(responseNodes)
-      ? toPipelineV1Nodes(responseNodes)
-      : responseNodes
-    if (!rawNodes[state.nodeId]) {
-      externalSubCanvasError.value = `文件中不存在节点 ${state.nodeId}`
-      return
-    }
-    const graph = buildFlowGraph(rawNodes, currentEdgeType.value, createNodeObject)
-    externalSubCanvasNodes.value = graph.nodes
-    externalSubCanvasEdges.value = graph.edges
-  } catch (error) {
-    if (request === externalGraphRequest) {
-      externalSubCanvasError.value =
-        `加载节点失败: ${error instanceof Error ? error.message : String(error)}`
-    }
-  } finally {
-    if (request === externalGraphRequest) externalSubCanvasLoading.value = false
-  }
-}, { deep: true })
 
 const editorRootRef = ref<HTMLElement | null>(null)
 const focusedTaskChainNodeIds = computed(() => {
@@ -438,12 +388,13 @@ onBeforeUnmount(() => {
       @skip="handleSkipDeleteImages()"
     />
     <SubCanvasPanel
+      :key="subCanvas.external ? `resource:${subCanvasContextKey}` : 'current-document'"
       :visible="subCanvas.visible"
       :root-node-id="subCanvas.nodeId"
       :context-key="subCanvasContextKey"
       :initial-algorithm="subCanvas.algorithm"
-      :nodes="subCanvasNodes"
-      :edges="subCanvasEdges"
+      :nodes="nodes"
+      :edges="edges"
       :node-types-object="nodeTypesObject"
       :current-edge-type="currentEdgeType"
       :current-spacing="currentSpacing"
@@ -453,8 +404,6 @@ onBeforeUnmount(() => {
       :current-filename="subCanvasFilename"
       :current-source="subCanvasSource"
       :read-only="subCanvas.external"
-      :loading="externalSubCanvasLoading"
-      :load-error="externalSubCanvasError"
       :node-name-prefix-enabled="nodeNamePrefixEnabled"
       :node-name-prefix-mode="nodeNamePrefixMode"
       :node-name-custom-prefix="nodeNameCustomPrefix"

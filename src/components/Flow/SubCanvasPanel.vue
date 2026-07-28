@@ -6,6 +6,7 @@ import { Maximize2, Move, RefreshCw, X } from 'lucide-vue-next'
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import ContextMenu from './ContextMenu.vue'
 import { useEditorActions } from '@/composables/useEditorActions'
+import { useResourceDocumentSession } from '@/composables/useResourceDocumentSession'
 import { useFloatingPanel } from '@/composables/useFloatingPanel'
 import { useLayout } from '@/composables/useLayout'
 import { useViewportSync } from '@/composables/flowGraph/useViewportSync'
@@ -59,8 +60,6 @@ const props = defineProps<{
   currentFilename: string
   currentSource?: string
   readOnly?: boolean
-  loading?: boolean
-  loadError?: string
   nodeNamePrefixEnabled: boolean
   nodeNamePrefixMode: NodeNamePrefixMode
   nodeNameCustomPrefix: string
@@ -89,6 +88,10 @@ const emit = defineEmits<{
 }>()
 
 const flowId = `sub-canvas-${Math.random().toString(36).slice(2)}`
+const detachedGraph = props.readOnly ? useResourceDocumentSession(flowId) : null
+const documentNodes = computed(() => detachedGraph?.nodes.value ?? props.nodes)
+const documentEdges = computed(() => detachedGraph?.edges.value ?? props.edges)
+const documentImageManager = detachedGraph?.imageManager ?? props.imageManager
 const nodeDetailsController = useNodeDetailsController()
 const sessionNodeIds = ref<Set<string>>(new Set())
 const localNodeState = ref<Record<string, Partial<FlowNode>>>({})
@@ -149,18 +152,22 @@ const canvasRootRef = ref<HTMLElement | null>(null)
 const baseVisibleNodeIds = ref<Set<string>>(new Set())
 const edgeStructureKey = computed(() => {
   if (!props.visible) return ''
-  return props.edges.map(edge => `${edge.id}:${edge.source}:${edge.target}`).join('|')
+  return documentEdges.value.map(edge => `${edge.id}:${edge.source}:${edge.target}`).join('|')
 })
 
 const refreshVisibleNodeIds = () => {
-  const reachableIds = collectReachableNodeIds(props.rootNodeId, props.nodes, props.edges)
+  const reachableIds = collectReachableNodeIds(
+    props.rootNodeId,
+    documentNodes.value,
+    documentEdges.value
+  )
   baseVisibleNodeIds.value = reachableIds
   if (!props.visible) return
 
   const viewIds = new Set([...reachableIds, ...sessionNodeIds.value])
   const nextLocalState = { ...localNodeState.value }
   let seeded = false
-  props.nodes.forEach(node => {
+  documentNodes.value.forEach(node => {
     if (!viewIds.has(node.id) || nextLocalState[node.id]) return
     nextLocalState[node.id] = { position: { ...node.position } }
     seeded = true
@@ -256,12 +263,12 @@ const removeMainEdges = (edgeIds: string[]) => {
 const removeMainNodes = (nodeIds: Set<string>) => {
   if (nodeIds.size === 0) return
 
-  const edgeIds = props.edges
+  const edgeIds = documentEdges.value
     .filter(edge => nodeIds.has(edge.source) || nodeIds.has(edge.target))
     .map(edge => edge.id)
   removeMainEdges(edgeIds)
-  emit('replace-nodes', props.nodes.filter(node => !nodeIds.has(node.id)))
-  nodeIds.forEach(id => props.imageManager.removeNodeState?.(id))
+  emit('replace-nodes', documentNodes.value.filter(node => !nodeIds.has(node.id)))
+  nodeIds.forEach(id => documentImageManager.removeNodeState?.(id))
   sessionNodeIds.value = new Set([...sessionNodeIds.value].filter(id => !nodeIds.has(id)))
 
   const nextLocalState = { ...localNodeState.value }
@@ -279,7 +286,7 @@ const refreshSubCanvasRenderWindow = async (nodeIds: string[]) => {
 }
 
 const subNodes = computed<FlowNode[]>({
-  get: () => props.nodes
+  get: () => documentNodes.value
     .filter(node => visibleNodeIds.value.has(node.id))
     .map(node => {
       const local = localNodeState.value[node.id] || {}
@@ -293,7 +300,7 @@ const subNodes = computed<FlowNode[]>({
     }),
   set: (nextNodes) => {
     const { addedNodes, removedVisibleIds, nextLocalState } = resolveSubgraphNodeChanges({
-      mainNodes: props.nodes,
+      mainNodes: documentNodes.value,
       nextNodes,
       visibleNodeIds: visibleNodeIds.value,
       localNodeState: localNodeState.value
@@ -305,7 +312,7 @@ const subNodes = computed<FlowNode[]>({
 
     if (addedNodes.length > 0) {
       sessionNodeIds.value = new Set([...sessionNodeIds.value, ...addedNodes.map(node => node.id)])
-      const mergedNodes = [...props.nodes, ...addedNodes]
+      const mergedNodes = [...documentNodes.value, ...addedNodes]
       emit('replace-nodes', mergedNodes)
       props.markDataChanged()
     }
@@ -316,7 +323,7 @@ const subNodes = computed<FlowNode[]>({
   }
 })
 
-const subEdges = computed<FlowEdge[]>(() => filterSubgraphEdges(props.edges, visibleNodeIds.value)
+const subEdges = computed<FlowEdge[]>(() => filterSubgraphEdges(documentEdges.value, visibleNodeIds.value)
   .map(edge => projectSubgraphEdge(edge, activeEdgeType.value)))
 const subNodeStructureVersion = ref(0)
 watch(visibleNodeIdList, () => {
@@ -379,7 +386,7 @@ const handleNodeUpdate = (payload: NodeUpdatePayload) => {
 
 provide('currentFilename', computed(() => props.currentFilename))
 provide('currentDirection', activeDirection)
-provide('imageManager', props.imageManager)
+provide('imageManager', documentImageManager)
 provide('updateNode', handleNodeUpdate)
 
 const performVisibleChainLayout = async (
@@ -514,7 +521,7 @@ const editorActions = useEditorActions({
   updateNodeInternals,
   screenToFlowCoordinate,
   getSelectedNodes,
-  imageManager: props.imageManager,
+  imageManager: documentImageManager,
   snapshotState: () => {},
   onDebugNode: props.handleDebugNode,
   onOpenDebugPanel: props.handleOpenDebugPanel,
@@ -610,6 +617,40 @@ const handleKeyDown = (e: KeyboardEvent) => {
   }
 }
 
+const loadDetachedDocument = async () => {
+  if (
+    !detachedGraph ||
+    !props.visible ||
+    !props.currentSource ||
+    !props.currentFilename
+  ) {
+    return
+  }
+
+  const loaded = await detachedGraph.load({
+    source: props.currentSource,
+    filename: props.currentFilename,
+    rootNodeId: props.rootNodeId,
+  })
+  if (!loaded) return
+  refreshVisibleNodeIds()
+  await nextTick()
+  await layoutVisibleChain(activeAlgorithm.value)
+}
+
+watch(
+  () => [
+    props.visible,
+    props.currentSource,
+    props.currentFilename,
+    props.contextKey,
+  ] as const,
+  () => {
+    if (detachedGraph) void loadDetachedDocument()
+  },
+  { immediate: true }
+)
+
 watch(
   () => [props.visible, props.rootNodeId, props.contextKey] as const,
   async ([visible, rootNodeId, contextKey]) => {
@@ -636,7 +677,7 @@ watch(
   pendingInitialLayout.value = true
   await nextTick()
   collectSubCanvasDebugSnapshot('panel-open')
-})
+}, { immediate: true })
 
 const runInitialLayout = async () => {
   if (!props.visible || !pendingInitialLayout.value) return
@@ -903,12 +944,12 @@ onBeforeUnmount(() => {
             @action="handleMenuAction"
           />
           <div
-            v-if="loading || loadError"
+            v-if="detachedGraph?.loading.value || detachedGraph?.loadError.value"
             class="absolute inset-0 z-20 flex items-center justify-center bg-slate-50/90 p-6 text-center"
           >
             <div class="max-w-md text-sm">
               <div
-                v-if="loading"
+                v-if="detachedGraph?.loading.value"
                 class="text-slate-500"
               >
                 正在加载 {{ currentFilename }}…
@@ -917,7 +958,7 @@ onBeforeUnmount(() => {
                 v-else
                 class="text-rose-600"
               >
-                {{ loadError }}
+                {{ detachedGraph?.loadError.value }}
               </div>
             </div>
           </div>
