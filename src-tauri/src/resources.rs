@@ -227,6 +227,43 @@ mod tests {
     }
 
     #[test]
+    fn finds_all_exact_node_definitions_without_substring_matches() {
+        let first = tempdir().expect("create first resource");
+        let second = tempdir().expect("create second resource");
+        fs::create_dir_all(first.path().join("pipeline")).expect("create first pipeline");
+        fs::create_dir_all(second.path().join("pipeline")).expect("create second pipeline");
+        let mut manager = ResourcesManager::new(
+            vec![
+                first.path().to_string_lossy().to_string(),
+                second.path().to_string_lossy().to_string(),
+            ],
+            first.path().join("backup"),
+        );
+
+        manager
+            .save_nodes(
+                &first.path().to_string_lossy(),
+                "first.json",
+                serde_json::json!({
+                    "shared": { "recognition": "OCR" },
+                    "shared-suffix": { "recognition": "OCR" }
+                }),
+            )
+            .expect("save first nodes");
+        manager
+            .save_nodes(
+                &second.path().to_string_lossy(),
+                "second.json",
+                serde_json::json!({ "shared": { "recognition": "TemplateMatch" } }),
+            )
+            .expect("save second nodes");
+
+        let results = manager.find_nodes_by_id("shared");
+        assert_eq!(results.len(), 2);
+        assert!(results.iter().all(|item| item["node_id"] == "shared"));
+    }
+
+    #[test]
     fn exposes_all_normalized_resource_paths_for_framework_reload() {
         let first = tempdir().expect("create first resource");
         let second = tempdir().expect("create second resource");
@@ -880,6 +917,46 @@ impl ResourcesManager {
         });
 
         results.truncate(max_results);
+        results
+    }
+
+    pub fn find_nodes_by_id(&self, node_id: &str) -> Vec<serde_json::Value> {
+        let mut results = self
+            .node_index
+            .iter()
+            .filter_map(|entry| {
+                let display_id = entry
+                    .data
+                    .as_object()
+                    .and_then(|object| object.get("id"))
+                    .and_then(|value| value.as_str())
+                    .unwrap_or(&entry.node_id);
+                if entry.node_id != node_id && display_id != node_id {
+                    return None;
+                }
+
+                Some(serde_json::json!({
+                    "filename": entry.filename,
+                    "source": entry.resource_path.to_string_lossy().to_string(),
+                    "node_id": entry.node_id,
+                    "display_id": display_id,
+                }))
+            })
+            .collect::<Vec<_>>();
+
+        results.sort_by(|left, right| {
+            let left_key = (
+                left.get("source").and_then(|value| value.as_str()).unwrap_or(""),
+                left.get("filename").and_then(|value| value.as_str()).unwrap_or(""),
+                left.get("node_id").and_then(|value| value.as_str()).unwrap_or(""),
+            );
+            let right_key = (
+                right.get("source").and_then(|value| value.as_str()).unwrap_or(""),
+                right.get("filename").and_then(|value| value.as_str()).unwrap_or(""),
+                right.get("node_id").and_then(|value| value.as_str()).unwrap_or(""),
+            );
+            left_key.cmp(&right_key)
+        });
         results
     }
 

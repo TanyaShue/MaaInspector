@@ -8,6 +8,7 @@ import ContextMenu from './Flow/ContextMenu.vue'
 import SubCanvasPanel from './Flow/SubCanvasPanel.vue'
 import NodeDetailsHost from './Flow/NodeDetailsHost.vue'
 import TaskChainPlaceholderNode from './Flow/TaskChainPlaceholderNode.vue'
+import NodeLocationSelectModal from './Flow/Modals/NodeLocationSelectModal.vue'
 import { useFlowEditorVm } from '@/composables/viewModels/useFlowEditorVm'
 import { useEdgeRenderWindow } from '@/composables/flowGraph/useEdgeRenderWindow'
 import { syncNodePositions } from '@/utils/editorInteraction'
@@ -89,6 +90,11 @@ const {
   handleSkipDeleteImages,
   subCanvas,
   closeSubCanvas,
+  nodeLocationCandidates,
+  pendingReferencedNodeId,
+  nodeLocationSelectVisible,
+  closeNodeLocationSelect,
+  openResolvedResourceNode,
   editorPort,
   markNodeStructureChanged,
   taskChainFocusId,
@@ -405,6 +411,13 @@ onBeforeUnmount(() => {
       @close="closeSubCanvas"
       @root-renamed="(nodeId) => { subCanvas.nodeId = nodeId }"
       @replace-nodes="replaceSubCanvasNodes"
+    />
+    <NodeLocationSelectModal
+      :visible="nodeLocationSelectVisible"
+      :node-id="pendingReferencedNodeId"
+      :candidates="nodeLocationCandidates"
+      @close="closeNodeLocationSelect"
+      @select="openResolvedResourceNode"
     />
   </div>
 </template>

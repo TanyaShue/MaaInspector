@@ -1,10 +1,14 @@
 import { ref } from 'vue'
 import type { LayoutAlgorithm } from '@/utils/flowTypes'
+import type { ResourceNodeLocation } from '@/utils/resourceNode'
 
 export interface SubCanvasState {
   visible: boolean
   nodeId: string
   algorithm?: LayoutAlgorithm
+  source?: string
+  filename?: string
+  external?: boolean
 }
 
 /**
@@ -30,6 +34,16 @@ export function useEditorModals() {
     subCanvas.value = { visible: true, nodeId, algorithm }
   }
 
+  const openResourceSubCanvas = (location: ResourceNodeLocation) => {
+    subCanvas.value = {
+      visible: true,
+      nodeId: location.nodeId,
+      source: location.source,
+      filename: location.filename,
+      external: true,
+    }
+  }
+
   const closeSubCanvas = () => {
     subCanvas.value = { visible: false, nodeId: '' }
   }
@@ -40,6 +54,7 @@ export function useEditorModals() {
     openClearCanvasModal,
     closeClearCanvasModal,
     openSubCanvas,
+    openResourceSubCanvas,
     closeSubCanvas,
   }
 }

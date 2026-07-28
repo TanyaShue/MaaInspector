@@ -2,7 +2,7 @@
 import {computed, ref, onMounted, nextTick, type Component} from 'vue'
 import {
   Trash2, Copy, ClipboardPaste, PlusCircle, RefreshCw, XCircle, ChevronRight,
-  Check, Bug, Scissors, Search, FolderClosed, Repeat, ArrowRightCircle, Move, Eye
+  Check, Bug, Scissors, Search, FolderClosed, Repeat, ArrowRightCircle, Move, Eye, ExternalLink
 } from 'lucide-vue-next'
 import { recognitionMenuOptions } from '@/utils/node-config'
 import { 
@@ -11,6 +11,7 @@ import {
   type OptionItem 
 } from '@/utils/flowOptions'
 import type { SpacingKey, LayoutAlgorithm, LayoutDirection, MenuType, FlowNode, FlowEdge } from '@/utils/flowTypes'
+import { isUnknownNode } from '@/utils/nodeIdentity'
 
 type SubmenuItem = OptionItem<string | EdgeType | SpacingKey | LayoutAlgorithm | LayoutDirection> & { color?: string }
 
@@ -127,6 +128,16 @@ const updatePosition = () => {
 
 const menuItems = computed<MenuItem[]>(() => {
   if (props.type === 'node') {
+    if (isUnknownNode(props.data as FlowNode | null)) {
+      return [{
+        type: 'item',
+        label: '在子画布中打开对应节点',
+        action: 'open_referenced_node',
+        icon: ExternalLink,
+        color: 'text-indigo-600'
+      }]
+    }
+
     const items: MenuItem[] = [
       {type: 'item', label: '调试该节点', action: 'debug_this_node', icon: Bug, color: 'text-amber-600'},
       {type: 'item', label: '仅识别该节点', action: 'debug_this_node_reco', icon: Bug, color: 'text-amber-600'},

@@ -17,7 +17,7 @@ use commands::{
     device_connect_win32, device_screenshot, devtools_open, log_frontend_batch, log_get_dir,
     log_read_tail, resource_check_unused_images, resource_create_file, resource_get_file_nodes,
     resource_get_templates, resource_load, resource_process_images, resource_save_file_nodes,
-    resource_search_nodes, system_get_backup_dir, system_import_interface, system_init,
+    resource_find_nodes_by_id, resource_search_nodes, system_get_backup_dir, system_import_interface, system_init,
     system_open_backup_dir, system_open_log_dir, system_pick_folder, system_save_config,
     system_search_devices, system_set_storage,
 };
@@ -182,6 +182,7 @@ pub fn run() {
             resource_save_file_nodes,
             resource_create_file,
             resource_search_nodes,
+            resource_find_nodes_by_id,
             resource_get_templates,
             resource_check_unused_images,
             resource_process_images,

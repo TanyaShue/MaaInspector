@@ -24,6 +24,11 @@ import {
 } from '@/utils/editorInteraction'
 import { provideNodeDetailsController } from '@/composables/useNodeDetailsController'
 import { getEdgeStyle } from '@/composables/flowGraph/useConnectionManager'
+import { getNodeBusinessId } from '@/utils/nodeIdentity'
+import {
+  parseResourceNodeLocations,
+  type ResourceNodeLocation,
+} from '@/utils/resourceNode'
 import type { FlowEditorPort, FlowEditorStatus } from './types'
 import { useAppConfigStore } from '@/stores/appConfig'
 import type { DebugMode } from '@/utils/debugMode'
@@ -99,8 +104,51 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
   const pendingFocusNodeId = ref<string | null>(null)
   const taskChainFocusId = ref<string | null>(null)
   const lastPointerPosition = ref<{ x: number; y: number } | null>(null)
-  const { showClearCanvasModal, subCanvas, openClearCanvasModal, openSubCanvas, closeSubCanvas } =
+  const {
+    showClearCanvasModal,
+    subCanvas,
+    openClearCanvasModal,
+    openSubCanvas,
+    openResourceSubCanvas,
+    closeSubCanvas,
+  } =
     useEditorModals()
+  const nodeLocationCandidates = ref<ResourceNodeLocation[]>([])
+  const pendingReferencedNodeId = ref('')
+  const nodeLocationSelectVisible = computed(() => nodeLocationCandidates.value.length > 1)
+
+  const openResolvedResourceNode = (location: ResourceNodeLocation) => {
+    nodeLocationCandidates.value = []
+    pendingReferencedNodeId.value = ''
+    openResourceSubCanvas(location)
+  }
+
+  const closeNodeLocationSelect = () => {
+    nodeLocationCandidates.value = []
+    pendingReferencedNodeId.value = ''
+  }
+
+  const handleOpenReferencedNode = async (node: FlowNode) => {
+    const nodeId = getNodeBusinessId(node)
+    pendingReferencedNodeId.value = nodeId
+    try {
+      const response = await resourceApi.findNodesById(nodeId)
+      const locations = parseResourceNodeLocations(response)
+      if (locations.length === 0) {
+        pendingReferencedNodeId.value = ''
+        ElMessage.warning(`未在已加载资源中找到节点 ${nodeId}`)
+        return
+      }
+      if (locations.length === 1) {
+        openResolvedResourceNode(locations[0])
+        return
+      }
+      nodeLocationCandidates.value = locations
+    } catch (error) {
+      pendingReferencedNodeId.value = ''
+      ElMessage.error(`查找节点失败: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
 
   provide('currentFilename', currentFilename)
   provide('currentDirection', currentDirection)
@@ -170,6 +218,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     onDebugNode: debugRunner.handleDebugNode,
     onOpenDebugPanel: (payload) => options.emit('open-debug-panel', payload),
     onOpenSubCanvas: (payload) => openSubCanvas(payload.nodeId, payload.algorithm),
+    onOpenReferencedNode: handleOpenReferencedNode,
     onViewTaskChain: (nodeId) => {
       nodeDetailsController.close()
       taskChainFocusId.value = nodeId
@@ -653,6 +702,11 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     handleSkipDeleteImages,
     subCanvas,
     closeSubCanvas,
+    nodeLocationCandidates,
+    pendingReferencedNodeId,
+    nodeLocationSelectVisible,
+    closeNodeLocationSelect,
+    openResolvedResourceNode,
     editorPort,
     markNodeStructureChanged,
     taskChainFocusId,

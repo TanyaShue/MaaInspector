@@ -25,4 +25,23 @@ describe('useEditorModals', () => {
     modals.closeSubCanvas()
     expect(modals.subCanvas.value).toEqual({ visible: false, nodeId: '' })
   })
+
+  it('opens a resource-backed sub-canvas without changing the main file', () => {
+    const modals = useEditorModals()
+
+    modals.openResourceSubCanvas({
+      source: 'resource-a',
+      filename: 'remote.json',
+      nodeId: 'shared',
+      displayId: 'shared',
+    })
+
+    expect(modals.subCanvas.value).toEqual({
+      visible: true,
+      nodeId: 'shared',
+      source: 'resource-a',
+      filename: 'remote.json',
+      external: true,
+    })
+  })
 })

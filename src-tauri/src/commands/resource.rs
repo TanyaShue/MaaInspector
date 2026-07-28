@@ -359,6 +359,18 @@ pub async fn resource_search_nodes(
     .await
 }
 
+/// Find every exact definition of a node across loaded resources.
+#[tauri::command]
+pub async fn resource_find_nodes_by_id(
+    resources_manager: State<'_, ResourcesManagerState>,
+    node_id: String,
+) -> Result<serde_json::Value, String> {
+    with_manager(resources_manager.inner().clone(), move |manager| {
+        Ok(serde_json::json!({ "results": manager.find_nodes_by_id(&node_id) }))
+    })
+    .await
+}
+
 /// Get template images for nodes
 #[tauri::command]
 pub async fn resource_get_templates(

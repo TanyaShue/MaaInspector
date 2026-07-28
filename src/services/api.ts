@@ -454,6 +454,10 @@ export const resourceApi = {
     })
   },
 
+  findNodesById: async (nodeId: string): Promise<ApiResponse> => {
+    return invokeCommand('resource_find_nodes_by_id', { nodeId })
+  },
+
   checkUnusedImages: async (
     source: string,
     currentFilename: string,

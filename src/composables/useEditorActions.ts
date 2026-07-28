@@ -79,6 +79,7 @@ export interface EditorActionsDeps {
   snapshotState?: () => void
   requestClearCanvas?: () => void
   onOpenSubCanvas?: (payload: { nodeId: string; algorithm?: LayoutAlgorithm }) => void
+  onOpenReferencedNode?: (node: FlowNode) => void
   onViewTaskChain?: (nodeId: string) => void
   onDebugNode: (nodeId: string, mode: DebugMode) => void
   onOpenDebugPanel: (payload?: { nodeId?: string; mode?: DebugMode }) => void
@@ -114,6 +115,7 @@ export function useEditorActions(deps: EditorActionsDeps) {
     snapshotState,
     requestClearCanvas,
     onOpenSubCanvas,
+    onOpenReferencedNode,
     onViewTaskChain,
     onDebugNode,
     onOpenDebugPanel,
@@ -365,6 +367,9 @@ export function useEditorActions(deps: EditorActionsDeps) {
       case 'view_task_chain':
         if (type === 'node' && isFlowNodeData(data) && data.id)
           onViewTaskChain?.(String(data.id))
+        break
+      case 'open_referenced_node':
+        if (type === 'node' && isFlowNodeData(data)) onOpenReferencedNode?.(data)
         break
       case 'edit':
         break
