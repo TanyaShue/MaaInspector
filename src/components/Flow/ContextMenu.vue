@@ -46,6 +46,7 @@ const props = defineProps<{
   debugPanelVisible?: boolean
   searchVisible?: boolean
   mode?: 'main' | 'subcanvas'
+  allowDebug?: boolean
   clipboardHistory?: Array<{ value: string; label: string }>
 }>()
 
@@ -138,12 +139,15 @@ const menuItems = computed<MenuItem[]>(() => {
       }]
     }
 
-    const items: MenuItem[] = [
-      {type: 'item', label: '调试该节点', action: 'debug_this_node', icon: Bug, color: 'text-amber-600'},
-      {type: 'item', label: '仅识别该节点', action: 'debug_this_node_reco', icon: Bug, color: 'text-amber-600'},
-      {type: 'item', label: '仅执行该节点', action: 'debug_this_node_single', icon: Bug, color: 'text-amber-600'},
-      {type: 'item', label: '在调试窗口中调试', action: 'debug_in_panel', icon: Bug, color: 'text-amber-700'},
-    ]
+    const items: MenuItem[] = []
+    if (props.allowDebug !== false) {
+      items.push(
+        {type: 'item', label: '调试该节点', action: 'debug_this_node', icon: Bug, color: 'text-amber-600'},
+        {type: 'item', label: '仅识别该节点', action: 'debug_this_node_reco', icon: Bug, color: 'text-amber-600'},
+        {type: 'item', label: '仅执行该节点', action: 'debug_this_node_single', icon: Bug, color: 'text-amber-600'},
+        {type: 'item', label: '在调试窗口中调试', action: 'debug_in_panel', icon: Bug, color: 'text-amber-700'},
+      )
+    }
 
     if (props.mode !== 'subcanvas') {
       items.push(
@@ -166,8 +170,8 @@ const menuItems = computed<MenuItem[]>(() => {
       })
     }
 
+    if (items.length) items.push({type: 'divider'})
     items.push(
-      {type: 'divider'},
       {type: 'item', label: '复制节点', action: 'duplicate', icon: Copy, color: 'text-slate-600'},
       {type: 'divider'},
       {type: 'item', label: '删除节点', action: 'delete', icon: Trash2, color: 'text-red-500'},

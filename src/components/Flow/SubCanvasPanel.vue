@@ -2,8 +2,9 @@
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { SelectionMode, VueFlow, useVueFlow, type EdgeMouseEvent, type FlowEvents, type NodeChange, type NodeDragEvent, type NodeMouseEvent, type NodeTypesObject, type XYPosition } from '@vue-flow/core'
-import { Maximize2, Move, RefreshCw, X } from 'lucide-vue-next'
-import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
+import { Maximize2, Move, RefreshCw, Save, X } from 'lucide-vue-next'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, ref, watch, type Ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import ContextMenu from './ContextMenu.vue'
 import { useEditorActions } from '@/composables/useEditorActions'
 import { useResourceDocumentSession } from '@/composables/useResourceDocumentSession'
@@ -13,6 +14,7 @@ import { useViewportSync } from '@/composables/flowGraph/useViewportSync'
 import { useEdgeRenderWindow } from '@/composables/flowGraph/useEdgeRenderWindow'
 import { logDebug } from '@/utils/logger'
 import ToolbarIconDropdown from './Common/ToolbarIconDropdown.vue'
+import DeleteImagesConfirmModal from './Modals/DeleteImagesConfirmModal.vue'
 import {
   EDGE_TYPE_OPTIONS,
   LAYOUT_ALGORITHM_OPTIONS,
@@ -59,7 +61,7 @@ const props = defineProps<{
   lowMemoryMode?: boolean
   currentFilename: string
   currentSource?: string
-  readOnly?: boolean
+  detached?: boolean
   nodeNamePrefixEnabled: boolean
   nodeNamePrefixMode: NodeNamePrefixMode
   nodeNameCustomPrefix: string
@@ -88,10 +90,11 @@ const emit = defineEmits<{
 }>()
 
 const flowId = `sub-canvas-${Math.random().toString(36).slice(2)}`
-const detachedGraph = props.readOnly ? useResourceDocumentSession(flowId) : null
+const detachedGraph = props.detached ? useResourceDocumentSession(flowId) : null
 const documentNodes = computed(() => detachedGraph?.nodes.value ?? props.nodes)
 const documentEdges = computed(() => detachedGraph?.edges.value ?? props.edges)
 const documentImageManager = detachedGraph?.imageManager ?? props.imageManager
+const parentPipelineVersion = inject<Ref<'V1' | 'V2' | ''>>('pipelineVersion', ref(''))
 const nodeDetailsController = useNodeDetailsController()
 const sessionNodeIds = ref<Set<string>>(new Set())
 const localNodeState = ref<Record<string, Partial<FlowNode>>>({})
@@ -100,6 +103,7 @@ const activeSpacing = ref<SpacingKey>(props.currentSpacing)
 const activeDirection = ref<LayoutDirection>(props.currentDirection)
 const activeEdgeType = ref<EdgeType>(props.currentEdgeType)
 const onlyRenderVisibleElements = ref(true)
+const isSavingDetachedDocument = ref(false)
 const pendingInitialLayout = ref(false)
 const pendingNodePositions = new Map<string, XYPosition>()
 let layoutRequestId = 0
@@ -255,9 +259,24 @@ const recordViewportMoveEnd = () => {
   collectSubCanvasDebugSnapshot('viewport-move-end')
 }
 
+const markDocumentChanged = () => {
+  if (detachedGraph) detachedGraph.markDataChanged()
+  else props.markDataChanged()
+}
+
+const replaceDocumentNodes = (nodes: FlowNode[]) => {
+  if (detachedGraph) {
+    detachedGraph.nodes.value = nodes
+    detachedGraph.markNodeStructureChanged()
+  } else {
+    emit('replace-nodes', nodes)
+  }
+}
+
 const removeMainEdges = (edgeIds: string[]) => {
   if (!edgeIds.length) return
-  props.removeEdges(edgeIds)
+  if (detachedGraph) detachedGraph.removeEdges(edgeIds)
+  else props.removeEdges(edgeIds)
 }
 
 const removeMainNodes = (nodeIds: Set<string>) => {
@@ -267,7 +286,7 @@ const removeMainNodes = (nodeIds: Set<string>) => {
     .filter(edge => nodeIds.has(edge.source) || nodeIds.has(edge.target))
     .map(edge => edge.id)
   removeMainEdges(edgeIds)
-  emit('replace-nodes', documentNodes.value.filter(node => !nodeIds.has(node.id)))
+  replaceDocumentNodes(documentNodes.value.filter(node => !nodeIds.has(node.id)))
   nodeIds.forEach(id => documentImageManager.removeNodeState?.(id))
   sessionNodeIds.value = new Set([...sessionNodeIds.value].filter(id => !nodeIds.has(id)))
 
@@ -313,8 +332,8 @@ const subNodes = computed<FlowNode[]>({
     if (addedNodes.length > 0) {
       sessionNodeIds.value = new Set([...sessionNodeIds.value, ...addedNodes.map(node => node.id)])
       const mergedNodes = [...documentNodes.value, ...addedNodes]
-      emit('replace-nodes', mergedNodes)
-      props.markDataChanged()
+      replaceDocumentNodes(mergedNodes)
+      markDocumentChanged()
     }
     localNodeState.value = nextLocalState
     if (addedNodes.length > 0) {
@@ -360,7 +379,16 @@ const handleViewportMoveEnd = (event: Parameters<typeof handleEdgeMoveEnd>[0]) =
 }
 
 const handleNodeUpdate = (payload: NodeUpdatePayload) => {
-  props.handleNodeUpdate(payload)
+  if (
+    detachedGraph &&
+    payload.oldId === props.rootNodeId &&
+    payload.newId !== payload.oldId
+  ) {
+    ElMessage.warning('跨文件子画布中不能重命名根节点，以免外部引用失效')
+    return
+  }
+  if (detachedGraph) detachedGraph.handleNodeUpdate(payload)
+  else props.handleNodeUpdate(payload)
   if (payload.oldId === props.rootNodeId && payload.newId !== payload.oldId) {
     sessionRootNodeId = payload.newId
     emit('root-renamed', payload.newId)
@@ -387,6 +415,10 @@ const handleNodeUpdate = (payload: NodeUpdatePayload) => {
 provide('currentFilename', computed(() => props.currentFilename))
 provide('currentDirection', activeDirection)
 provide('imageManager', documentImageManager)
+provide(
+  'pipelineVersion',
+  detachedGraph?.saveManager.loadedFileVersion ?? parentPipelineVersion
+)
 provide('updateNode', handleNodeUpdate)
 
 const performVisibleChainLayout = async (
@@ -482,6 +514,19 @@ const handleEdgeTypeChange = (value: PropertyKey) => {
   refreshRenderedSubEdges()
 }
 
+const saveDetachedDocument = async () => {
+  if (!detachedGraph || isSavingDetachedDocument.value) return
+  isSavingDetachedDocument.value = true
+  try {
+    const saved = await detachedGraph.save()
+    if (saved) ElMessage.success(`已保存 ${props.currentFilename}`)
+  } catch (error) {
+    ElMessage.error(`保存失败: ${error instanceof Error ? error.message : String(error)}`)
+  } finally {
+    isSavingDetachedDocument.value = false
+  }
+}
+
 const fitVisibleNodes = (duration = 400) => {
   if (visibleNodeIdList.value.length === 0) return
   return fitView({ nodes: visibleNodeIdList.value, padding: 0.25, duration })
@@ -505,16 +550,16 @@ const editorActions = useEditorActions({
   nodeNamePrefixEnabled: computed(() => props.nodeNamePrefixEnabled),
   nodeNamePrefixMode: computed(() => props.nodeNamePrefixMode),
   nodeNameCustomPrefix: computed(() => props.nodeNameCustomPrefix),
-  createNodeObject: props.createNodeObject,
+  createNodeObject: detachedGraph?.createNodeObject ?? props.createNodeObject,
   applyLayout: async (options) => {
     await layoutVisibleChain(options?.algorithm || activeAlgorithm.value)
   },
   removeEdges: removeMainEdges,
-  setEdgeJumpBack: props.setEdgeJumpBack,
+  setEdgeJumpBack: detachedGraph?.setEdgeJumpBack ?? props.setEdgeJumpBack,
   layoutChainFromNode: async (_startId, _spacingKey, algorithm) => {
     await layoutVisibleChain(algorithm || activeAlgorithm.value)
   },
-  markDataChanged: props.markDataChanged,
+  markDataChanged: markDocumentChanged,
   fitView,
   getViewport,
   setViewport,
@@ -540,7 +585,8 @@ const {
 } = editorActions
 
 const handleConnect = (connection: FlowConnection) => {
-  props.handleConnect(connection)
+  if (detachedGraph) detachedGraph.handleConnect(connection)
+  else props.handleConnect(connection)
   if (connection.source) sessionNodeIds.value = new Set([...sessionNodeIds.value, connection.source])
   if (connection.target) sessionNodeIds.value = new Set([...sessionNodeIds.value, connection.target])
   refreshVisibleNodeIds()
@@ -590,29 +636,38 @@ const isEditableTarget = (target: EventTarget | null): boolean => {
     target.isContentEditable
 }
 
+const requestClose = () => {
+  if (
+    detachedGraph?.saveManager.isDirtyCombined.value &&
+    !window.confirm(`对 ${props.currentFilename} 的修改尚未保存，确定关闭子画布吗？`)
+  ) {
+    return
+  }
+  emit('close')
+}
+
 const handleKeyDown = (e: KeyboardEvent) => {
   if (!props.visible) return
 
   if (e.key === 'Escape') {
     e.preventDefault()
     closeMenu()
-    emit('close')
+    requestClose()
     return
   }
 
   if ((e.key === 'Delete' || e.key === 'Backspace') && !isEditableTarget(e.target)) {
-    if (props.readOnly) return
     e.preventDefault()
     const selectedNodes = getSelectedNodes.value
     const selectedEdges = getSelectedEdges.value
     if (selectedNodes.length > 0) {
       const selectedIds = new Set(selectedNodes.map(node => node.id))
       removeMainNodes(selectedIds)
-      props.markDataChanged()
+      markDocumentChanged()
     } else if (selectedEdges.length > 0) {
       removeMainEdges(selectedEdges.map(edge => edge.id))
       refreshVisibleNodeIds()
-      props.markDataChanged()
+      markDocumentChanged()
     }
   }
 }
@@ -807,6 +862,11 @@ onBeforeUnmount(() => {
             <div class="min-w-0">
               <div class="truncate text-sm font-semibold text-slate-700">
                 {{ currentFilename }} · {{ rootNodeId }}
+                <span
+                  v-if="detachedGraph?.saveManager.isDirtyCombined.value"
+                  class="ml-1 inline-block h-2 w-2 rounded-full bg-amber-500"
+                  title="有未保存的修改"
+                />
               </div>
               <div class="truncate font-mono text-[10px] text-slate-400">
                 {{ currentSource || '当前资源' }} · 子节点 {{ Math.max(0, visibleNodeIdList.length - 1) }} 个
@@ -853,6 +913,21 @@ onBeforeUnmount(() => {
               @update:model-value="handleEdgeTypeChange"
             />
             <button
+              v-if="detachedGraph"
+              type="button"
+              title="保存目标资源文件"
+              class="flex h-8 items-center gap-1 rounded-md px-2 text-xs font-semibold transition-colors"
+              :class="detachedGraph.saveManager.isDirtyCombined.value
+                ? 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'
+                : 'text-slate-300'"
+              :disabled="!detachedGraph.saveManager.isDirtyCombined.value || isSavingDetachedDocument"
+              @mousedown.stop
+              @click="saveDetachedDocument"
+            >
+              <Save :size="14" />
+              保存
+            </button>
+            <button
               type="button"
               title="适配视图"
               class="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-white hover:text-slate-800"
@@ -875,7 +950,7 @@ onBeforeUnmount(() => {
               title="关闭"
               class="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-rose-50 hover:text-rose-600"
               @mousedown.stop
-              @click="$emit('close')"
+              @click="requestClose"
             >
               <X :size="16" />
             </button>
@@ -898,8 +973,8 @@ onBeforeUnmount(() => {
             :max-zoom="4"
             :only-render-visible-elements="onlyRenderVisibleElements"
             :is-valid-connection="onValidateConnection"
-            :nodes-draggable="isFileLoaded && !readOnly"
-            :nodes-connectable="isFileLoaded && !readOnly"
+            :nodes-draggable="isFileLoaded"
+            :nodes-connectable="isFileLoaded"
             :elements-selectable="isFileLoaded"
             :selection-key-code="false"
             :multi-selection-key-code="null"
@@ -912,9 +987,9 @@ onBeforeUnmount(() => {
             @nodes-change="handleNodesChange"
             @node-drag-stop="handleNodeDragStop"
             @selection-drag-stop="handleNodeDragStop"
-            @pane-context-menu="(event: MouseEvent) => { if (!readOnly) onPaneContextMenu(event) }"
-            @node-context-menu="(params: NodeMouseEvent) => { if (!readOnly) onNodeContextMenu(params) }"
-            @edge-context-menu="(params: EdgeMouseEvent) => { if (!readOnly) onEdgeContextMenu(params) }"
+            @pane-context-menu="onPaneContextMenu"
+            @node-context-menu="(params: NodeMouseEvent) => onNodeContextMenu(params)"
+            @edge-context-menu="(params: EdgeMouseEvent) => onEdgeContextMenu(params)"
             @pane-click="closeMenu"
             @node-click="closeMenu"
             @edge-click="closeMenu"
@@ -935,6 +1010,7 @@ onBeforeUnmount(() => {
             :type="menu.type"
             :data="menu.data"
             mode="subcanvas"
+            :allow-debug="!detached"
             :current-edge-type="activeEdgeType"
             :current-spacing="activeSpacing"
             :current-algorithm="activeAlgorithm"
@@ -973,5 +1049,15 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </transition>
+    <DeleteImagesConfirmModal
+      v-if="detachedGraph"
+      :visible="detachedGraph.saveManager.showDeleteImagesModal.value"
+      :unused-images="detachedGraph.saveManager.unusedImages.value"
+      :used-images="detachedGraph.saveManager.usedImages.value"
+      :is-processing="detachedGraph.saveManager.isProcessingImages.value"
+      @cancel="detachedGraph.saveManager.handleCancelDeleteImages"
+      @confirm="detachedGraph.saveManager.handleConfirmDeleteImages()"
+      @skip="detachedGraph.saveManager.handleSkipDeleteImages()"
+    />
   </Teleport>
 </template>

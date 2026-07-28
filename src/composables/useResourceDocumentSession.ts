@@ -1,6 +1,9 @@
 import { ref } from 'vue'
 import { useFlowGraph } from '@/composables/useFlowGraph'
 import { loadResourceDocument } from '@/services/resourceDocument'
+import { useSaveManager } from '@/composables/useSaveManager'
+import { notifyResourceDocumentSaved } from '@/services/resourceDocumentEvents'
+import type { TemplateImage } from '@/utils/flowTypes'
 
 export interface ResourceDocumentTarget {
   source: string
@@ -13,6 +16,26 @@ export function useResourceDocumentSession(flowId: string) {
   const loading = ref(false)
   const loadError = ref('')
   const fileVersion = ref<'V1' | 'V2' | ''>('')
+  const saveManager = useSaveManager({
+    currentEdgeType: graph.currentEdgeType,
+    currentSpacing: graph.currentSpacing,
+    currentAlgorithm: graph.currentAlgorithm,
+    currentDirection: graph.currentDirection,
+    currentFilename: graph.currentFilename,
+    currentSource: graph.currentSource,
+    isDirty: graph.isDirty,
+    exportState: graph.exportState,
+    restoreState: graph.restoreState,
+    getNodesData: graph.getNodesData,
+    getImageData: graph.getImageData,
+    clearTempImageData: graph.clearTempImageData,
+    clearDirty: graph.clearDirty,
+    imageManager: graph.imageManager as {
+      setNodeImages: (nodeId: string, images: TemplateImage[]) => void
+      replaceLoadedImages: (imageMap: Record<string, TemplateImage[] | unknown>) => void
+    },
+    tabId: flowId,
+  })
   let loadRequest = 0
 
   const load = async (target: ResourceDocumentTarget) => {
@@ -31,6 +54,7 @@ export function useResourceDocumentSession(flowId: string) {
       if (request !== loadRequest) return false
       graph.imageManager.replaceLoadedImages(document.images)
       fileVersion.value = document.fileVersion
+      saveManager.loadedFileVersion.value = document.fileVersion
       return true
     } catch (error) {
       if (request === loadRequest) {
@@ -46,12 +70,24 @@ export function useResourceDocumentSession(flowId: string) {
     loadRequest++
   }
 
+  const save = async () => {
+    const source = graph.currentSource.value
+    const filename = graph.currentFilename.value
+    if (!source || !filename) return false
+    await saveManager.handleSaveNodes({ source, filename })
+    if (saveManager.isDirtyCombined.value) return false
+    notifyResourceDocumentSaved(source, filename, flowId)
+    return true
+  }
+
   return {
     ...graph,
     loading,
     loadError,
     fileVersion,
+    saveManager,
     load,
+    save,
     invalidate,
   }
 }

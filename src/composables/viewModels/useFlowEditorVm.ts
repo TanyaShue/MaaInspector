@@ -7,6 +7,8 @@ import { useSaveManager } from '@/composables/useSaveManager'
 import { useDebugRunner } from '@/composables/useDebugRunner'
 import { resourceApi } from '@/services/api'
 import { loadResourceDocument } from '@/services/resourceDocument'
+import { useResourceDocumentChanges } from '@/services/resourceDocumentEvents'
+import { makeFileId } from '@/utils/fileId'
 import { useEditorModals } from '@/composables/useEditorModals'
 import { parseFileId } from '@/utils/fileId'
 import type {
@@ -575,6 +577,22 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
       throw e
     }
   }
+
+  const resourceDocumentChanges = useResourceDocumentChanges()
+  watch(resourceDocumentChanges, (change) => {
+    if (!change || change.origin === options.tabId) return
+    if (makeFileId(currentSource.value, currentFilename.value) !== change.fileId) return
+    if (isDirtyCombined.value) {
+      ElMessage.warning(`${change.filename} 已在子画布中保存；当前标签有未保存修改，未自动覆盖`)
+      return
+    }
+    const editorIsActive = typeof options.isActive === 'function'
+      ? options.isActive()
+      : options.isActive !== false
+    void loadResourceFile(change.fileId, {
+      deferLayout: !editorIsActive,
+    })
+  }, { immediate: true })
 
   const editorPort: FlowEditorPort = {
     getEditorStatus: () => ({
