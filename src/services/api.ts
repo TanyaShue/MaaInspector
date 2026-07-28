@@ -187,6 +187,7 @@ export interface ImageCheckResponse {
 
 export interface DebugRunResponse {
   success?: boolean
+  message?: string
   error?: string
   [key: string]: unknown
 }

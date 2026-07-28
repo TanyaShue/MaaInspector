@@ -62,6 +62,7 @@ const {
   activeTab,
   resourceLoaded,
   activeEditorRef,
+  activeDebugContext,
   activeEditorStatus,
   handleEditorStatusChange,
   dirtyTabIds,
@@ -503,9 +504,13 @@ const handleOpenAppSettings = () => {
       <NodeDebugPanel
         :visible="debugPanel.visible"
         :initial-node-id="debugPanel.nodeId"
+        :initial-debug-mode="debugPanel.mode"
+        :nodes="activeDebugContext.nodes"
+        :current-filename="activeDebugContext.currentFilename"
+        :current-source="activeDebugContext.currentSource"
         @close="closeDebugPanel"
         @locate-node="(nodeId) => activeEditorRef?.handleLocateNode(nodeId)"
-        @debug-node="(nodeId) => activeEditorRef?.handleDebugNodeFromPanel(nodeId)"
+        @debug-node="(nodeId, mode) => activeEditorRef?.handleDebugNodeFromPanel(nodeId, mode)"
         @update-node-status="(payload) => activeEditorRef?.handleUpdateNodeStatus(payload)"
       />
     </div>

@@ -23,6 +23,7 @@
     normalizeActionResult,
     normalizeRecognitionResults,
   } from '@/utils/debugResultAdapter'
+  import { DEBUG_MODE_OPTIONS, type DebugMode } from '@/utils/debugMode'
 
   const props = defineProps<{
     visible?: boolean
@@ -30,12 +31,13 @@
     currentFilename?: string
     currentSource?: string
     initialNodeId?: string
+    initialDebugMode?: DebugMode
   }>()
 
   const emit = defineEmits<{
     (e: 'close'): void
     (e: 'locate-node', id: string): void
-    (e: 'debug-node', id: string): void
+    (e: 'debug-node', id: string, mode: DebugMode): void
     (
       e: 'update-node-status',
       payload: { nodeId: string; status: 'success' | 'error' | 'running' | 'ignored' | null }
@@ -93,6 +95,7 @@
 
   const searchValue = ref('')
   const selectedNodeId = ref('')
+  const selectedDebugMode = ref<DebugMode>('direct')
   const fullImagePreview = ref<{ visible: boolean; src: string }>({ visible: false, src: '' })
   const selectedDetail = ref<{
     record: DebugEventRecord
@@ -142,7 +145,7 @@
   const handleDebugNow = () => {
     const targetId = (searchValue.value || selectedNodeId.value || '').trim()
     if (!targetId) return
-    emit('debug-node', targetId)
+    emit('debug-node', targetId, selectedDebugMode.value)
   }
 
   const handleLocate = (id: string) => {
@@ -358,6 +361,7 @@
         loadLogPanelHeight()
         selectedNodeId.value = props.initialNodeId || ''
         searchValue.value = props.initialNodeId || ''
+        selectedDebugMode.value = props.initialDebugMode || 'direct'
         startPreviewAutoRefresh()
         startRealtimeStream(
           (payload: NodeStatusPayload) => emit('update-node-status', payload),
@@ -379,6 +383,13 @@
         selectedNodeId.value = val
         searchValue.value = val
       }
+    }
+  )
+
+  watch(
+    () => props.initialDebugMode,
+    (val) => {
+      if (props.visible && val) selectedDebugMode.value = val
     }
   )
 
@@ -491,6 +502,20 @@
               @select="handleOptionSelect"
               @submit="handleDebugNow"
             />
+            <select
+              v-model="selectedDebugMode"
+              data-testid="debug-mode-selector"
+              class="px-2 py-1.5 rounded border border-slate-200 bg-white text-xs text-slate-700 outline-none focus:border-amber-400 shrink-0"
+              title="选择节点调试方式"
+            >
+              <option
+                v-for="option in DEBUG_MODE_OPTIONS"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </option>
+            </select>
             <button
               class="flex items-center gap-1 px-2.5 py-1.5 rounded text-white text-xs font-medium bg-slate-700 hover:bg-slate-800 transition-colors shrink-0"
               @click="handleActionButton"

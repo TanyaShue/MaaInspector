@@ -33,6 +33,8 @@ const createActions = (
   const setViewport = vi.fn().mockResolvedValue(true)
   const updateNodeInternals = vi.fn()
   const onViewTaskChain = vi.fn()
+  const onDebugNode = vi.fn()
+  const onOpenDebugPanel = vi.fn()
 
   const actions = useEditorActions({
     nodes,
@@ -65,14 +67,14 @@ const createActions = (
     getViewport,
     setViewport,
     updateNodeInternals,
-    onDebugNode: vi.fn(),
-    onOpenDebugPanel: vi.fn(),
+    onDebugNode,
+    onOpenDebugPanel,
     onViewTaskChain,
     onCloseDebugPanel: vi.fn(),
     onIncrementCloseAllDetails: vi.fn()
   })
 
-  return { actions, nodes, edges, requestClearCanvas, markDataChanged, markNodeStructureChanged, snapshotState, getViewport, setViewport, updateNodeInternals, onViewTaskChain }
+  return { actions, nodes, edges, requestClearCanvas, markDataChanged, markNodeStructureChanged, snapshotState, getViewport, setViewport, updateNodeInternals, onViewTaskChain, onDebugNode, onOpenDebugPanel }
 }
 
 describe('useEditorActions', () => {
@@ -157,5 +159,29 @@ describe('useEditorActions', () => {
     })
 
     expect(onViewTaskChain).toHaveBeenCalledWith('Start')
+  })
+
+  it.each([
+    ['debug_this_node', 'direct'],
+    ['debug_this_node_reco', 'recognition_only'],
+    ['debug_this_node_single', 'single_node'],
+  ] as const)('routes %s to the %s debug mode', (action, mode) => {
+    const { actions, nodes, onDebugNode } = createActions()
+
+    actions.handleMenuAction({ action, type: 'node', data: nodes.value[0] })
+
+    expect(onDebugNode).toHaveBeenCalledWith('Start', mode)
+  })
+
+  it('opens the debug panel with an explicit initial mode', () => {
+    const { actions, nodes, onOpenDebugPanel } = createActions()
+
+    actions.handleMenuAction({
+      action: 'debug_in_panel',
+      type: 'node',
+      data: nodes.value[0],
+    })
+
+    expect(onOpenDebugPanel).toHaveBeenCalledWith({ nodeId: 'Start', mode: 'direct' })
   })
 })

@@ -95,4 +95,17 @@ describe('useDebugRunner save guard', () => {
     expect(onSaveNodes).not.toHaveBeenCalled()
     expect(debugApi.runNode).not.toHaveBeenCalled()
   })
+
+  it.each(['direct', 'recognition_only', 'single_node'] as const)(
+    'passes the %s mode to the backend',
+    async mode => {
+      const { runner } = createRunner(false)
+
+      await runner.handleDebugNode('Start', mode)
+
+      expect(debugApi.runNode).toHaveBeenCalledWith(expect.objectContaining({
+        debug_mode: mode,
+      }))
+    }
+  )
 })

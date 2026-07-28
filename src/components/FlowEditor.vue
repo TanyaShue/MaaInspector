@@ -14,6 +14,7 @@ import { syncNodePositions } from '@/utils/editorInteraction'
 import { collectReachableNodeIds, filterSubgraphEdges } from '@/utils/flowSubgraph'
 import type { FlowNode } from '@/utils/flowTypes'
 import type { FlowEditorStatus } from '@/composables/viewModels/types'
+import type { DebugMode } from '@/utils/debugMode'
 
 const NodeSearch = defineAsyncComponent(() => import('./Flow/NodeSearch.vue'))
 const SaveConfirmModal = defineAsyncComponent(() => import('./Flow/Modals/SaveConfirmModal.vue'))
@@ -29,7 +30,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'request-switch-file': [payload: { filename: string; source: string }]
-  'open-debug-panel': [payload?: { nodeId?: string }]
+  'open-debug-panel': [payload?: { nodeId?: string; mode?: DebugMode }]
   'close-debug-panel': []
   'status-change': [payload: FlowEditorStatus]
 }>()

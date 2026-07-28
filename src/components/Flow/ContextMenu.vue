@@ -130,6 +130,7 @@ const menuItems = computed<MenuItem[]>(() => {
     const items: MenuItem[] = [
       {type: 'item', label: '调试该节点', action: 'debug_this_node', icon: Bug, color: 'text-amber-600'},
       {type: 'item', label: '仅识别该节点', action: 'debug_this_node_reco', icon: Bug, color: 'text-amber-600'},
+      {type: 'item', label: '仅执行该节点', action: 'debug_this_node_single', icon: Bug, color: 'text-amber-600'},
       {type: 'item', label: '在调试窗口中调试', action: 'debug_in_panel', icon: Bug, color: 'text-amber-700'},
     ]
 

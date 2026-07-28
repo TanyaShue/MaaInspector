@@ -15,6 +15,7 @@ import { isEdgeType, isSpacingKey, isLayoutAlgorithm, isLayoutDirection } from '
 import { waitForFrame, deepClone } from '@/utils/nodeHelpers'
 import { useNodeClipboard } from '@/composables/useNodeClipboard'
 import type { NodeNamePrefixMode } from '@/stores/appConfig'
+import type { DebugMode } from '@/utils/debugMode'
 
 type MenuData = FlowNode | FlowEdge | null
 
@@ -79,8 +80,8 @@ export interface EditorActionsDeps {
   requestClearCanvas?: () => void
   onOpenSubCanvas?: (payload: { nodeId: string; algorithm?: LayoutAlgorithm }) => void
   onViewTaskChain?: (nodeId: string) => void
-  onDebugNode: (nodeId: string, mode: 'standard' | 'recognition_only') => void
-  onOpenDebugPanel: (payload?: { nodeId?: string }) => void
+  onDebugNode: (nodeId: string, mode: DebugMode) => void
+  onOpenDebugPanel: (payload?: { nodeId?: string; mode?: DebugMode }) => void
   onCloseDebugPanel: () => void
   onIncrementCloseAllDetails: () => void
 }
@@ -347,15 +348,19 @@ export function useEditorActions(deps: EditorActionsDeps) {
       }
       case 'debug_this_node':
         if (type === 'node' && isFlowNodeData(data) && data.id)
-          onDebugNode(String(data.id), 'standard')
+          onDebugNode(String(data.id), 'direct')
         break
       case 'debug_this_node_reco':
         if (type === 'node' && isFlowNodeData(data) && data.id)
           onDebugNode(String(data.id), 'recognition_only')
         break
+      case 'debug_this_node_single':
+        if (type === 'node' && isFlowNodeData(data) && data.id)
+          onDebugNode(String(data.id), 'single_node')
+        break
       case 'debug_in_panel':
         if (type === 'node' && isFlowNodeData(data) && data.id)
-          onOpenDebugPanel({ nodeId: String(data.id) })
+          onOpenDebugPanel({ nodeId: String(data.id), mode: 'direct' })
         break
       case 'view_task_chain':
         if (type === 'node' && isFlowNodeData(data) && data.id)

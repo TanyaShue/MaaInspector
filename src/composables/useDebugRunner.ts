@@ -3,8 +3,7 @@ import type { DebugStreamPayload } from '@/services/api'
 import { debugApi } from '@/services/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { isSaveCancelledError } from '@/composables/useSaveManager'
-
-type DebugMode = 'standard' | 'recognition_only'
+import type { DebugMode } from '@/utils/debugMode'
 
 export interface DebugRunnerDeps {
   findNode: (id: string) => FlowNode | undefined
@@ -31,7 +30,7 @@ export function useDebugRunner(deps: DebugRunnerDeps) {
     setNodeStatus,
   } = deps
 
-  const handleDebugNode = async (nodeId: string, mode: DebugMode = 'standard') => {
+  const handleDebugNode = async (nodeId: string, mode: DebugMode = 'direct') => {
     const node = findNode(nodeId)
     if (!node || !node.data) return
 
@@ -98,11 +97,16 @@ export function useDebugRunner(deps: DebugRunnerDeps) {
     })
 
     try {
-      await debugApi.runNode({
+      const response = await debugApi.runNode({
         node: node.data.data,
         debug_mode: mode,
         context: { source: currentSource.value, filename: currentFilename.value },
       })
+      if (response.success === false) {
+        throw new Error(
+          typeof response.message === 'string' ? response.message : 'Failed to start debug task'
+        )
+      }
 
       await taskComplete
     } catch (error: unknown) {
@@ -124,7 +128,8 @@ export function useDebugRunner(deps: DebugRunnerDeps) {
     onSnapshotState?.()
   }
 
-  const handleDebugNodeFromPanel = (nodeId: string) => handleDebugNode(nodeId, 'standard')
+  const handleDebugNodeFromPanel = (nodeId: string, mode: DebugMode) =>
+    handleDebugNode(nodeId, mode)
 
   return {
     handleDebugNode,

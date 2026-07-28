@@ -21,6 +21,11 @@ const createEditorPort = (): FlowEditorPort => ({
   handleApplyLayout: vi.fn().mockResolvedValue(undefined),
   handleLocateNode: vi.fn(),
   handleDebugNodeFromPanel: vi.fn(),
+  getDebugContext: vi.fn(() => ({
+    nodes: [],
+    currentFilename: '',
+    currentSource: ''
+  })),
   handleUpdateNodeStatus: vi.fn(),
   closeTransientUi: vi.fn()
 })
@@ -165,14 +170,18 @@ describe('useFlowWorkspaceVm', () => {
     const editor = createEditorPort()
     vm.registerEditor(tab.id, editor)
 
-    vm.openDebugPanel({ nodeId: 'Start' })
-    expect(vm.debugPanel.value).toEqual({ visible: true, nodeId: 'Start' })
+    vm.openDebugPanel({ nodeId: 'Start', mode: 'recognition_only' })
+    expect(vm.debugPanel.value).toEqual({
+      visible: true,
+      nodeId: 'Start',
+      mode: 'recognition_only'
+    })
 
     vm.handleDeviceConnected(true)
     expect(editor.handleDeviceConnected).toHaveBeenCalledWith(true)
 
     vm.closeDebugPanel()
-    expect(vm.debugPanel.value).toEqual({ visible: false, nodeId: '' })
+    expect(vm.debugPanel.value).toEqual({ visible: false, nodeId: '', mode: 'direct' })
 
     vm.closeEditorTransientUi()
     expect(editor.closeTransientUi).toHaveBeenCalledOnce()

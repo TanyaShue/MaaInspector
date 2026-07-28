@@ -26,13 +26,14 @@ import { provideNodeDetailsController } from '@/composables/useNodeDetailsContro
 import { getEdgeStyle } from '@/composables/flowGraph/useConnectionManager'
 import type { FlowEditorPort, FlowEditorStatus } from './types'
 import { useAppConfigStore } from '@/stores/appConfig'
+import type { DebugMode } from '@/utils/debugMode'
 
 interface UseFlowEditorVmOptions {
   tabId?: string
   isActive?: EditorActiveState
   emit: {
     (e: 'request-switch-file', payload: { filename: string; source: string }): void
-    (e: 'open-debug-panel', payload?: { nodeId?: string }): void
+    (e: 'open-debug-panel', payload?: { nodeId?: string; mode?: DebugMode }): void
     (e: 'close-debug-panel'): void
     (e: 'status-change', payload: FlowEditorStatus): void
   }
@@ -566,6 +567,11 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     },
     handleLocateNode,
     handleDebugNodeFromPanel,
+    getDebugContext: () => ({
+      nodes: nodes.value,
+      currentFilename: currentFilename.value,
+      currentSource: currentSource.value,
+    }),
     handleUpdateNodeStatus,
     closeTransientUi: () => {
       closeMenu()
@@ -618,7 +624,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     markDataChanged,
     imageManager,
     handleDebugNode: debugRunner.handleDebugNode,
-    handleOpenDebugPanel: (payload?: { nodeId?: string }) =>
+    handleOpenDebugPanel: (payload?: { nodeId?: string; mode?: DebugMode }) =>
       options.emit('open-debug-panel', payload),
     menu,
     searchVisible,

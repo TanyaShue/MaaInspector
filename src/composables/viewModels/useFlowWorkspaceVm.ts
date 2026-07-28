@@ -6,6 +6,7 @@ import type { FlowBusinessData, LayoutAlgorithm, LayoutDirection, SpacingKey } f
 import type { EdgeType } from '@/utils/flowOptions'
 import type { TabResourceInfo } from '@/utils/flowWorkspaceTypes'
 import type { DebugPanelState, FlowEditorPort, FlowEditorStatus, InfoPanelPort } from './types'
+import type { DebugMode } from '@/utils/debugMode'
 
 export function useFlowWorkspaceVm() {
   const appConfig = useAppConfigStore()
@@ -27,7 +28,7 @@ export function useFlowWorkspaceVm() {
   const { updateTabs, clearTabs: clearMainTabs } = useMainAppState()
 
   const infoPanelRef = ref<InfoPanelPort | null>(null)
-  const debugPanel = ref<DebugPanelState>({ visible: false, nodeId: '' })
+  const debugPanel = ref<DebugPanelState>({ visible: false, nodeId: '', mode: 'direct' })
   const pendingVisibleLayoutTabs = ref<Set<string>>(new Set())
   const loadingRestoredTabs = ref<Set<string>>(new Set())
   const editorStatuses = ref<Map<string, FlowEditorStatus>>(new Map())
@@ -35,6 +36,11 @@ export function useFlowWorkspaceVm() {
   const activeTab = computed(() => tabs.value.items.find(t => t.id === activeTabId.value) || tabs.value.items[0] || null)
   const resourceLoaded = computed(() => appConfig.resource.loaded)
   const activeEditorRef = computed(() => editorRefs.value.get(activeTabId.value) || null)
+  const activeDebugContext = computed(() => activeEditorRef.value?.getDebugContext() ?? {
+    nodes: [],
+    currentFilename: '',
+    currentSource: '',
+  })
   const activeEditorStatus = computed(() => editorStatuses.value.get(activeTabId.value) ?? {
     isDirty: false,
     nodeCount: 0,
@@ -170,15 +176,16 @@ export function useFlowWorkspaceVm() {
     await infoPanelRef.value?.executeFileSwitch?.(payload.filename, payload.source)
   }
 
-  const openDebugPanel = (payload?: { nodeId?: string }) => {
+  const openDebugPanel = (payload?: { nodeId?: string; mode?: DebugMode }) => {
     debugPanel.value = {
       visible: true,
-      nodeId: payload?.nodeId || ''
+      nodeId: payload?.nodeId || '',
+      mode: payload?.mode || 'direct',
     }
   }
 
   const closeDebugPanel = () => {
-    debugPanel.value = { visible: false, nodeId: '' }
+    debugPanel.value = { visible: false, nodeId: '', mode: 'direct' }
   }
 
   const closeEditorTransientUi = () => {
@@ -307,6 +314,7 @@ export function useFlowWorkspaceVm() {
     activeTab,
     resourceLoaded,
     activeEditorRef,
+    activeDebugContext,
     activeEditorStatus,
     editorStatuses,
     dirtyTabIds,

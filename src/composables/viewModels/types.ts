@@ -1,9 +1,11 @@
 import type { FlowBusinessData, NodeStatus, TemplateImage } from '@/utils/flowTypes'
 import type { ApiDeviceInfo, ResourceFileInfo } from '@/services/api'
+import type { DebugMode } from '@/utils/debugMode'
 
 export interface DebugPanelState {
   visible: boolean
   nodeId: string
+  mode: DebugMode
 }
 
 export interface FlowEditorStatus {
@@ -33,7 +35,12 @@ export interface FlowEditorPort {
   handleUpdatePipelineVersion: (val: 'V1' | 'V2') => void
   handleApplyLayout: () => Promise<void>
   handleLocateNode: (nodeId: string) => void
-  handleDebugNodeFromPanel: (nodeId: string) => void
+  handleDebugNodeFromPanel: (nodeId: string, mode: DebugMode) => void
+  getDebugContext: () => {
+    nodes: import('@/utils/flowTypes').FlowNode[]
+    currentFilename: string
+    currentSource: string
+  }
   handleUpdateNodeStatus: (payload: { nodeId: string; status: NodeStatus }) => void
   closeTransientUi: () => void
 }

@@ -73,7 +73,7 @@ const props = defineProps<{
     setNodeImages: (nodeId: string, images: TemplateImage[]) => void
     removeNodeState?: (nodeId: string) => void
   }
-  handleDebugNode: (nodeId: string, mode: 'standard' | 'recognition_only') => void
+  handleDebugNode: (nodeId: string, mode: import('@/utils/debugMode').DebugMode) => void
   handleOpenDebugPanel: (payload?: { nodeId?: string }) => void
 }>()
 
