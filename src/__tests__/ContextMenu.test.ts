@@ -46,6 +46,10 @@ describe('ContextMenu', () => {
 
     expect(wrapper.text()).toContain('在子画布中重排任务链')
     expect(wrapper.text()).toContain('查看任务链')
+    expect(wrapper.text()).toContain('调试该节点')
+    expect(wrapper.text()).toContain('仅识别该节点')
+    expect(wrapper.text()).toContain('仅执行该节点')
+    expect(wrapper.text()).toContain('在调试窗口中调试')
   })
 
   it('hides the sub-canvas entry from sub-canvas node menus', () => {
@@ -73,7 +77,7 @@ describe('ContextMenu', () => {
         type: 'node',
         data: targetNode,
         mode: 'subcanvas',
-        allowDebug: false,
+        hideDebug: true,
       }
     })
 

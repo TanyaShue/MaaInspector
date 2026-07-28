@@ -46,7 +46,7 @@ const props = defineProps<{
   debugPanelVisible?: boolean
   searchVisible?: boolean
   mode?: 'main' | 'subcanvas'
-  allowDebug?: boolean
+  hideDebug?: boolean
   clipboardHistory?: Array<{ value: string; label: string }>
 }>()
 
@@ -140,7 +140,7 @@ const menuItems = computed<MenuItem[]>(() => {
     }
 
     const items: MenuItem[] = []
-    if (props.allowDebug !== false) {
+    if (!props.hideDebug) {
       items.push(
         {type: 'item', label: '调试该节点', action: 'debug_this_node', icon: Bug, color: 'text-amber-600'},
         {type: 'item', label: '仅识别该节点', action: 'debug_this_node_reco', icon: Bug, color: 'text-amber-600'},
