@@ -227,6 +227,37 @@ mod tests {
     }
 
     #[test]
+    fn exposes_all_normalized_resource_paths_for_framework_reload() {
+        let first = tempdir().expect("create first resource");
+        let second = tempdir().expect("create second resource");
+        let manager = ResourcesManager::new(
+            vec![
+                first.path().to_string_lossy().to_string(),
+                second.path().to_string_lossy().to_string(),
+            ],
+            first.path().join("backup"),
+        );
+
+        assert_eq!(
+            manager.resource_paths(),
+            vec![
+                first
+                    .path()
+                    .canonicalize()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string(),
+                second
+                    .path()
+                    .canonicalize()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string(),
+            ]
+        );
+    }
+
+    #[test]
     fn rejects_escaping_directory_links_before_creating_outside_directories() {
         let dir = tempdir().expect("create resource directory");
         let outside = tempdir().expect("create outside directory");
@@ -365,6 +396,13 @@ impl ResourcesManager {
         };
         manager.load_all();
         manager
+    }
+
+    pub fn resource_paths(&self) -> Vec<String> {
+        self.resource_paths
+            .iter()
+            .map(|path| path.to_string_lossy().to_string())
+            .collect()
     }
 
     fn get_pipeline_dir(&self, resource_path: &Path) -> PathBuf {

@@ -1,4 +1,6 @@
 use super::{MaaFrameworkState, maafw_mut, maafw_ref};
+use crate::maafw::resource as maafw_resource;
+use crate::resources::ResourcesManagerState;
 use crate::response::{ActionDetailResponse, ApiResponse, RecoDetailResponse};
 use tauri::Manager;
 use tauri::State;
@@ -7,18 +9,36 @@ use tauri::State;
 #[tauri::command]
 pub async fn debug_run_node(
     maafw: State<'_, MaaFrameworkState>,
+    resources_manager: State<'_, ResourcesManagerState>,
     node: serde_json::Value,
     debug_mode: Option<String>,
 ) -> Result<ApiResponse, String> {
-    let mut fw = maafw.lock().await;
-    let fw = maafw_mut(&mut fw)?;
-
-    // Extract node id
     let node_id = node.get("id").and_then(|v| v.as_str()).unwrap_or("");
-
     if node_id.is_empty() {
         return Ok(ApiResponse::error_with_status("Missing node id", 400));
     }
+
+    let resource_paths = {
+        let guard = resources_manager
+            .read()
+            .map_err(|_| "ResourcesManager lock is poisoned".to_string())?;
+        guard
+            .as_ref()
+            .ok_or_else(|| "ResourcesManager not initialized".to_string())?
+            .resource_paths()
+    };
+    let (resource_loaded, resource_message, loaded_resource) =
+        maafw_resource::load_resource_async(None, &resource_paths).await;
+    if !resource_loaded {
+        return Ok(ApiResponse::error_with_status(
+            resource_message.unwrap_or_else(|| "Failed to reload resources".to_string()),
+            500,
+        ));
+    }
+
+    let mut fw = maafw.lock().await;
+    let fw = maafw_mut(&mut fw)?;
+    fw.set_resource(loaded_resource);
 
     // Convert node to pipeline override format
     let mut pipeline_override = serde_json::Map::new();

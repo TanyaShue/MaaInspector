@@ -165,6 +165,8 @@ impl MaaFrameworkWrapper {
     }
 
     pub(crate) fn set_resource(&mut self, resource: Option<Resource>) {
+        tasker::stop_task(&self.tasker);
+        self.tasker = None;
         self.resource = resource;
     }
 
