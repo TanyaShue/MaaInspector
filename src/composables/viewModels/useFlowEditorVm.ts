@@ -6,16 +6,15 @@ import { useEditorActions } from '@/composables/useEditorActions'
 import { useSaveManager } from '@/composables/useSaveManager'
 import { useDebugRunner } from '@/composables/useDebugRunner'
 import { resourceApi } from '@/services/api'
+import { loadResourceDocument } from '@/services/resourceDocument'
 import { useEditorModals } from '@/composables/useEditorModals'
 import { parseFileId } from '@/utils/fileId'
 import type {
-  FlowBusinessData,
   FlowEdge,
   FlowNode,
   LoadNodesPayload,
   TemplateImage
 } from '@/utils/flowTypes'
-import { isPipelineV2Nodes, toPipelineV1Nodes } from '@/utils/pipelineTransform'
 import { perfLog, perfMark, perfNow } from '@/utils/perfTrace'
 import {
   normalizeKeyboardKey,
@@ -564,30 +563,13 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     }
 
     try {
-      const res = await resourceApi.getFileNodes(source, filename)
-      const nodesRes = res?.nodes
-      if (nodesRes) {
-        const rawNodes = nodesRes as Record<string, FlowBusinessData>
-        const fileVersion = isPipelineV2Nodes(rawNodes) ? 'V2' : 'V1'
-        const processedNodes = fileVersion === 'V2' ? toPipelineV1Nodes(rawNodes) : rawNodes
-
-        await handleLoadNodesWrapper({
-          filename,
-          source,
-          nodes: processedNodes,
-          fileVersion,
-        })
-
-        const imgRes = await resourceApi.getTemplateImages(source, filename).catch((error) => {
-          console.warn('Failed to load template images:', error)
-          return null
-        })
-        await handleLoadImages(
-          (imgRes?.results as Record<string, unknown> | undefined) ?? {},
-          undefined,
-          { finalizeLayout: !options.deferLayout }
-        )
-      }
+      const document = await loadResourceDocument(source, filename)
+      await handleLoadNodesWrapper(document)
+      await handleLoadImages(
+        document.images,
+        document.imageBasePath,
+        { finalizeLayout: !options.deferLayout }
+      )
     } catch (e) {
       console.error('Failed to load resource file:', e)
       throw e
