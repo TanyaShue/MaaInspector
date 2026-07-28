@@ -133,6 +133,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     nodes,
     currentSource,
     currentFilename,
+    isDirty: saveManager.isDirtyCombined,
     onSaveNodes: saveManager.handleSaveNodes,
 
     setNodeStatus,

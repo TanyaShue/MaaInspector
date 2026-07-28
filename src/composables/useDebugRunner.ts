@@ -1,6 +1,8 @@
 import type { FlowNode, NodeStatus } from '@/utils/flowTypes'
 import type { DebugStreamPayload } from '@/services/api'
 import { debugApi } from '@/services/api'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { isSaveCancelledError } from '@/composables/useSaveManager'
 
 type DebugMode = 'standard' | 'recognition_only'
 
@@ -9,6 +11,7 @@ export interface DebugRunnerDeps {
   nodes: { value: FlowNode[] }
   currentSource: { value: string }
   currentFilename: { value: string }
+  isDirty: { value: boolean }
   onSaveNodes: (
     config: { source: string; filename: string },
     onSnapshotState?: () => void
@@ -22,6 +25,7 @@ export function useDebugRunner(deps: DebugRunnerDeps) {
     nodes,
     currentSource,
     currentFilename,
+    isDirty,
     onSaveNodes,
     onSnapshotState,
     setNodeStatus,
@@ -30,6 +34,31 @@ export function useDebugRunner(deps: DebugRunnerDeps) {
   const handleDebugNode = async (nodeId: string, mode: DebugMode = 'standard') => {
     const node = findNode(nodeId)
     if (!node || !node.data) return
+
+    if (isDirty.value) {
+      try {
+        await ElMessageBox.confirm(
+          '当前资源文件有未保存的修改。调试需要先保存资源，是否保存并继续？',
+          '保存后调试',
+          {
+            confirmButtonText: '保存并调试',
+            cancelButtonText: '取消',
+            type: 'warning',
+          }
+        )
+        await onSaveNodes(
+          { source: currentSource.value, filename: currentFilename.value },
+          onSnapshotState
+        )
+      } catch (error) {
+        if (!isSaveCancelledError(error) && error !== 'cancel' && error !== 'close') {
+          console.error('Save before debug failed:', error)
+          ElMessage.error('保存失败，未开始调试')
+        }
+        return
+      }
+    }
+
     node.data._result = null
 
     let matchedTaskId: string | number | null = null
@@ -69,10 +98,6 @@ export function useDebugRunner(deps: DebugRunnerDeps) {
     })
 
     try {
-      await onSaveNodes(
-        { source: currentSource.value, filename: currentFilename.value },
-        onSnapshotState
-      )
       await debugApi.runNode({
         node: node.data.data,
         debug_mode: mode,

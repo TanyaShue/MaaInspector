@@ -76,4 +76,49 @@ describe('useSaveManager', () => {
       Start: [{ path: 'a.png' }]
     })
   })
+
+  it('waits for image deletion confirmation before completing the save', async () => {
+    const deps = createDeps()
+    vi.mocked(resourceApi.checkUnusedImages).mockResolvedValue({
+      unused_images: ['old.png']
+    })
+    vi.mocked(resourceApi.processImages).mockResolvedValue({ success: true })
+    vi.mocked(resourceApi.saveFileNodes).mockResolvedValue({ success: true })
+    const manager = useSaveManager(deps)
+
+    let completed = false
+    const saving = manager
+      .handleSaveNodes({ source: 'D:/maa', filename: 'pipeline.json' })
+      .then(() => { completed = true })
+    await vi.waitFor(() => expect(manager.showDeleteImagesModal.value).toBe(true))
+
+    expect(completed).toBe(false)
+    expect(resourceApi.saveFileNodes).not.toHaveBeenCalled()
+
+    await manager.handleConfirmDeleteImages()
+    await saving
+
+    expect(completed).toBe(true)
+    expect(resourceApi.processImages).toHaveBeenCalledWith(
+      'D:/maa',
+      ['old.png'],
+      [{ path: 'new.png', base64: 'base64data', nodeId: 'Start' }]
+    )
+    expect(resourceApi.saveFileNodes).toHaveBeenCalledOnce()
+  })
+
+  it('rejects the pending save when image deletion confirmation is cancelled', async () => {
+    const deps = createDeps()
+    vi.mocked(resourceApi.checkUnusedImages).mockResolvedValue({
+      unused_images: ['old.png']
+    })
+    const manager = useSaveManager(deps)
+
+    const saving = manager.handleSaveNodes({ source: 'D:/maa', filename: 'pipeline.json' })
+    await vi.waitFor(() => expect(manager.showDeleteImagesModal.value).toBe(true))
+    manager.handleCancelDeleteImages()
+
+    await expect(saving).rejects.toMatchObject({ name: 'SaveCancelledError' })
+    expect(resourceApi.saveFileNodes).not.toHaveBeenCalled()
+  })
 })

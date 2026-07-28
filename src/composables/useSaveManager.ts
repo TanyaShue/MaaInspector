@@ -27,6 +27,22 @@ interface PendingSaveConfig {
   filename: string
 }
 
+interface PendingSaveRequest {
+  onSnapshotState?: () => void
+  resolve: () => void
+  reject: (reason: unknown) => void
+}
+
+export class SaveCancelledError extends Error {
+  constructor() {
+    super('Save cancelled')
+    this.name = 'SaveCancelledError'
+  }
+}
+
+export const isSaveCancelledError = (error: unknown): error is SaveCancelledError =>
+  error instanceof Error && error.name === 'SaveCancelledError'
+
 export interface SaveManagerDeps {
   currentEdgeType: { value: EdgeType }
   currentSpacing: { value: SpacingKey }
@@ -83,6 +99,7 @@ export function useSaveManager(deps: SaveManagerDeps) {
   const unusedImages = ref<string[]>([])
   const usedImages = ref<UsedImageInfo[]>([])
   const pendingSaveConfig = ref<PendingSaveConfig | null>(null)
+  let pendingSaveRequest: PendingSaveRequest | null = null
 
   const applyDefaultSettings = () => {
     currentEdgeType.value = store.canvas.edgeType
@@ -157,7 +174,9 @@ export function useSaveManager(deps: SaveManagerDeps) {
           usedImages.value = isUsedImageInfoArray(checkRes.used_images) ? checkRes.used_images : []
           if (unusedImages.value.length > 0) {
             showDeleteImagesModal.value = true
-            return
+            return await new Promise<void>((resolve, reject) => {
+              pendingSaveRequest = { onSnapshotState, resolve, reject }
+            })
           }
         }
         await processImagesAndSave(source, filename, [], tempImages, onSnapshotState)
@@ -170,22 +189,33 @@ export function useSaveManager(deps: SaveManagerDeps) {
     }
   }
 
+  const settlePendingSave = (error?: unknown) => {
+    const request = pendingSaveRequest
+    pendingSaveRequest = null
+    if (!request) return
+    if (error) request.reject(error)
+    else request.resolve()
+  }
+
   const handleConfirmDeleteImages = async (onSnapshotState?: () => void) => {
     if (!pendingSaveConfig.value) return
     isProcessingImages.value = true
     try {
+      const snapshot = pendingSaveRequest?.onSnapshotState ?? onSnapshotState
       await processImagesAndSave(
         pendingSaveConfig.value.source,
         pendingSaveConfig.value.filename,
         unusedImages.value,
         getImageData().tempImages,
-        onSnapshotState
+        snapshot
       )
       showDeleteImagesModal.value = false
       pendingSaveConfig.value = null
+      settlePendingSave()
     } catch (e: unknown) {
       const err = e as { message?: string }
       ElMessage.error('保存失败: ' + (err?.message || '未知错误'))
+      settlePendingSave(e)
     } finally {
       isProcessingImages.value = false
     }
@@ -195,18 +225,21 @@ export function useSaveManager(deps: SaveManagerDeps) {
     if (!pendingSaveConfig.value) return
     isProcessingImages.value = true
     try {
+      const snapshot = pendingSaveRequest?.onSnapshotState ?? onSnapshotState
       await processImagesAndSave(
         pendingSaveConfig.value.source,
         pendingSaveConfig.value.filename,
         [],
         getImageData().tempImages,
-        onSnapshotState
+        snapshot
       )
       showDeleteImagesModal.value = false
       pendingSaveConfig.value = null
+      settlePendingSave()
     } catch (e: unknown) {
       const err = e as { message?: string }
       ElMessage.error('保存失败: ' + (err?.message || '未知错误'))
+      settlePendingSave(e)
     } finally {
       isProcessingImages.value = false
     }
@@ -215,6 +248,7 @@ export function useSaveManager(deps: SaveManagerDeps) {
   const handleCancelDeleteImages = () => {
     showDeleteImagesModal.value = false
     pendingSaveConfig.value = null
+    settlePendingSave(new SaveCancelledError())
   }
 
   const handleUpdateCanvasConfig = (
