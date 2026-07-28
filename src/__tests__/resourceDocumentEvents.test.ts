@@ -11,10 +11,10 @@ describe('resourceDocumentEvents', () => {
     const changes = useResourceDocumentChanges()
 
     notifyResourceDocumentSaved('D:/resource', 'pipeline.json', 'sub-canvas-1')
-    const firstRevision = changes.value?.revision ?? 0
+    const firstRevision = changes.value.get('D:/resource|pipeline.json')?.revision ?? 0
     notifyResourceDocumentSaved('D:/resource', 'pipeline.json', 'sub-canvas-2')
 
-    expect(changes.value).toEqual({
+    expect(changes.value.get('D:/resource|pipeline.json')).toEqual({
       fileId: 'D:/resource|pipeline.json',
       source: 'D:/resource',
       filename: 'pipeline.json',

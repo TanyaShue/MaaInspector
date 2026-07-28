@@ -64,6 +64,24 @@ describe('ContextMenu', () => {
     expect(wrapper.text()).not.toContain('查看任务链')
   })
 
+  it('hides main-document debug actions in a detached sub-canvas session', () => {
+    const wrapper = mount(ContextMenu, {
+      global: { stubs: { Teleport: true } },
+      props: {
+        x: 20,
+        y: 20,
+        type: 'node',
+        data: targetNode,
+        mode: 'subcanvas',
+        allowDebug: false,
+      }
+    })
+
+    expect(wrapper.text()).toContain('复制节点')
+    expect(wrapper.text()).not.toContain('调试该节点')
+    expect(wrapper.text()).not.toContain('在调试窗口中调试')
+  })
+
   it('opens a submenu without executing the parent action', async () => {
     const wrapper = mount(ContextMenu, {
       global: { stubs: { Teleport: true } },

@@ -95,6 +95,7 @@ const {
   nodeLocationSelectVisible,
   closeNodeLocationSelect,
   openResolvedResourceNode,
+  handleOpenReferencedNode,
   editorPort,
   markNodeStructureChanged,
   taskChainFocusId,
@@ -422,6 +423,7 @@ onBeforeUnmount(() => {
       @close="closeSubCanvas"
       @root-renamed="(nodeId) => { subCanvas.nodeId = nodeId }"
       @replace-nodes="replaceSubCanvasNodes"
+      @open-referenced-node="handleOpenReferencedNode"
     />
     <NodeLocationSelectModal
       :visible="nodeLocationSelectVisible"

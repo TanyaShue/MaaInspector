@@ -9,7 +9,7 @@ export interface ResourceDocumentChange {
   revision: number
 }
 
-const latestChange = ref<ResourceDocumentChange | null>(null)
+const documentChanges = ref<Map<string, ResourceDocumentChange>>(new Map())
 let revision = 0
 
 export const notifyResourceDocumentSaved = (
@@ -17,18 +17,19 @@ export const notifyResourceDocumentSaved = (
   filename: string,
   origin: string
 ) => {
-  latestChange.value = {
+  const change = {
     fileId: makeFileId(source, filename),
     source,
     filename,
     origin,
     revision: ++revision,
   }
+  documentChanges.value = new Map(documentChanges.value).set(change.fileId, change)
 }
 
-export const useResourceDocumentChanges = () => latestChange
+export const useResourceDocumentChanges = () => documentChanges
 
 export const resetResourceDocumentChangesForTests = () => {
-  latestChange.value = null
+  documentChanges.value = new Map()
   revision = 0
 }

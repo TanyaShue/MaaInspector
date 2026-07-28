@@ -6,10 +6,16 @@ export const changelogContent = `# MaaInspector Changelog
 ## Unreleased (2026-07-28)
 
 ### Features
+- feat: 支持跨文件子画布编辑保存与同步 (744db7f)
 - feat: 在子画布展示跨文件节点链 (bb57d70)
 - feat: 支持定位未知节点定义 (8cc118f)
 
+### Improvements
+- refactor: 为跨文件子画布建立独立文档会话 (2213540)
+- refactor: 统一资源文档加载入口 (2c08523)
+
 ### Fixes
+- fix: 修复子画布右键菜单层级 (856e16c)
 - fix: 去重搜索中的未知节点 (914ae7f)
 - fix: 区分节点调试执行模式 (72ff8bb)
 - fix: 调试前重载 MaaFW 资源 (b81668c)
@@ -23,13 +29,22 @@ export const changelogReleases = [{
                      {
                          "kind":  "features",
                          "items":  [
+                                       "feat: 支持跨文件子画布编辑保存与同步 (744db7f)",
                                        "feat: 在子画布展示跨文件节点链 (bb57d70)",
                                        "feat: 支持定位未知节点定义 (8cc118f)"
                                    ]
                      },
                      {
+                         "kind":  "improvements",
+                         "items":  [
+                                       "refactor: 为跨文件子画布建立独立文档会话 (2213540)",
+                                       "refactor: 统一资源文档加载入口 (2c08523)"
+                                   ]
+                     },
+                     {
                          "kind":  "fixes",
                          "items":  [
+                                       "fix: 修复子画布右键菜单层级 (856e16c)",
                                        "fix: 去重搜索中的未知节点 (914ae7f)",
                                        "fix: 区分节点调试执行模式 (72ff8bb)",
                                        "fix: 调试前重载 MaaFW 资源 (b81668c)",

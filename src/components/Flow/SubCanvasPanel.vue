@@ -3,9 +3,10 @@ import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { SelectionMode, VueFlow, useVueFlow, type EdgeMouseEvent, type FlowEvents, type NodeChange, type NodeDragEvent, type NodeMouseEvent, type NodeTypesObject, type XYPosition } from '@vue-flow/core'
 import { Maximize2, Move, RefreshCw, Save, X } from 'lucide-vue-next'
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, ref, watch, type Ref } from 'vue'
+import { computed, defineAsyncComponent, inject, nextTick, onBeforeUnmount, onMounted, provide, ref, watch, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import ContextMenu from './ContextMenu.vue'
+import NodeDetailsHost from './NodeDetailsHost.vue'
 import { useEditorActions } from '@/composables/useEditorActions'
 import { useResourceDocumentSession } from '@/composables/useResourceDocumentSession'
 import { useFloatingPanel } from '@/composables/useFloatingPanel'
@@ -14,7 +15,6 @@ import { useViewportSync } from '@/composables/flowGraph/useViewportSync'
 import { useEdgeRenderWindow } from '@/composables/flowGraph/useEdgeRenderWindow'
 import { logDebug } from '@/utils/logger'
 import ToolbarIconDropdown from './Common/ToolbarIconDropdown.vue'
-import DeleteImagesConfirmModal from './Modals/DeleteImagesConfirmModal.vue'
 import {
   EDGE_TYPE_OPTIONS,
   LAYOUT_ALGORITHM_OPTIONS,
@@ -32,7 +32,10 @@ import {
 } from '@/utils/flowSubgraph'
 import type { EdgeType } from '@/utils/flowOptions'
 import type { NodeNamePrefixMode } from '@/stores/appConfig'
-import { useNodeDetailsController } from '@/composables/useNodeDetailsController'
+import {
+  provideNodeDetailsController,
+  useNodeDetailsController,
+} from '@/composables/useNodeDetailsController'
 import type {
   FlowBusinessData,
   FlowConnection,
@@ -45,6 +48,10 @@ import type {
   SpacingKey,
   TemplateImage
 } from '@/utils/flowTypes'
+
+const DeleteImagesConfirmModal = defineAsyncComponent(
+  () => import('./Modals/DeleteImagesConfirmModal.vue')
+)
 
 const props = defineProps<{
   visible: boolean
@@ -87,6 +94,7 @@ const emit = defineEmits<{
   (e: 'close'): void
   (e: 'root-renamed', nodeId: string): void
   (e: 'replace-nodes', nodes: FlowNode[]): void
+  (e: 'open-referenced-node', node: FlowNode): void
 }>()
 
 const flowId = `sub-canvas-${Math.random().toString(36).slice(2)}`
@@ -95,7 +103,9 @@ const documentNodes = computed(() => detachedGraph?.nodes.value ?? props.nodes)
 const documentEdges = computed(() => detachedGraph?.edges.value ?? props.edges)
 const documentImageManager = detachedGraph?.imageManager ?? props.imageManager
 const parentPipelineVersion = inject<Ref<'V1' | 'V2' | ''>>('pipelineVersion', ref(''))
-const nodeDetailsController = useNodeDetailsController()
+const nodeDetailsController = props.detached
+  ? provideNodeDetailsController()
+  : useNodeDetailsController()
 const sessionNodeIds = ref<Set<string>>(new Set())
 const localNodeState = ref<Record<string, Partial<FlowNode>>>({})
 const activeAlgorithm = ref<LayoutAlgorithm>(props.initialAlgorithm || props.currentAlgorithm)
@@ -571,7 +581,8 @@ const editorActions = useEditorActions({
   onDebugNode: props.handleDebugNode,
   onOpenDebugPanel: props.handleOpenDebugPanel,
   onCloseDebugPanel: () => {},
-  onIncrementCloseAllDetails: () => { nodeDetailsController?.close() }
+  onIncrementCloseAllDetails: () => { nodeDetailsController?.close() },
+  onOpenReferencedNode: openReferencedNode
 })
 
 const {
@@ -644,6 +655,16 @@ const requestClose = () => {
     return
   }
   emit('close')
+}
+
+function openReferencedNode(node: FlowNode) {
+  if (
+    detachedGraph?.saveManager.isDirtyCombined.value &&
+    !window.confirm('当前跨文件子画布有未保存修改，继续打开其他节点将丢失这些修改。是否继续？')
+  ) {
+    return
+  }
+  emit('open-referenced-node', node)
 }
 
 const handleKeyDown = (e: KeyboardEvent) => {
@@ -1018,6 +1039,11 @@ onBeforeUnmount(() => {
             :clipboard-history="clipboardHistory"
             @close="closeMenu"
             @action="handleMenuAction"
+          />
+          <NodeDetailsHost
+            v-if="detachedGraph"
+            :nodes="documentNodes"
+            :node-structure-version="detachedGraph.nodeStructureVersion.value"
           />
           <div
             v-if="detachedGraph?.loading.value || detachedGraph?.loadError.value"

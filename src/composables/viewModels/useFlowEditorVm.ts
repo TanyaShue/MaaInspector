@@ -579,9 +579,18 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
   }
 
   const resourceDocumentChanges = useResourceDocumentChanges()
-  watch(resourceDocumentChanges, (change) => {
-    if (!change || change.origin === options.tabId) return
-    if (makeFileId(currentSource.value, currentFilename.value) !== change.fileId) return
+  const handledResourceRevisions = new Map<string, number>()
+  watch([resourceDocumentChanges, currentSource, currentFilename], ([changes]) => {
+    const fileId = makeFileId(currentSource.value, currentFilename.value)
+    const change = changes.get(fileId)
+    if (
+      !change ||
+      change.origin === options.tabId ||
+      change.revision <= (handledResourceRevisions.get(fileId) || 0)
+    ) {
+      return
+    }
+    handledResourceRevisions.set(fileId, change.revision)
     if (isDirtyCombined.value) {
       ElMessage.warning(`${change.filename} 已在子画布中保存；当前标签有未保存修改，未自动覆盖`)
       return
@@ -707,6 +716,7 @@ export function useFlowEditorVm(options: UseFlowEditorVmOptions) {
     nodeLocationSelectVisible,
     closeNodeLocationSelect,
     openResolvedResourceNode,
+    handleOpenReferencedNode,
     editorPort,
     markNodeStructureChanged,
     taskChainFocusId,
