@@ -27,7 +27,7 @@ permissions:
   contents: write
 
 env:
-  DEFAULT_MAA_FRAMEWORK_VERSION: "v5.10.0"
+  DEFAULT_MAA_FRAMEWORK_VERSION: "v5.13.0-beta.2"
   # Keep peak memory predictable on GitHub's Windows runners. The final Tauri
   # link is memory-heavy and has previously crashed rustc with 0xc0000005.
   CARGO_BUILD_JOBS: "2"
