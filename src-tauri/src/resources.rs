@@ -1,4 +1,5 @@
 use regex::Regex;
+use serde::Serialize;
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use std::fmt;
@@ -13,6 +14,17 @@ use crate::response::ResourceFileInfo;
 use chrono::Local;
 
 static BACKUP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+const JSON_INDENT: &[u8] = b"    ";
+
+fn serialize_resource_json(value: &JsonValue) -> Result<Vec<u8>, serde_json::Error> {
+    let mut output = Vec::new();
+    let formatter = serde_json::ser::PrettyFormatter::with_indent(JSON_INDENT);
+    let mut serializer = serde_json::Serializer::with_formatter(&mut output, formatter);
+    value.serialize(&mut serializer)?;
+    output.push(b'\n');
+    Ok(output)
+}
 
 #[derive(Debug)]
 pub enum ResourceError {
@@ -38,6 +50,31 @@ mod tests {
             vec![root.to_string_lossy().to_string()],
             root.join("test-backup"),
         )
+    }
+
+    #[test]
+    fn serializes_resource_json_with_four_space_indentation_and_trailing_newline() {
+        let output = serialize_resource_json(&serde_json::json!({
+            "node": {
+                "recognition": "OCR",
+                "expected": ["text"]
+            }
+        }))
+        .expect("serialize resource JSON");
+
+        assert_eq!(
+            String::from_utf8(output).expect("resource JSON is UTF-8"),
+            concat!(
+                "{\n",
+                "    \"node\": {\n",
+                "        \"expected\": [\n",
+                "            \"text\"\n",
+                "        ],\n",
+                "        \"recognition\": \"OCR\"\n",
+                "    }\n",
+                "}\n"
+            )
+        );
     }
 
     #[test]
@@ -790,12 +827,12 @@ impl ResourcesManager {
             .collect::<serde_json::Map<String, JsonValue>>()
             .into();
 
-        let json_str = serde_json::to_string_pretty(&json_value)
+        let json_bytes = serialize_resource_json(&json_value)
             .map_err(|error| ResourceError::InvalidData(error.to_string()))?;
         let backup_path = full_path
             .exists()
             .then(|| self.backup_path(&path, "pipeline", filename));
-        write_file_atomically_with_backup(&full_path, json_str.as_bytes(), backup_path.as_deref())
+        write_file_atomically_with_backup(&full_path, &json_bytes, backup_path.as_deref())
             .map_err(|error| ResourceError::io("write pipeline file", &full_path, error))?;
 
         // Update cache
