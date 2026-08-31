@@ -1,5 +1,4 @@
 use regex::Regex;
-use serde::Serialize;
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use std::fmt;
@@ -19,11 +18,79 @@ const JSON_INDENT: &[u8] = b"    ";
 
 fn serialize_resource_json(value: &JsonValue) -> Result<Vec<u8>, serde_json::Error> {
     let mut output = Vec::new();
-    let formatter = serde_json::ser::PrettyFormatter::with_indent(JSON_INDENT);
-    let mut serializer = serde_json::Serializer::with_formatter(&mut output, formatter);
-    value.serialize(&mut serializer)?;
+    write_resource_json_value(&mut output, value, 0)?;
     output.push(b'\n');
     Ok(output)
+}
+
+fn write_resource_json_value(
+    output: &mut Vec<u8>,
+    value: &JsonValue,
+    depth: usize,
+) -> Result<(), serde_json::Error> {
+    let JsonValue::Object(object) = value else {
+        return write_inline_json_value(output, value);
+    };
+
+    if object.is_empty() {
+        output.extend_from_slice(b"{}");
+        return Ok(());
+    }
+
+    output.extend_from_slice(b"{\n");
+    let last_index = object.len() - 1;
+    for (index, (key, child)) in object.iter().enumerate() {
+        write_indent(output, depth + 1);
+        serde_json::to_writer(&mut *output, key)?;
+        output.extend_from_slice(b": ");
+        write_resource_json_value(output, child, depth + 1)?;
+        if index != last_index {
+            output.push(b',');
+        }
+        output.push(b'\n');
+    }
+    write_indent(output, depth);
+    output.push(b'}');
+    Ok(())
+}
+
+fn write_inline_json_value(
+    output: &mut Vec<u8>,
+    value: &JsonValue,
+) -> Result<(), serde_json::Error> {
+    match value {
+        JsonValue::Array(items) => {
+            output.push(b'[');
+            for (index, item) in items.iter().enumerate() {
+                if index > 0 {
+                    output.extend_from_slice(b", ");
+                }
+                write_inline_json_value(output, item)?;
+            }
+            output.push(b']');
+            Ok(())
+        }
+        JsonValue::Object(object) => {
+            output.push(b'{');
+            for (index, (key, child)) in object.iter().enumerate() {
+                if index > 0 {
+                    output.extend_from_slice(b", ");
+                }
+                serde_json::to_writer(&mut *output, key)?;
+                output.extend_from_slice(b": ");
+                write_inline_json_value(output, child)?;
+            }
+            output.push(b'}');
+            Ok(())
+        }
+        _ => serde_json::to_writer(output, value),
+    }
+}
+
+fn write_indent(output: &mut Vec<u8>, depth: usize) {
+    for _ in 0..depth {
+        output.extend_from_slice(JSON_INDENT);
+    }
 }
 
 #[derive(Debug)]
@@ -67,14 +134,33 @@ mod tests {
             concat!(
                 "{\n",
                 "    \"node\": {\n",
-                "        \"expected\": [\n",
-                "            \"text\"\n",
-                "        ],\n",
+                "        \"expected\": [\"text\"],\n",
                 "        \"recognition\": \"OCR\"\n",
                 "    }\n",
                 "}\n"
             )
         );
+    }
+
+    #[test]
+    fn serializes_resource_json_arrays_on_one_line() {
+        let output = serialize_resource_json(&serde_json::json!({
+            "node": {
+                "roi": [278, 397, 196, 106],
+                "points": [[1, 2], [3, 4]]
+            }
+        }))
+        .expect("serialize resource JSON");
+        let output = String::from_utf8(output).expect("resource JSON is UTF-8");
+
+        assert!(
+            output
+                .lines()
+                .any(|line| line.trim_end_matches(',').trim() == "\"roi\": [278, 397, 196, 106]")
+        );
+        assert!(output.lines().any(|line| {
+            line.trim_end_matches(',').trim() == "\"points\": [[1, 2], [3, 4]]"
+        }));
     }
 
     #[test]
