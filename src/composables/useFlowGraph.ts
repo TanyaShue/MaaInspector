@@ -421,7 +421,8 @@ export function useFlowGraph(flowId?: string) {
         node.id,
         nodeMeta.data as FlowBusinessData,
         nodes.value,
-        currentEdgeType.value
+        currentEdgeType.value,
+        edges.value
       )
       edges.value = [
         ...edges.value.filter(edge => edge.source !== node.id),

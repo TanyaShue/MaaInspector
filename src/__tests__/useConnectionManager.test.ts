@@ -45,4 +45,45 @@ describe('getEdgeStyle', () => {
       { target: 'A', handle: 'source-c', index: 0 },
     ])
   })
+
+  it('keeps the previously connected duplicate unknown-node instance', () => {
+    const source = {
+      id: 'Source',
+      type: 'custom',
+      position: { x: 0, y: 0 },
+      data: { id: 'Source', type: 'DirectHit', data: { id: 'Source', recognition: 'DirectHit' } },
+    } as FlowNode
+    const unknownNodes = [1, 2].map(index => ({
+      id: `__maa_unknown_node__Missing__${index}`,
+      type: 'custom',
+      position: { x: 0, y: 0 },
+      data: {
+        id: `__maa_unknown_node__Missing__${index}`,
+        type: 'Unknown',
+        data: { id: 'Missing' },
+        _isMissing: true,
+        _originalId: 'Missing',
+      },
+    })) as FlowNode[]
+    const previousEdges = [{
+      id: 'previous-edge',
+      source: 'Source',
+      target: unknownNodes[1].id,
+      sourceHandle: 'source-a',
+      targetHandle: 'in',
+      label: 'next',
+      data: { linkIndex: 0, linkField: 'next' as const },
+    }]
+
+    const rebuilt = buildOutgoingEdges(
+      'Source',
+      { next: 'Missing' },
+      [source, ...unknownNodes],
+      'smoothstep',
+      previousEdges
+    )
+
+    expect(rebuilt).toHaveLength(1)
+    expect(rebuilt[0].target).toBe(unknownNodes[1].id)
+  })
 })

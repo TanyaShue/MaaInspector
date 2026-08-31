@@ -317,6 +317,34 @@ describe('Duplicate Missing Nodes', () => {
     expect(missingNodes[1].id.startsWith(UNKNOWN_NODE_ID_PREFIX)).toBe(true)
   })
 
+  it('should keep an updated source connected to the same duplicate missing instance', async () => {
+    const { loadNodes, nodes, edges, handleNodeUpdate } = useFlowGraph()
+
+    const testData = {
+      NodeA: { next: 'MissingNode' },
+      NodeB: { next: 'MissingNode' },
+    }
+
+    await loadNodes({
+      filename: 'test.json',
+      source: JSON.stringify(testData),
+      nodes: testData,
+    })
+    setVueFlowNodes(nodes.value)
+
+    const originalTarget = edges.value.find(edge => edge.source === 'NodeB')?.target
+    expect(originalTarget).toBe(`${UNKNOWN_NODE_ID_PREFIX}MissingNode__2`)
+
+    handleNodeUpdate({
+      oldId: 'NodeB',
+      newId: 'NodeB',
+      newType: 'DirectHit',
+      newData: { next: 'MissingNode', description: 'updated' },
+    })
+
+    expect(edges.value.find(edge => edge.source === 'NodeB')?.target).toBe(originalTarget)
+  })
+
   it('should update the selected duplicate array reference by link index', async () => {
     const { loadNodes, nodes, handleNodeUpdate, getNodesData } = useFlowGraph()
 

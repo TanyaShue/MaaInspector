@@ -9,11 +9,14 @@ import FocusTab from './NodeDetailsPanels/FocusTab.vue'
 import RecognitionTab from './NodeDetailsPanels/RecognitionTab.vue'
 import ActionTab from './NodeDetailsPanels/ActionTab.vue'
 import JsonPreviewTab from './NodeDetailsPanels/JsonPreviewTab.vue'
+import ConfiguredFieldsPanel from './NodeDetailsPanels/ConfiguredFieldsPanel.vue'
 import { useNodeForm, type UseNodeFormEmit } from '@/composables/useNodeForm'
+import { useNodeDetailsUiConfig } from '@/composables/useNodeDetailsUiConfig'
 import { recognitionTypes, actionTypes } from '@/utils/node-config'
 import { useDeviceScreenPicker, type PickerPayload } from '@/composables/useDeviceScreenPicker'
 import type { FlowBusinessData, FlowNodeMeta } from '@/utils/flowTypes'
 import { removePreviousNodeTypeProperties } from '@/utils/nodeTypeProperties'
+import { getNodeLayout, removeConfiguredNodeTypeProperties } from '@/utils/nodeDetailsUi'
 
 const props = defineProps<{
   visible: boolean
@@ -60,9 +63,12 @@ const {
   handleImageDelete
 } = deviceScreenPicker
 
+const nodeDetailsUi = useNodeDetailsUiConfig()
+void nodeDetailsUi.load()
+
 // UI 状态
 const activeTab = ref('basic')
-const tabs = [
+const fallbackTabs = [
   { key: 'basic', label: '基本属性', icon: Settings },
   { key: 'flow', label: '流程控制', icon: GitBranch },
   { key: 'common', label: '通用属性', icon: Zap },
@@ -71,6 +77,19 @@ const tabs = [
   { key: 'action', label: '动作属性', icon: Play },
   { key: 'json', label: 'JSON 预览', icon: FileJson },
 ]
+const tabIconMap = {
+  settings: Settings,
+  'git-branch': GitBranch,
+  zap: Zap,
+  'message-square': MessageSquare,
+  info: Info,
+  play: Play,
+  'file-json': FileJson
+}
+const tabs = computed(() => nodeDetailsUi.config.value?.tabs.map(tab => ({
+  ...tab,
+  icon: tabIconMap[tab.icon as keyof typeof tabIconMap] || Settings
+})) || fallbackTabs)
 
 const editingId = ref('')
 const dropdownStates = reactive({
@@ -100,6 +119,15 @@ const recognitionConfig = computed(() => recognitionTypes.find(r => r.value === 
 const actionConfig = computed(() => actionTypes.find(a => a.value === currentAction.value) || actionTypes[0])
 const nextList = computed(() => getArrayList('next'))
 const onErrorList = computed(() => getArrayList('on_error'))
+const commonLayout = computed(() => nodeDetailsUi.config.value?.layouts.common)
+const recognitionLayout = computed(() => nodeDetailsUi.config.value
+  ? getNodeLayout(nodeDetailsUi.config.value, 'recognition', currentRecognition.value)
+  : undefined)
+const actionLayout = computed(() => nodeDetailsUi.config.value
+  ? getNodeLayout(nodeDetailsUi.config.value, 'action', currentAction.value)
+  : undefined)
+const useConfiguredRecognition = computed(() => recognitionLayout.value?.renderer !== 'legacy')
+const useConfiguredAction = computed(() => actionLayout.value?.renderer !== 'legacy')
 
 const confirmIdChange = () => {
   if (editingId.value && editingId.value !== props.nodeId) {
@@ -108,24 +136,56 @@ const confirmIdChange = () => {
 }
 
 const selectRecognitionType = (newType: string) => {
-  formData.value = removePreviousNodeTypeProperties(
-    formData.value,
-    'recognition',
-    currentRecognition.value,
-    newType
-  )
+  const nextLayout = nodeDetailsUi.config.value
+    ? getNodeLayout(nodeDetailsUi.config.value, 'recognition', newType)
+    : undefined
+  const canUseConfiguredCleanup = nodeDetailsUi.config.value
+    && recognitionLayout.value
+    && recognitionLayout.value.renderer !== 'legacy'
+    && nextLayout
+    && nextLayout.renderer !== 'legacy'
+  formData.value = canUseConfiguredCleanup && nodeDetailsUi.config.value
+    ? removeConfiguredNodeTypeProperties(
+      formData.value as Record<string, unknown>,
+      'recognition',
+      currentRecognition.value,
+      newType,
+      nodeDetailsUi.config.value
+    )
+    : removePreviousNodeTypeProperties(
+      formData.value,
+      'recognition',
+      currentRecognition.value,
+      newType
+    )
   setValue('recognition', newType)
   emit('update-type', newType)
   dropdownStates.recognition = false
 }
 
 const selectActionType = (newAction: string) => {
-  formData.value = removePreviousNodeTypeProperties(
-    formData.value,
-    'action',
-    currentAction.value,
-    newAction
-  )
+  const nextLayout = nodeDetailsUi.config.value
+    ? getNodeLayout(nodeDetailsUi.config.value, 'action', newAction)
+    : undefined
+  const canUseConfiguredCleanup = nodeDetailsUi.config.value
+    && actionLayout.value
+    && actionLayout.value.renderer !== 'legacy'
+    && nextLayout
+    && nextLayout.renderer !== 'legacy'
+  formData.value = canUseConfiguredCleanup && nodeDetailsUi.config.value
+    ? removeConfiguredNodeTypeProperties(
+      formData.value as Record<string, unknown>,
+      'action',
+      currentAction.value,
+      newAction,
+      nodeDetailsUi.config.value
+    )
+    : removePreviousNodeTypeProperties(
+      formData.value,
+      'action',
+      currentAction.value,
+      newAction
+    )
   setValue('action', newAction)
   dropdownStates.action = false
 }
@@ -334,7 +394,16 @@ watch(() => props.visible, (val) => {
           v-show="activeTab === 'common'"
           class="absolute inset-0 overflow-y-auto custom-scrollbar-dark"
         >
+          <ConfiguredFieldsPanel
+            v-if="nodeDetailsUi.config.value && nodeDetailsUi.pipelineSchema.value && commonLayout"
+            :columns="nodeDetailsUi.config.value.gridColumns"
+            :layout="commonLayout"
+            :ui-config="nodeDetailsUi.config.value"
+            :pipeline-schema="nodeDetailsUi.pipelineSchema.value"
+            :form="formMethods"
+          />
           <CommonTab
+            v-else
             :get-value="getValue"
             :set-value="setValue"
           />
@@ -359,7 +428,20 @@ watch(() => props.visible, (val) => {
           v-show="activeTab === 'recognition'"
           class="absolute inset-0 overflow-y-auto custom-scrollbar-dark"
         >
+          <ConfiguredFieldsPanel
+            v-if="nodeDetailsUi.config.value && nodeDetailsUi.pipelineSchema.value && recognitionLayout && useConfiguredRecognition"
+            :title="`${recognitionConfig.label} 属性`"
+            :subtitle="currentRecognition"
+            :columns="nodeDetailsUi.config.value.gridColumns"
+            :layout="recognitionLayout"
+            :ui-config="nodeDetailsUi.config.value"
+            :pipeline-schema="nodeDetailsUi.pipelineSchema.value"
+            :form="formMethods"
+            @open-picker="openDevicePicker"
+            @open-image-manager="openImageManager"
+          />
           <RecognitionTab
+            v-else
             :current-recognition="currentRecognition"
             :recognition-config="recognitionConfig"
             :form="formMethods"
@@ -372,7 +454,19 @@ watch(() => props.visible, (val) => {
           v-show="activeTab === 'action'"
           class="absolute inset-0 overflow-y-auto custom-scrollbar-dark"
         >
+          <ConfiguredFieldsPanel
+            v-if="nodeDetailsUi.config.value && nodeDetailsUi.pipelineSchema.value && actionLayout && useConfiguredAction"
+            :title="`${actionConfig.label} 属性`"
+            :subtitle="currentAction"
+            :columns="nodeDetailsUi.config.value.gridColumns"
+            :layout="actionLayout"
+            :ui-config="nodeDetailsUi.config.value"
+            :pipeline-schema="nodeDetailsUi.pipelineSchema.value"
+            :form="formMethods"
+            @open-picker="openDevicePicker"
+          />
           <ActionTab
+            v-else
             :current-action="currentAction"
             :action-config="actionConfig"
             :form="formMethods"

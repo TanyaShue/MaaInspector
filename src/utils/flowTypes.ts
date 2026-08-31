@@ -50,7 +50,11 @@ export interface FlowNodeMeta {
 }
 
 export type FlowNode = Node<FlowNodeMeta>
-export type FlowEdge = Edge<{ isJumpBack?: boolean; linkIndex?: number }>
+export type FlowEdge = Edge<{
+  isJumpBack?: boolean
+  linkIndex?: number
+  linkField?: 'next' | 'on_error' | 'timeout_next'
+}>
 export type FlowConnection = Connection
 export type FlowEdgeChange = EdgeChange
 

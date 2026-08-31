@@ -80,7 +80,7 @@ export const buildFlowGraph = (
           targetHandle: 'in',
           label: flags.jumpBack ? 'JumpBack' : key,
           ...edgeStyle,
-          data: { ...edgeStyle.data, linkIndex: targetIndex },
+          data: { ...edgeStyle.data, linkIndex: targetIndex, linkField: key },
         })
       })
     })

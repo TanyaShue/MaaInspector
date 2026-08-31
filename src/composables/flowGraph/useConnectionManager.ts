@@ -70,7 +70,8 @@ export const buildOutgoingEdges = (
   sourceId: string,
   sourceData: FlowBusinessData,
   nodes: FlowNode[],
-  currentEdgeType: EdgeType
+  currentEdgeType: EdgeType,
+  previousEdges: FlowEdge[] = []
 ): FlowEdge[] => {
   const targetNodesByLinkId = new Map<string, FlowNode[]>()
   nodes.forEach((node) => {
@@ -81,6 +82,7 @@ export const buildOutgoingEdges = (
   })
 
   const targetUseCounts = new Map<string, number>()
+  const reusedEdgeIds = new Set<string>()
   const linkFields: Array<{
     key: 'next' | 'on_error' | 'timeout_next'
     handle: 'source-a' | 'source-c'
@@ -101,7 +103,24 @@ export const buildOutgoingEdges = (
       const linkId = flags.id || rawTarget
       const candidates = targetNodesByLinkId.get(linkId) ?? []
       const useCount = targetUseCounts.get(linkId) ?? 0
-      const targetNode = nodes.find(node => node.id === linkId)
+      const previousEdge = previousEdges.find((edge) => {
+        if (reusedEdgeIds.has(edge.id) || edge.source !== sourceId) return false
+        const sameField = edge.data?.linkField
+          ? edge.data.linkField === key
+          : edge.label === key
+        if (
+          !sameField ||
+          (edge.data?.linkIndex !== undefined && edge.data.linkIndex !== linkIndex)
+        ) return false
+        const previousTarget = nodes.find(node => node.id === edge.target)
+        return getNodeLinkId(previousTarget) === linkId
+      })
+      const previousTargetNode = previousEdge
+        ? nodes.find(node => node.id === previousEdge.target)
+        : undefined
+      if (previousEdge) reusedEdgeIds.add(previousEdge.id)
+      const targetNode = previousTargetNode
+        ?? nodes.find(node => node.id === linkId)
         ?? candidates[Math.min(useCount, Math.max(0, candidates.length - 1))]
       if (!targetNode) return []
       targetUseCounts.set(linkId, useCount + 1)
@@ -118,6 +137,7 @@ export const buildOutgoingEdges = (
         data: {
           ...edgeStyle.data,
           linkIndex,
+          linkField: key,
         },
       } satisfies FlowEdge]
     })

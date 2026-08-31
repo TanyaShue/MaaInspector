@@ -1,0 +1,207 @@
+{
+  "$schema": "./node-details.ui.schema.json",
+  "version": 1,
+  "gridColumns": 10,
+  "fieldLabels": {
+    "roi": "识别区域 (ROI)", "roi_offset": "区域偏移", "template": "模板图片",
+    "threshold": "匹配阈值", "method": "算法", "order_by": "排序方式", "index": "结果索引",
+    "green_mask": "绿色掩码", "count": "最低命中数量", "detector": "特征检测器", "ratio": "距离比",
+    "lower": "颜色下限", "upper": "颜色上限", "connected": "要求像素相连",
+    "expected": "期望结果", "model": "模型路径", "replace": "文本替换", "only_rec": "仅识别",
+    "color_filter": "颜色过滤节点", "labels": "标签列表", "target": "目标位置", "target_offset": "目标偏移",
+    "contact": "触点编号", "pressure": "触点力度", "duration": "持续时间 (ms)",
+    "begin": "滑动起点", "begin_offset": "起点偏移", "end": "滑动终点", "end_offset": "终点偏移",
+    "end_hold": "终点保持 (ms)", "only_hover": "仅悬停", "dx": "水平滚动", "dy": "垂直滚动",
+    "key": "按键码", "input_text": "输入文本", "package": "应用包名 / 启动入口", "exec": "执行程序",
+    "args": "执行参数", "detach": "分离进程", "cmd": "Shell 命令", "shell_timeout": "Shell 超时 (ms)"
+  },
+  "tabs": [
+    { "key": "basic", "label": "基本属性", "icon": "settings", "renderer": "basic" },
+    { "key": "flow", "label": "流程控制", "icon": "git-branch", "renderer": "flow" },
+    { "key": "common", "label": "通用属性", "icon": "zap", "renderer": "fields", "layout": "common" },
+    { "key": "focus", "label": "消息回调", "icon": "message-square", "renderer": "focus" },
+    { "key": "recognition", "label": "识别属性", "icon": "info", "renderer": "node-fields", "kind": "recognition" },
+    { "key": "action", "label": "动作属性", "icon": "play", "renderer": "node-fields", "kind": "action" },
+    { "key": "json", "label": "JSON 预览", "icon": "file-json", "renderer": "json" }
+  ],
+  "layouts": {
+    "common": {
+      "schemaDef": "Node",
+      "fields": [
+        { "key": "rate_limit", "span": 5, "control": "number", "label": "识别速率 (ms)" },
+        { "key": "timeout", "span": 5, "control": "number", "label": "超时时间 (ms)" },
+        { "key": "inverse", "span": 5, "control": "checkbox", "label": "反转识别结果" },
+        { "key": "enabled", "span": 5, "control": "checkbox", "label": "启用节点" },
+        { "key": "pre_delay", "span": 5, "control": "number", "label": "动作前延迟 (ms)", "min": 0 },
+        { "key": "post_delay", "span": 5, "control": "number", "label": "动作后延迟 (ms)", "min": 0 },
+        { "key": "pre_wait_freezes", "span": 5, "control": "json", "label": "动作前等待冻结" },
+        { "key": "post_wait_freezes", "span": 5, "control": "json", "label": "动作后等待冻结" },
+        { "key": "max_hit", "span": 5, "control": "number", "label": "最大命中次数", "optional": true },
+        { "key": "repeat", "span": 5, "control": "number", "label": "动作重复次数", "min": 1 },
+        { "key": "repeat_delay", "span": 5, "control": "number", "label": "重复延迟 (ms)", "min": 0 },
+        { "key": "repeat_wait_freezes", "span": 5, "control": "json", "label": "重复等待冻结" },
+        { "key": "attach", "span": 10, "rowSpan": 2, "control": "textarea-json", "label": "附加配置" }
+      ]
+    }
+  },
+  "recognition": {
+    "DirectHit": { "schemaDef": "DirectHit", "emptyText": "直达模式无需额外识别配置。", "fields": [] },
+    "TemplateMatch": {
+      "schemaDef": "TemplateMatch",
+      "fields": [
+        { "key": "roi", "span": 5, "control": "json", "actions": [{ "type": "picker", "label": "快速框选" }] },
+        { "key": "roi_offset", "span": 5, "control": "json", "actions": [{ "type": "picker", "referenceField": "roi", "label": "设置偏移" }] },
+        { "key": "template", "span": 10, "control": "json", "actions": [{ "type": "image-manager", "label": "管理/截取图片" }] },
+        { "key": "threshold", "span": 5, "control": "json" },
+        { "key": "method", "span": 5, "control": "select" },
+        { "key": "order_by", "span": 5, "control": "select" },
+        { "key": "index", "span": 5, "control": "number" },
+        { "key": "green_mask", "span": 10, "control": "checkbox" }
+      ]
+    },
+    "FeatureMatch": {
+      "schemaDef": "FeatureMatch",
+      "fields": [
+        { "key": "roi", "span": 5, "control": "json", "actions": [{ "type": "picker", "label": "快速框选" }] },
+        { "key": "roi_offset", "span": 5, "control": "json", "actions": [{ "type": "picker", "referenceField": "roi", "label": "设置偏移" }] },
+        { "key": "template", "span": 10, "control": "json", "actions": [{ "type": "image-manager", "label": "管理/截取图片" }] },
+        { "key": "count", "span": 3, "control": "number", "min": 1 },
+        { "key": "detector", "span": 4, "control": "select" },
+        { "key": "ratio", "span": 3, "control": "number", "step": 0.1, "min": 0, "max": 1 },
+        { "key": "order_by", "span": 5, "control": "select" },
+        { "key": "index", "span": 5, "control": "number" },
+        { "key": "green_mask", "span": 10, "control": "checkbox" }
+      ]
+    },
+    "ColorMatch": {
+      "schemaDef": "ColorMatch",
+      "fields": [
+        { "key": "roi", "span": 5, "control": "json", "actions": [{ "type": "picker", "label": "快速框选" }] },
+        { "key": "roi_offset", "span": 5, "control": "json", "actions": [{ "type": "picker", "referenceField": "roi", "label": "设置偏移" }] },
+        { "key": "lower", "span": 5, "control": "json" },
+        { "key": "upper", "span": 5, "control": "json" },
+        { "key": "method", "span": 5, "control": "number" },
+        { "key": "count", "span": 5, "control": "number", "min": 1 },
+        { "key": "$colorRange", "span": 10, "control": "action", "label": "从截图填充颜色范围", "actions": [{ "type": "color-range", "label": "从截图填充" }] },
+        { "key": "order_by", "span": 5, "control": "select" },
+        { "key": "index", "span": 5, "control": "number" },
+        { "key": "connected", "span": 10, "control": "checkbox" }
+      ]
+    },
+    "OCR": {
+      "schemaDef": "Ocr",
+      "fields": [
+        { "key": "roi", "span": 5, "control": "json", "actions": [{ "type": "picker", "label": "快速框选" }] },
+        { "key": "roi_offset", "span": 5, "control": "json", "actions": [{ "type": "picker", "referenceField": "roi", "label": "设置偏移" }] },
+        { "key": "expected", "span": 10, "control": "json", "forceString": true, "actions": [{ "type": "ocr", "referenceField": "roi", "label": "OCR 检查/取词" }] },
+        { "key": "threshold", "span": 5, "control": "number", "step": 0.1, "min": 0, "max": 1 },
+        { "key": "model", "span": 5, "control": "text" },
+        { "key": "replace", "span": 10, "control": "json" },
+        { "key": "color_filter", "span": 5, "control": "text" },
+        { "key": "order_by", "span": 5, "control": "select" },
+        { "key": "index", "span": 5, "control": "number" },
+        { "key": "only_rec", "span": 5, "control": "checkbox" }
+      ]
+    },
+    "NeuralNetworkClassify": {
+      "schemaDef": "NeuralNetworkClassify",
+      "fields": [
+        { "key": "roi", "span": 5, "control": "json", "actions": [{ "type": "picker", "label": "快速框选" }] },
+        { "key": "roi_offset", "span": 5, "control": "json", "actions": [{ "type": "picker", "referenceField": "roi", "label": "设置偏移" }] },
+        { "key": "model", "span": 10, "control": "text" },
+        { "key": "expected", "span": 5, "control": "json" },
+        { "key": "labels", "span": 5, "control": "json" },
+        { "key": "order_by", "span": 5, "control": "select" },
+        { "key": "index", "span": 5, "control": "number" }
+      ]
+    },
+    "NeuralNetworkDetect": {
+      "schemaDef": "NeuralNetworkDetect",
+      "fields": [
+        { "key": "roi", "span": 5, "control": "json", "actions": [{ "type": "picker", "label": "快速框选" }] },
+        { "key": "roi_offset", "span": 5, "control": "json", "actions": [{ "type": "picker", "referenceField": "roi", "label": "设置偏移" }] },
+        { "key": "model", "span": 10, "control": "text" },
+        { "key": "expected", "span": 4, "control": "json" },
+        { "key": "threshold", "span": 3, "control": "json" },
+        { "key": "index", "span": 3, "control": "number" },
+        { "key": "labels", "span": 5, "control": "json" },
+        { "key": "order_by", "span": 5, "control": "select" }
+      ]
+    },
+    "And": { "schemaDef": "And", "renderer": "legacy" },
+    "Or": { "schemaDef": "Or", "renderer": "legacy" },
+    "Custom": { "schemaDef": "CustomRecognition", "renderer": "legacy" }
+  },
+  "action": {
+    "DoNothing": { "schemaDef": "DoNothing", "emptyText": "当前动作无需额外配置。", "fields": [] },
+    "StopTask": { "schemaDef": "StopTask", "emptyText": "当前动作无需额外配置。", "fields": [] },
+    "Click": { "schemaDef": "Click", "use": "pointAction" },
+    "LongPress": { "schemaDef": "LongPress", "use": "pointAction", "append": [{ "key": "duration", "span": 5, "control": "number" }] },
+    "TouchDown": { "schemaDef": "Touch", "use": "touchAction" },
+    "TouchMove": { "schemaDef": "Touch", "use": "touchAction" },
+    "TouchUp": { "schemaDef": "TouchUp", "use": "touchAction" },
+    "Swipe": {
+      "schemaDef": "Swipe",
+      "fields": [
+        { "key": "begin", "span": 5, "control": "target", "actions": [{ "type": "picker", "label": "快速框选" }] },
+        { "key": "begin_offset", "span": 5, "control": "json", "actions": [{ "type": "picker", "referenceField": "begin", "label": "设置偏移" }] },
+        { "key": "end", "span": 5, "control": "target", "actions": [{ "type": "picker", "referenceField": "begin", "label": "快速框选" }] },
+        { "key": "end_offset", "span": 5, "control": "json", "actions": [{ "type": "picker", "referenceField": "end", "label": "设置偏移" }] },
+        { "key": "duration", "span": 3, "control": "json" },
+        { "key": "end_hold", "span": 3, "control": "json" },
+        { "key": "contact", "span": 2, "control": "number" },
+        { "key": "pressure", "span": 2, "control": "number" },
+        { "key": "only_hover", "span": 10, "control": "checkbox" }
+      ]
+    },
+    "MultiSwipe": { "schemaDef": "MultiSwipe", "renderer": "legacy" },
+    "Scroll": {
+      "schemaDef": "Scroll",
+      "fields": [
+        { "key": "target", "span": 5, "control": "target", "actions": [{ "type": "picker", "label": "快速框选" }] },
+        { "key": "target_offset", "span": 5, "control": "json", "actions": [{ "type": "picker", "referenceField": "target", "label": "设置偏移" }] },
+        { "key": "dx", "span": 5, "control": "number", "step": 120 },
+        { "key": "dy", "span": 5, "control": "number", "step": 120 }
+      ]
+    },
+    "ClickKey": { "schemaDef": "ClickKey", "use": "keyAction" },
+    "Key": { "schemaDef": "ClickKey", "use": "keyAction" },
+    "KeyDown": { "schemaDef": "KeyDown", "use": "keyAction" },
+    "KeyUp": { "schemaDef": "KeyUp", "use": "keyAction" },
+    "LongPressKey": { "schemaDef": "LongPressKey", "use": "keyAction", "append": [{ "key": "duration", "span": 5, "control": "number" }] },
+    "InputText": { "schemaDef": "InputText", "fields": [{ "key": "input_text", "span": 10, "rowSpan": 2, "control": "textarea" }] },
+    "StartApp": { "schemaDef": "StartApp", "fields": [{ "key": "package", "span": 10, "control": "text" }] },
+    "StopApp": { "schemaDef": "StopApp", "fields": [{ "key": "package", "span": 10, "control": "text" }] },
+    "Command": {
+      "schemaDef": "Command",
+      "fields": [
+        { "key": "exec", "span": 10, "control": "text" },
+        { "key": "args", "span": 10, "control": "json" },
+        { "key": "detach", "span": 10, "control": "checkbox" }
+      ]
+    },
+    "Shell": {
+      "schemaDef": "Shell",
+      "fields": [
+        { "key": "cmd", "span": 10, "rowSpan": 2, "control": "textarea" },
+        { "key": "shell_timeout", "span": 5, "control": "number" }
+      ]
+    },
+    "Custom": { "schemaDef": "CustomAction", "renderer": "legacy" }
+  },
+  "presets": {
+    "pointAction": [
+      { "key": "target", "span": 10, "control": "target", "actions": [{ "type": "picker", "label": "快速框选" }] },
+      { "key": "target_offset", "span": 10, "control": "json", "actions": [{ "type": "picker", "referenceField": "target", "label": "设置偏移" }] },
+      { "key": "contact", "span": 5, "control": "number" },
+      { "key": "pressure", "span": 5, "control": "number" }
+    ],
+    "touchAction": [
+      { "key": "target", "span": 10, "control": "target", "actions": [{ "type": "picker", "label": "快速框选" }] },
+      { "key": "target_offset", "span": 10, "control": "json", "actions": [{ "type": "picker", "referenceField": "target", "label": "设置偏移" }] },
+      { "key": "contact", "span": 5, "control": "number" },
+      { "key": "pressure", "span": 5, "control": "number" }
+    ],
+    "keyAction": [{ "key": "key", "span": 10, "control": "json" }]
+  }
+}
